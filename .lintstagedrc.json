@@ -1,0 +1,6 @@
+{
+  "*.{js,mjs,cjs,ts,tsx}": [
+    "eslint --cache --fix --no-warn-ignored",
+    "sh -c 'pnpm check:ts'"
+  ]
+}

@@ -1,0 +1,2 @@
+PATH=$PATH:/usr/local/bin:/usr/local/sbin
+pnpm exec commitlint --edit "$1"

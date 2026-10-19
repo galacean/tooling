@@ -1,6 +1,6 @@
 {
   "name": "@galacean/eslint-config",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Shared ESLint configuration for Galacean TypeScript repositories",
   "type": "module",
   "exports": {
@@ -13,7 +13,7 @@
     "src"
   ],
   "engines": {
-    "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@eslint/js": "^10.0.1",

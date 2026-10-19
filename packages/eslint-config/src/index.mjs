@@ -17,9 +17,9 @@ const TS_BASE_RULE_OVERRIDES = {
 };
 
 const TS_STYLE_RULES = {
-  'arrow-parens': ['error', 'as-needed'],
-  'array-bracket-spacing': ['error', 'never'],
-  'brace-style': ['error', '1tbs', { allowSingleLine: true }],
+  '@stylistic/arrow-parens': ['error', 'as-needed'],
+  '@stylistic/array-bracket-spacing': ['error', 'never'],
+  '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: true }],
   'comma-dangle': ['error', 'always-multiline'],
   curly: 'error',
   '@stylistic/quotes': ['error', 'single', { avoidEscape: true, allowTemplateLiterals: 'always' }],
@@ -27,21 +27,21 @@ const TS_STYLE_RULES = {
     multiline: { delimiter: 'semi', requireLast: true },
     singleline: { delimiter: 'semi', requireLast: false },
   }],
-  'generator-star-spacing': ['error', {
+  '@stylistic/generator-star-spacing': ['error', {
     before: false,
     after: true,
     anonymous: 'neither',
     method: 'neither',
   }],
-  'new-parens': 'error',
-  'spaced-comment': 'error',
-  'no-multi-spaces': ['error', { ignoreEOLComments: true }],
+  '@stylistic/new-parens': 'error',
+  '@stylistic/spaced-comment': 'error',
+  '@stylistic/no-multi-spaces': ['error', { ignoreEOLComments: true }],
   'no-console': ['error', { allow: ['info', 'warn', 'error', 'debug', 'trace'] }],
   'no-inner-declarations': 'error',
-  'no-multiple-empty-lines': ['error', { max: 1, maxEOF: 1 }],
-  'no-trailing-spaces': 'error',
+  '@stylistic/no-multiple-empty-lines': ['error', { max: 1, maxEOF: 1 }],
+  '@stylistic/no-trailing-spaces': 'error',
   'no-void': ['error', { allowAsStatement: true }],
-  'padding-line-between-statements': [
+  '@stylistic/padding-line-between-statements': [
     'error',
     { blankLine: 'always', prev: '*', next: ['return', 'break'] },
     { blankLine: 'never', prev: '*', next: ['case', 'default'] },
@@ -52,7 +52,7 @@ const TS_STYLE_RULES = {
   'promise/catch-or-return': 'error',
   'prefer-rest-params': 'off',
   semi: ['error', 'always'],
-  'space-in-parens': ['error', 'never'],
+  '@stylistic/space-in-parens': ['error', 'never'],
 };
 
 const TS_POLICY_RULES = {
@@ -98,14 +98,20 @@ const TS_POLICY_RULES = {
 
 const configuration = tseslint.config([
   globalIgnores(BASE_IGNORES),
-  js.configs.recommended,
-  promise.configs['flat/recommended'],
+  {
+    ...js.configs.recommended,
+    files: ['**/*.{ts,tsx}'],
+  },
+  {
+    ...promise.configs['flat/recommended'],
+    files: ['**/*.{ts,tsx}'],
+  },
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        project: true,
+        projectService: true,
         tsconfigRootDir: cwd(),
       },
     },

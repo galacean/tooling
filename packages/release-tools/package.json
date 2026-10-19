@@ -1,6 +1,6 @@
 {
   "name": "@galacean/release-tools",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Release automation for Galacean repositories",
   "files": [
     "bin",
@@ -12,6 +12,9 @@
   },
   "scripts": {
     "check:ts": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@commitlint/config-conventional": "^18.4.3",
@@ -30,7 +33,7 @@
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/jsdom": "^21.1.7",
-    "@types/node": "^18.19.31",
+    "@types/node": "^24.0.0",
     "typescript": "^5.6.3"
   }
 }

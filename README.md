@@ -6,7 +6,7 @@ Shared development and release tools for Galacean repositories.
 
 ## Setup
 
-Use Node.js 22+ for this workspace (`eslint-plugin-compat` requires it) and pnpm 10.33.2.
+Use Node.js >=24.0.0 and pnpm 10.33.2 for this workspace and its packages.
 
 ```sh
 corepack enable
@@ -56,7 +56,7 @@ The target defaults to the current directory. Set it with a positional path or `
 
 ## ESLint Config
 
-Shared flat configuration for ESLint 9 and TypeScript:
+Shared flat configuration for ESLint 10.2+ and TypeScript. Node.js >=24.0.0 is required:
 
 ```sh
 pnpm add -D @galacean/eslint-config eslint typescript

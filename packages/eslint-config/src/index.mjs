@@ -27,6 +27,12 @@ const TS_STYLE_RULES = {
     multiline: { delimiter: 'semi', requireLast: true },
     singleline: { delimiter: 'semi', requireLast: false },
   }],
+  'generator-star-spacing': ['error', {
+    before: false,
+    after: true,
+    anonymous: 'neither',
+    method: 'neither',
+  }],
   'new-parens': 'error',
   'spaced-comment': 'error',
   'no-multi-spaces': ['error', { ignoreEOLComments: true }],
@@ -82,7 +88,8 @@ const TS_POLICY_RULES = {
   '@typescript-eslint/prefer-regexp-exec': 'off',
   '@typescript-eslint/no-unsafe-enum-comparison': 'warn',
   '@typescript-eslint/no-base-to-string': 'off',
-  '@typescript-eslint/no-duplicate-type-constituents': 'off',
+  '@typescript-eslint/no-duplicate-enum-values': 'off',
+  '@typescript-eslint/no-duplicate-type-constituents': 'error',
   '@typescript-eslint/consistent-type-imports': [
     'error',
     { prefer: 'type-imports', disallowTypeAnnotations: false },

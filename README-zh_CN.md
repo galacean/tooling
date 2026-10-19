@@ -6,7 +6,7 @@ Galacean 仓库共用的开发配置与发布工具。
 
 ## 安装
 
-本工作区使用 Node.js 22+（`eslint-plugin-compat` 的要求）和 pnpm 10.33.2。
+本工作区及其子包统一要求 Node.js >=24.0.0，使用 pnpm 10.33.2。
 
 ```sh
 corepack enable
@@ -55,7 +55,7 @@ pnpm exec update-version
 
 ## ESLint 配置
 
-适用于 ESLint 9 和 TypeScript 的共享扁平配置：
+适用于 ESLint 10.2+ 和 TypeScript 的共享扁平配置，要求 Node.js >=24.0.0：
 
 ```sh
 pnpm add -D @galacean/eslint-config eslint typescript

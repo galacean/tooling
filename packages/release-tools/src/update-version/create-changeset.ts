@@ -1,7 +1,9 @@
 import chalk from 'chalk';
 import { askCheckboxPlus, askQuestion } from './cli-utilities';
 
-export async function getReleasePackageNames(packageNames: string[]): Promise<string[]> {
+export async function getReleasePackageNames(
+  packageNames: string[],
+): Promise<string[]> {
   if (packageNames.length === 0) {
     return [];
   }
@@ -16,8 +18,9 @@ export async function getReleasePackageNames(packageNames: string[]): Promise<st
     value => {
       if (Array.isArray(value)) {
         return value
-          .filter((packageName): packageName is string =>
-            typeof packageName === 'string' && packageName !== 'all packages',
+          .filter(
+            (packageName): packageName is string =>
+              typeof packageName === 'string' && packageName !== 'all packages',
           )
           .map(packageName => chalk.cyan(packageName))
           .join(', ');

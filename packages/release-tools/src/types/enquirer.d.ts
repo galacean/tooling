@@ -24,11 +24,7 @@ declare module 'enquirer' {
   }
 
   export class Select {
-    constructor(options: {
-      name: string;
-      message: string;
-      choices: string[];
-    });
+    constructor(options: { name: string; message: string; choices: string[] });
 
     run(): Promise<string>;
   }

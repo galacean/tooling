@@ -1,0 +1,62 @@
+{
+  "name": "@galacean/docs-site",
+  "version": "0.0.4",
+  "description": "Shared bilingual documentation site runtime and data contracts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./index.css": "./dist/index.css"
+  },
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest",
+    "check:ts": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "peerDependencies": {
+    "highlight.js": "^11.11.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.0.0",
+    "remark-gfm": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-router-dom": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "catalog:",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "highlight.js": "^11.11.1",
+    "jsdom": "catalog:",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.5.1",
+    "remark-gfm": "^4.0.1",
+    "typedoc": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-dts": "^1.1.2",
+    "vite": "^8.3.5",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

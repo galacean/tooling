@@ -1,14 +1,14 @@
 import js from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
+import globals from 'globals';
 import promise from 'eslint-plugin-promise';
 import tseslint from 'typescript-eslint';
 import { globalIgnores } from 'eslint/config';
 import { cwd } from 'node:process';
 
-const BASE_IGNORES = [
-  '**/{node_modules,dist,coverage}/**',
-  '**/*.d.ts',
-];
+const BASE_IGNORES = ['**/{node_modules,dist,coverage}/**', '**/*.d.ts'];
+
+const JS_FILES = ['**/*.{js,mjs,cjs}'];
 
 const TS_BASE_RULE_OVERRIDES = {
   'no-undef': 'off',
@@ -22,21 +22,34 @@ const TS_STYLE_RULES = {
   '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: true }],
   'comma-dangle': ['error', 'always-multiline'],
   curly: 'error',
-  '@stylistic/quotes': ['error', 'single', { avoidEscape: true, allowTemplateLiterals: 'always' }],
-  '@stylistic/member-delimiter-style': ['error', {
-    multiline: { delimiter: 'semi', requireLast: true },
-    singleline: { delimiter: 'semi', requireLast: false },
-  }],
-  '@stylistic/generator-star-spacing': ['error', {
-    before: false,
-    after: true,
-    anonymous: 'neither',
-    method: 'neither',
-  }],
+  '@stylistic/quotes': [
+    'error',
+    'single',
+    { avoidEscape: true, allowTemplateLiterals: 'always' },
+  ],
+  '@stylistic/member-delimiter-style': [
+    'error',
+    {
+      multiline: { delimiter: 'semi', requireLast: true },
+      singleline: { delimiter: 'semi', requireLast: false },
+    },
+  ],
+  '@stylistic/generator-star-spacing': [
+    'error',
+    {
+      before: false,
+      after: true,
+      anonymous: 'neither',
+      method: 'neither',
+    },
+  ],
   '@stylistic/new-parens': 'error',
   '@stylistic/spaced-comment': 'error',
   '@stylistic/no-multi-spaces': ['error', { ignoreEOLComments: true }],
-  'no-console': ['error', { allow: ['info', 'warn', 'error', 'debug', 'trace'] }],
+  'no-console': [
+    'error',
+    { allow: ['info', 'warn', 'error', 'debug', 'trace'] },
+  ],
   'no-inner-declarations': 'error',
   '@stylistic/no-multiple-empty-lines': ['error', { max: 1, maxEOF: 1 }],
   '@stylistic/no-trailing-spaces': 'error',
@@ -46,7 +59,11 @@ const TS_STYLE_RULES = {
     { blankLine: 'always', prev: '*', next: ['return', 'break'] },
     { blankLine: 'never', prev: '*', next: ['case', 'default'] },
     { blankLine: 'always', prev: ['const', 'let', 'var'], next: '*' },
-    { blankLine: 'any', prev: ['const', 'let', 'var'], next: ['const', 'let', 'var'] },
+    {
+      blankLine: 'any',
+      prev: ['const', 'let', 'var'],
+      next: ['const', 'let', 'var'],
+    },
   ],
   'promise/always-return': 'off',
   'promise/catch-or-return': 'error',
@@ -81,7 +98,10 @@ const TS_POLICY_RULES = {
   '@typescript-eslint/prefer-reduce-type-parameter': 'error',
   '@typescript-eslint/prefer-ts-expect-error': 'error',
   '@typescript-eslint/return-await': 'error',
-  '@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: true, ignoreIIFE: true }],
+  '@typescript-eslint/no-floating-promises': [
+    'error',
+    { ignoreVoid: true, ignoreIIFE: true },
+  ],
   '@typescript-eslint/require-await': 'off',
   '@typescript-eslint/unbound-method': 'off',
   '@typescript-eslint/no-misused-promises': 'error',
@@ -98,6 +118,13 @@ const TS_POLICY_RULES = {
 
 const configuration = tseslint.config([
   globalIgnores(BASE_IGNORES),
+  {
+    ...js.configs.recommended,
+    files: JS_FILES,
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   {
     ...js.configs.recommended,
     files: ['**/*.{ts,tsx}'],

@@ -1,0 +1,37 @@
+{
+  "name": "@galacean/docs-tools",
+  "version": "0.0.4",
+  "description": "Documentation generation tools for Galacean repositories",
+  "type": "module",
+  "files": [
+    "bin",
+    "skills",
+    "src"
+  ],
+  "bin": {
+    "galacean-docs": "./bin/galacean-docs.mjs"
+  },
+  "scripts": {
+    "check:ts": "tsc --noEmit",
+    "test": "vitest"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "@galacean/docs-site": "workspace:*",
+    "jsonc-parser": "^3.3.1",
+    "semver": "^7.7.2",
+    "typedoc": "catalog:",
+    "typescript": "catalog:",
+    "tsx": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/semver": "^7.7.1",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -4,6 +4,13 @@
 
 Galacean 仓库共用的开发配置与发布工具。
 
+| 包 | 说明 |
+| --- | --- |
+| [@galacean/docs-site](packages/docs-site/README-zh_CN.md) | 双语文档站点共用的 React 运行时。 |
+| [@galacean/docs-tools](packages/docs-tools/README-zh_CN.md) | 生成和维护文档数据的命令行工具。 |
+| [@galacean/eslint-config](packages/eslint-config/README-zh_CN.md) | TypeScript 共用的 ESLint 扁平配置。 |
+| [@galacean/release-tools](packages/release-tools/README-zh_CN.md) | 变更日志与工作区版本工具。 |
+
 ## 安装
 
 本工作区及其子包统一要求 Node.js >=24.0.0，使用 pnpm 10.33.2。

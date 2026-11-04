@@ -37,27 +37,34 @@ export async function askCheckboxPlus(
       indicator: symbols.radioOff,
       checked: symbols.radioOn,
     },
-    indicator: (state: { symbols: Record<string, string> }, choice: { enabled: boolean }) =>
+    indicator: (
+      state: { symbols: Record<string, string> },
+      choice: { enabled: boolean },
+    ) =>
       choice.enabled
-        ? state.symbols['checked'] ?? symbols.radioOn
-        : state.symbols['indicator'] ?? symbols.radioOff,
+        ? (state.symbols['checked'] ?? symbols.radioOn)
+        : (state.symbols['indicator'] ?? symbols.radioOff),
   });
   const selectedChoices = responses[name];
 
   return Array.isArray(selectedChoices)
-    ? selectedChoices.filter((choice): choice is string => typeof choice === 'string')
+    ? selectedChoices.filter(
+        (choice): choice is string => typeof choice === 'string',
+      )
     : [];
 }
 
 export async function askQuestion(message: string): Promise<string> {
   const name = `Question-${nextId()}`;
-  const responses = await prompt([{
-    type: 'input',
-    message,
-    name,
-    prefix,
-    onCancel,
-  }]);
+  const responses = await prompt([
+    {
+      type: 'input',
+      message,
+      name,
+      prefix,
+      onCancel,
+    },
+  ]);
   const answer = responses[name];
 
   return typeof answer === 'string' ? answer : '';

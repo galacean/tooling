@@ -1,0 +1,100 @@
+.api-source {
+  display: inline-flex;
+  color: var(--site-muted);
+  margin-left: 4px;
+}
+.api-source.icon-action {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+.api-source:hover {
+  color: var(--site-link);
+}
+.api-descriptions {
+  margin: 4px 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+}
+.api-description-row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--site-border) 70%, transparent);
+}
+.api-description-row:last-child {
+  border-bottom: 0;
+}
+.api-description-row dt {
+  padding-top: 2px;
+  color: var(--site-muted);
+  font:
+    10px 'IBM Plex Mono',
+    monospace;
+}
+.api-description-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.api-description-row dd .api-source {
+  float: right;
+}
+.api-signature-panel {
+  margin: 2px 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--site-border);
+  background: var(--site-surface);
+}
+.api-signature-panel .api-descriptions {
+  margin: 0;
+}
+.api-signature-panel .api-description-row:first-child {
+  display: block;
+  padding: 0;
+  border-bottom: 1px solid var(--site-border);
+  border-color: var(--site-border);
+  background: var(--site-code-background);
+  color: var(--site-code-foreground);
+}
+.api-signature-panel .api-description-row:first-child dt {
+  padding: 13px 17px 0;
+  color: var(--site-code-muted);
+  font-size: 9px;
+}
+.api-signature-panel .api-description-row:first-child dd {
+  padding: 10px 17px 18px;
+  color: var(--site-code-foreground);
+}
+.api-signature-panel .api-description-row:not(:first-child) {
+  padding-inline: 17px;
+}
+.api-comment {
+  color: var(--site-ink);
+  font-weight: 400;
+}
+.original-locale {
+  display: inline-block;
+  color: var(--site-muted);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.api-no-description {
+  color: var(--site-muted);
+  font-size: 13px;
+}
+
+@media (max-width: 767px) {
+  .api-description-row {
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 10px;
+    padding: 9px 12px;
+  }
+}

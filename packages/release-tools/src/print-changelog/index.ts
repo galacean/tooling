@@ -16,9 +16,10 @@ async function main(): Promise<void> {
   }
 
   const args = process.argv.slice(2);
-  const targetRepository = args.find(arg => !arg.startsWith('-'))
-    ?? process.env['TARGET_REPOSITORY']
-    ?? process.cwd();
+  const targetRepository =
+    args.find(arg => !arg.startsWith('-')) ??
+    process.env['TARGET_REPOSITORY'] ??
+    process.cwd();
   const git = simpleGit(targetRepository);
   const tags = await git.tags();
   const prompt = new Select({
@@ -40,7 +41,9 @@ async function main(): Promise<void> {
     const origin = await git.remote(['get-url', 'origin']);
 
     if (origin === undefined || origin.length === 0) {
-      throw new Error('Set GITHUB_REPOSITORY or configure an origin remote for the target repository.');
+      throw new Error(
+        'Set GITHUB_REPOSITORY or configure an origin remote for the target repository.',
+      );
     }
 
     repository = origin;
@@ -59,19 +62,28 @@ async function main(): Promise<void> {
       `[${index + 1}/${logs.all.length}]`,
       commit.hash.slice(0, 6),
       '-',
-      pullRequestNumbers.length ? pullRequestNumbers.map(number => `#${number}`).join(',') : '?',
+      pullRequestNumbers.length
+        ? pullRequestNumbers.map(number => `#${number}`).join(',')
+        : '?',
     );
 
     for (const pullRequestNumber of pullRequestNumbers) {
-      const { response, html } = await fetchPullRequest(pullRequestNumber, repository);
+      const { response, html } = await fetchPullRequest(
+        pullRequestNumber,
+        repository,
+      );
       const details = queryWithJSDOM(html);
 
-      pullRequests.push({ ...details, pr: pullRequestNumber, url: response.url });
+      pullRequests.push({
+        ...details,
+        pr: pullRequestNumber,
+        url: response.url,
+      });
     }
   }
 
   console.info('\n', chalk.green('Done. Here is the log:'), '\n');
-  printPR(pullRequests.reverse());
+  await printPR(pullRequests.reverse());
 }
 
 main().catch((error: unknown) => {

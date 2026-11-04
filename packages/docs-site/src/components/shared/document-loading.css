@@ -1,0 +1,97 @@
+.document-loading {
+  min-width: 0;
+  --loading-fill: color-mix(
+    in srgb,
+    var(--site-muted) 13%,
+    var(--site-background)
+  );
+}
+.document-loading-page {
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  min-height: calc(100dvh - 80px);
+}
+.document-loading-api {
+  grid-template-columns: 270px minmax(0, 1fr);
+  max-width: none;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.document-loading-sidebar {
+  padding: 38px 30px;
+  border-right: 1px solid var(--site-border);
+}
+.document-loading-sidebar::before {
+  content: '';
+  display: block;
+  height: 552px;
+  mask-image: url('./document-loading-sidebar.svg');
+}
+.document-loading-body {
+  min-width: 0;
+  padding: 35px 54px 64px;
+}
+.document-loading-label {
+  margin: 0 0 16px;
+  color: var(--site-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.document-loading-content {
+  width: 100%;
+  max-width: 780px;
+  height: 422px;
+  mask-image: url('./document-loading-content.svg');
+}
+.document-loading-content,
+.document-loading-sidebar::before {
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  background: var(--loading-fill);
+  animation: document-loading-pulse 2.4s ease-in-out infinite;
+}
+.document-loading-inline {
+  padding-block: 4px 24px;
+}
+@keyframes document-loading-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (max-width: 1100px) {
+  .document-loading-page {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+  .document-loading-api {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+  .document-loading-body {
+    padding-inline: 38px;
+  }
+}
+@media (max-width: 760px) {
+  .document-loading-page {
+    display: block;
+    min-height: calc(100dvh - 68px);
+  }
+  .document-loading-sidebar {
+    display: none;
+  }
+  .document-loading-body {
+    padding: 26px 6% 45px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-loading-content,
+  .document-loading-sidebar::before {
+    animation: none;
+  }
+}

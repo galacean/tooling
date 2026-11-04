@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@galacean/docs-site": ["./src/index.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../../types"],
+  "exclude": ["node_modules", "dist"]
+}

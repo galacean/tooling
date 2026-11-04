@@ -1,5 +1,4 @@
 import chalk from 'chalk';
-import configConventional from '@commitlint/config-conventional';
 import { JSDOM } from 'jsdom';
 
 interface PullRequestDetails {
@@ -13,9 +12,11 @@ interface PullRequest extends PullRequestDetails {
   url: string;
 }
 
-const commitTypes = configConventional.rules['type-enum'][2];
+export async function printPR(pullRequests: PullRequest[]): Promise<void> {
+  const { default: configConventional } =
+    await import('@commitlint/config-conventional');
+  const commitTypes = configConventional.rules['type-enum'][2];
 
-export function printPR(pullRequests: PullRequest[]): void {
   pullRequests.forEach(pullRequest => {
     const { pr, url, author, title, descriptions } = pullRequest;
     const isConventionalTitle = commitTypes.some(type =>
@@ -31,7 +32,9 @@ export function printPR(pullRequests: PullRequest[]): void {
     console.info(`- ${titleText}. [#${pr}](${url}) @${author}`);
 
     if (descriptions.length > 0) {
-      console.info(descriptions.map(description => `  - ${description}`).join('\n'));
+      console.info(
+        descriptions.map(description => `  - ${description}`).join('\n'),
+      );
     }
   });
 }
@@ -39,15 +42,22 @@ export function printPR(pullRequests: PullRequest[]): void {
 export function queryWithJSDOM(html: string): PullRequestDetails {
   const dom = new JSDOM(html);
   const { document } = dom.window;
-  const titleElement = document.querySelector('[data-component="PH_Title"] .markdown-title');
-  const authorElement = document.querySelector('.pull-discussion-timeline>.js-discussion .TimelineItem .author');
+  const titleElement = document.querySelector(
+    '[data-component="PH_Title"] .markdown-title',
+  );
+  const authorElement = document.querySelector(
+    '.pull-discussion-timeline>.js-discussion .TimelineItem .author',
+  );
 
   if (!titleElement || !authorElement) {
-    throw new Error('Could not find the pull request title or author in the GitHub page.');
+    throw new Error(
+      'Could not find the pull request title or author in the GitHub page.',
+    );
   }
 
-  const descriptions = [...document.querySelectorAll('.comment-body>ul:first-child li')]
-    .map(element => element.textContent?.trim() ?? '');
+  const descriptions = [
+    ...document.querySelectorAll('.comment-body>ul:first-child li'),
+  ].map(element => element.textContent?.trim() ?? '');
 
   return {
     title: titleElement.textContent?.trim() ?? '',
@@ -57,12 +67,18 @@ export function queryWithJSDOM(html: string): PullRequestDetails {
 }
 
 export function parseGitHubRepository(value: string): string {
-  const repository = value.trim()
-    .replace(/^(?:https?:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)/i, '')
+  const repository = value
+    .trim()
+    .replace(
+      /^(?:https?:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)/i,
+      '',
+    )
     .replace(/\.git$/i, '');
 
   if (!/^[^/\s]+\/[^/\s]+$/.test(repository)) {
-    throw new Error(`Expected a GitHub repository in owner/repository format, received: ${value}`);
+    throw new Error(
+      `Expected a GitHub repository in owner/repository format, received: ${value}`,
+    );
   }
 
   return repository;
@@ -85,7 +101,9 @@ export async function fetchPullRequest(
       );
 
       if (!response.ok) {
-        throw new Error(`GitHub returned ${response.status} for pull request #${pullRequestNumber}.`);
+        throw new Error(
+          `GitHub returned ${response.status} for pull request #${pullRequestNumber}.`,
+        );
       }
 
       return { response, html: await response.text() };

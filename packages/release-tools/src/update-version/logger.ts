@@ -1,7 +1,11 @@
 const prefix = '🦋 ';
 
 function format(message: string, customPrefix?: string): string {
-  const fullPrefix = prefix + (customPrefix !== undefined && customPrefix.length > 0 ? ` ${customPrefix}` : '');
+  const fullPrefix =
+    prefix +
+    (customPrefix !== undefined && customPrefix.length > 0
+      ? ` ${customPrefix}`
+      : '');
 
   return `${fullPrefix}${message.replace(/\n/g, `\n${fullPrefix} `)}`;
 }

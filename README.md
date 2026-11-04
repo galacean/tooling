@@ -4,6 +4,13 @@
 
 Shared development and release tools for Galacean repositories.
 
+| Package | Description |
+| --- | --- |
+| [@galacean/docs-site](packages/docs-site/README.md) | Shared React runtime for bilingual documentation sites. |
+| [@galacean/docs-tools](packages/docs-tools/README.md) | CLI for generating and maintaining documentation data. |
+| [@galacean/eslint-config](packages/eslint-config/README.md) | Shared flat ESLint configuration for TypeScript. |
+| [@galacean/release-tools](packages/release-tools/README.md) | Changelog and workspace version utilities. |
+
 ## Setup
 
 Use Node.js >=24.0.0 and pnpm 10.33.2 for this workspace and its packages.

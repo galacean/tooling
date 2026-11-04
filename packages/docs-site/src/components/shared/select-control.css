@@ -1,0 +1,102 @@
+.site-select {
+  position: relative;
+  min-width: 0;
+}
+.site-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--site-border);
+  border-radius: 4px;
+  background: var(--site-surface);
+  color: var(--site-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s;
+}
+.site-select-trigger:hover,
+.site-select-trigger[aria-expanded='true'] {
+  border-color: var(--site-muted);
+  background: var(--site-wash);
+}
+.site-select-trigger:not(.icon-only):focus-visible {
+  outline: 2px solid var(--site-accent);
+  outline-offset: 2px;
+}
+.site-select-trigger.icon-only {
+  display: inline-grid;
+  place-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--site-muted);
+  text-align: center;
+}
+.site-select-trigger.icon-only:hover,
+.site-select-trigger.icon-only[aria-expanded='true'] {
+  border-color: var(--site-border);
+  background: var(--site-wash);
+  color: var(--site-ink);
+}
+.site-select-trigger.icon-only .site-select-chevron {
+  display: none;
+}
+.site-select-chevron {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  transform: translateY(-2px) rotate(45deg);
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+}
+.site-select-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  min-width: 32px;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: min(55dvh, 360px);
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid var(--site-border);
+  border-radius: 5px;
+  background: var(--site-surface);
+  color: var(--site-ink);
+  box-shadow: 0 12px 30px #1013101c;
+}
+.site-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 3px;
+  color: var(--site-ink);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.site-select-option:hover,
+.site-select-option.active {
+  background: var(--site-wash);
+}
+.site-select-option[aria-selected='true'] {
+  color: var(--site-accent);
+  font-weight: 600;
+}

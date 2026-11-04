@@ -1,0 +1,190 @@
+.api-menu {
+  min-height: 100%;
+  padding: 18px 12px 28px;
+}
+.api-menu-group + .api-menu-group {
+  margin-top: 22px;
+}
+.api-menu-group h2 {
+  margin: 0 0 5px;
+  padding: 0 10px 7px;
+  color: var(--site-muted);
+  font:
+    10px 'IBM Plex Mono',
+    monospace;
+  text-transform: uppercase;
+}
+.api-menu-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.api-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 6px 10px;
+  min-width: 0;
+  overflow: hidden;
+  border-left: 2px solid transparent;
+  color: var(--site-ink);
+  font-size: 12px;
+  line-height: 1.45;
+  transition:
+    color 0.15s,
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.api-menu-item > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-menu-item:hover {
+  color: var(--site-accent);
+  background: var(--site-background);
+}
+.api-menu-item.selected {
+  border-left-color: var(--site-accent);
+  color: var(--site-accent);
+  background: color-mix(in srgb, var(--site-accent) 7%, var(--site-surface));
+  font-weight: 650;
+}
+.api-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+}
+.api-breadcrumb .site-select {
+  flex: 0 1 auto;
+  min-width: 82px;
+  max-width: 220px;
+}
+.api-breadcrumb .site-select-trigger {
+  min-height: 36px;
+  padding: 7px 9px;
+  border-color: transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--site-ink);
+  font-size: 13px;
+}
+.api-breadcrumb .site-select-trigger:hover,
+.api-breadcrumb .site-select-trigger[aria-expanded='true'] {
+  border-color: var(--site-border);
+  background: var(--site-surface);
+}
+.api-breadcrumb .api-package-select {
+  width: max-content;
+  min-width: 0;
+  max-width: 220px;
+}
+.api-breadcrumb .api-package-select .site-select-trigger {
+  width: max-content;
+  max-width: 100%;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+}
+.api-breadcrumb .api-package-select .site-select-value {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-breadcrumb > span {
+  color: var(--site-muted);
+}
+.api-breadcrumb > a {
+  color: var(--site-muted);
+  font:
+    11px 'IBM Plex Mono',
+    monospace;
+}
+.api-current-symbol {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.api-inherited-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.api-inherited-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.api-inherited-toggle span {
+  position: relative;
+  display: block;
+  width: 34px;
+  height: 19px;
+  border: 1px solid var(--site-border);
+  border-radius: 10px;
+  background: var(--site-background);
+  transition: background-color 0.15s;
+}
+.api-inherited-toggle span::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--site-muted);
+  content: '';
+  transition:
+    transform 0.15s,
+    background-color 0.15s;
+}
+.api-inherited-toggle input:checked + span {
+  background: var(--site-accent);
+}
+.api-inherited-toggle input:checked + span::after {
+  transform: translateX(15px);
+  background: #fff;
+}
+.api-inherited-toggle input:focus-visible + span {
+  outline: 2px solid var(--site-accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 1050px) {
+  .api-current-symbol {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .api-breadcrumb {
+    gap: 2px;
+    font-size: 12px;
+  }
+  .api-breadcrumb .site-select {
+    min-width: 70px;
+    max-width: 120px;
+  }
+  .api-breadcrumb .site-select-trigger {
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+  .api-breadcrumb .api-package-select {
+    min-width: 0;
+    max-width: 112px;
+    width: max-content;
+    font-size: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-menu-item {
+    transition: none;
+  }
+}

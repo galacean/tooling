@@ -7,11 +7,16 @@ interface PackageMetadata {
 }
 
 export function listablePackage(packageJson: PackageMetadata): boolean {
-  if (packageJson.name !== undefined && config.ignore.includes(packageJson.name)) {
+  if (
+    packageJson.name !== undefined &&
+    config.ignore.includes(packageJson.name)
+  ) {
     return false;
   }
 
-  return packageJson.private !== true
-    && typeof packageJson.version === 'string'
-    && packageJson.version.length > 0;
+  return (
+    packageJson.private !== true &&
+    typeof packageJson.version === 'string' &&
+    packageJson.version.length > 0
+  );
 }

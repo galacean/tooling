@@ -2,7 +2,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import { getPackages } from '@manypkg/get-packages';
 import { listablePackage } from './listable-package';
-import { getReleasePackageNames, getReleasePackageVersion } from './create-changeset';
+import {
+  getReleasePackageNames,
+  getReleasePackageVersion,
+} from './create-changeset';
 import { error } from './logger';
 
 interface PackageMetadata {
@@ -19,20 +22,25 @@ async function main(): Promise<void> {
 
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
-  const targetRepository = args.find(arg => !arg.startsWith('-'))
-    ?? process.env['TARGET_REPOSITORY']
-    ?? process.cwd();
+  const targetRepository =
+    args.find(arg => !arg.startsWith('-')) ??
+    process.env['TARGET_REPOSITORY'] ??
+    process.cwd();
   const { packages } = await getPackages(targetRepository);
   const packageNames = packages
     .filter(item => listablePackage(item.packageJson))
     .map(item => item.packageJson.name);
 
   if (packageNames.length === 0) {
-    throw new Error(`No versioned, non-private workspace packages found in ${targetRepository}.`);
+    throw new Error(
+      `No versioned, non-private workspace packages found in ${targetRepository}.`,
+    );
   }
 
   if (dryRun) {
-    console.info(`Packages available for version update in ${targetRepository}:`);
+    console.info(
+      `Packages available for version update in ${targetRepository}:`,
+    );
     packageNames.forEach(packageName => console.info(`- ${packageName}`));
 
     return;
@@ -49,13 +57,20 @@ async function main(): Promise<void> {
   }
 
   try {
-    await Promise.all(releasePackages.map(async item => {
-      const packageJsonPath = path.join(item.dir, 'package.json');
-      const packageJson = await fs.readJson(packageJsonPath) as PackageMetadata;
+    await Promise.all(
+      releasePackages.map(async item => {
+        const packageJsonPath = path.join(item.dir, 'package.json');
+        const packageJson = (await fs.readJson(
+          packageJsonPath,
+        )) as PackageMetadata;
 
-      packageJson.version = version;
-      await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
-    }));
+        packageJson.version = version;
+        await fs.writeFile(
+          packageJsonPath,
+          `${JSON.stringify(packageJson, null, 2)}\n`,
+        );
+      }),
+    );
   } catch (caughtError) {
     error(`Could not update package.json: ${String(caughtError)}`);
     throw caughtError;

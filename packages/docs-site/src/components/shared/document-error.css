@@ -1,0 +1,41 @@
+.document-error-message {
+  width: 100%;
+  max-width: 640px;
+  min-width: 0;
+  margin-inline: auto;
+}
+.document-error-page {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: calc(100dvh - 80px);
+  width: 100%;
+  padding: 48px 24px;
+}
+.api-shell .document-error-page {
+  min-height: 0;
+}
+.document-error-inline {
+  width: 100%;
+}
+.document-error-message :is(h1, h2) {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  color: var(--site-ink);
+  font-size: 28px;
+  line-height: 1.35;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.document-error-message p {
+  margin: 0;
+  color: var(--site-muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+@media (max-width: 760px) {
+  .document-error-message :is(h1, h2) {
+    font-size: 24px;
+  }
+}

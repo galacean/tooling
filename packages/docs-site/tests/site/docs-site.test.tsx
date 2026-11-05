@@ -23,7 +23,7 @@ function renderSite(baseURL = '/') {
       preferenceNamespace="docs-site-test"
       site={{
         brandLabel: 'Shared docs',
-        brandMarkUrl: '/brand.svg',
+        brandMarkUrls: { light: '/brand-light.svg', dark: '/brand-dark.svg' },
         historyKeyPrefix: 'docs-site-test',
         localeLabels: { en: 'English', 'zh-CN': '简体中文' },
         messages: locale => ({

@@ -124,7 +124,10 @@ describe('shared SiteShell', () => {
           language: 'Language',
         },
         brandLabel: 'Example Docs',
-        brandMarkUrl: '/example/mark.svg',
+        brandMarkUrls: {
+          light: '/example/mark-light.svg',
+          dark: '/example/mark-dark.svg',
+        },
         homeHref: '/fr',
         navigation: [
           { key: 'start', label: 'Start here', to: '/fr', end: true },
@@ -150,7 +153,7 @@ describe('shared SiteShell', () => {
         </ThemeProvider>,
       );
 
-      expect(markup).toContain('src="/example/mark.svg"');
+      expect(markup).toContain('src="/example/mark-light.svg"');
       expect(markup).toContain('aria-label="Example Docs"');
       expect(markup).toContain('Start here</a>');
       expect(markup).toContain('aria-current="page"');

@@ -1,4 +1,4 @@
-import { loadJSON, loadText } from '../data';
+import { loadJSON } from '../data';
 
 export interface ManualNavigationItem<TLocale extends string> {
   slug: string;
@@ -9,6 +9,7 @@ export interface ManualNavigationItem<TLocale extends string> {
 export interface ManualPageDocument {
   text: string;
   headings: string[];
+  lastModified?: string;
 }
 
 export interface ManualContentClient<TLocale extends string> {
@@ -82,10 +83,21 @@ export function createManualContentClient<TLocale extends string>({
     );
   }
 
-  async function fetchMarkdown(url: string): Promise<ManualPageDocument> {
-    const text = await loadText(url, fetcher);
+  async function loadMarkdown(url: string): Promise<ManualPageDocument> {
+    const response = await fetcher(url);
 
-    return { text, headings: extractHeadings(text) };
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${url}`);
+    }
+
+    const text = await response.text();
+    const lastModified = response.headers.get('Last-Modified');
+
+    return {
+      text,
+      headings: extractHeadings(text),
+      ...(lastModified === null ? {} : { lastModified }),
+    };
   }
 
   return {
@@ -125,12 +137,12 @@ export function createManualContentClient<TLocale extends string>({
       }
 
       const url = `${base}data/manual/${locale}/${encodeURIComponent(slug)}.md`;
-      const document = await fetchMarkdown(url);
+      const document = await loadMarkdown(url);
 
       return { slug, title: page.title[locale], ...document };
     },
     loadOverview(locale) {
-      return fetchMarkdown(`${base}data/manual/${locale}/index.md`);
+      return loadMarkdown(`${base}data/manual/${locale}/index.md`);
     },
   };
 }

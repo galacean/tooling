@@ -11,6 +11,7 @@ import {
   MemoryRouter,
   Route,
   Routes,
+  useNavigate,
   useLocation,
   useParams,
 } from 'react-router-dom';
@@ -50,6 +51,25 @@ function CurrentLocation() {
   );
 }
 
+function RoutedManualPage() {
+  const { slug } = useParams();
+  const navigate = useNavigate();
+
+  return (
+    <aside className="manual-sidebar">
+      <button
+        type="button"
+        onClick={() => {
+          void navigate(`/en/manual/${slug === 'first' ? 'second' : 'first'}`);
+        }}
+      >
+        Next page
+      </button>
+      <span>{slug}</span>
+    </aside>
+  );
+}
+
 function RoutedSiteShell() {
   const { locale = 'en' } = useParams();
   const locales = [
@@ -81,7 +101,8 @@ function RoutedSiteShell() {
 
 function renderSite({
   failStorageRead = false,
-}: { failStorageRead?: boolean } = {}) {
+  initialEntry = '/en/manual?tab=read#intro',
+}: { failStorageRead?: boolean; initialEntry?: string } = {}) {
   const values = new Map<string, string>();
   const storage = {
     getItem: vi.fn((key: string) => {
@@ -108,10 +129,11 @@ function renderSite({
 
   render(
     <ThemeProvider namespace="example:docs">
-      <MemoryRouter initialEntries={['/en/manual?tab=read#intro']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/:locale/manual" element={<RoutedSiteShell />}>
             <Route index element={<CurrentLocation />} />
+            <Route path=":slug" element={<RoutedManualPage />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -225,6 +247,25 @@ describe('SiteShell preferences', () => {
       expect(document.documentElement.dataset['theme']).toBe('dark'),
     );
     expect(values.get('example:docs:theme')).toBe('dark');
+  });
+
+  it('preserves the manual sidebar DOM and scroll position across navigation', async () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+    const sidebar = document.querySelector<HTMLElement>('.manual-sidebar');
+
+    expect(sidebar).not.toBeNull();
+    Object.defineProperty(sidebar, 'scrollTop', {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('second', { selector: '.manual-sidebar span' })).toBeDefined(),
+    );
+    expect(document.querySelector('.manual-sidebar')).toBe(sidebar);
+    expect(sidebar?.scrollTop).toBe(120);
   });
 
   it('opens search with the keyboard shortcut and closes from the panel', async () => {

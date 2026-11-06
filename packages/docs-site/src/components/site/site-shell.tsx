@@ -58,10 +58,25 @@ class ShellErrorBoundary extends Component<
   {
     children: ReactNode;
     fallback: (error: unknown) => ReactNode;
+    resetKey: string;
   },
-  { failed: boolean; error?: unknown }
+  { failed: boolean; error?: unknown; resetKey: string }
 > {
-  override state: { failed: boolean; error?: unknown } = { failed: false };
+  override state: { failed: boolean; error?: unknown; resetKey: string } = {
+    failed: false,
+    resetKey: '',
+  };
+
+  static getDerivedStateFromProps(
+    props: { resetKey: string },
+    state: { failed: boolean; error?: unknown; resetKey: string },
+  ) {
+    if (props.resetKey !== state.resetKey) {
+      return { failed: false, resetKey: props.resetKey };
+    }
+
+    return null;
+  }
 
   static getDerivedStateFromError(error: unknown) {
     return { failed: true, error };
@@ -243,7 +258,7 @@ export function SiteShell({
           {t.storageError}
         </p>
       )}
-      <ShellErrorBoundary key={location.pathname} fallback={errorFallback}>
+      <ShellErrorBoundary resetKey={location.pathname} fallback={errorFallback}>
         <Suspense
           fallback={
             pageKind === 'api' || pageKind === 'manual' ? (
@@ -296,7 +311,7 @@ export function SiteShell({
         <nav className="mobile-nav">{links}</nav>
       </dialog>
       {search && (
-        <ShellErrorBoundary key={locale} fallback={searchErrorFallback}>
+        <ShellErrorBoundary resetKey={locale} fallback={searchErrorFallback}>
           <Suspense fallback={null}>
             <SearchPanel
               locale={locale}

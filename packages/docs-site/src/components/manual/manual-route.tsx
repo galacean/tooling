@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { isSupportedLocale, localePath } from '../../i18n';
 import { createManualContentClient } from '../../manual';
@@ -17,7 +16,6 @@ export interface ManualRouteProps<TLocale extends string> {
   locale: TLocale;
   sectionLabel: string;
   messages: ManualPageMessages;
-  articleMeta?: ReactNode;
 }
 
 interface ManualRouteLoaders {
@@ -32,7 +30,6 @@ export function ManualRoute<TLocale extends string>({
   locale,
   sectionLabel,
   messages,
-  articleMeta,
 }: ManualRouteProps<TLocale>) {
   const { slug } = useParams();
   const [client] = useState(() =>
@@ -53,7 +50,6 @@ export function ManualRoute<TLocale extends string>({
       loadNavigation={loaders.loadNavigation}
       loadOverview={loaders.loadOverview}
       loadPage={loaders.loadPage}
-      {...(articleMeta === undefined ? {} : { articleMeta })}
     />
   );
 }

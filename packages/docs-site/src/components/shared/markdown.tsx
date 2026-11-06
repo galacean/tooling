@@ -72,7 +72,7 @@ export function MarkdownContent({
   copyLabel = 'Copy',
   copied = 'Copied',
   copyFailed = 'Copy failed',
-  afterFirstParagraph,
+  afterFirstHeading,
   resolveImage,
 }: {
   text: string;
@@ -80,12 +80,12 @@ export function MarkdownContent({
   copyLabel?: string;
   copied?: string;
   copyFailed?: string;
-  afterFirstParagraph?: ReactNode;
+  afterFirstHeading?: ReactNode;
   resolveImage?: (url: string) => string;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const location = useLocation();
-  let introInserted = false;
+  let headingInserted = false;
 
   useEffect(() => {
     container.current
@@ -102,9 +102,21 @@ export function MarkdownContent({
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => (
-            <h1 id={headingId(headingText(children))}>{children}</h1>
-          ),
+          h1: ({ children }) => {
+            const heading = <h1 id={headingId(headingText(children))}>{children}</h1>;
+
+            if (afterFirstHeading === undefined || headingInserted) {
+              return heading;
+            }
+            headingInserted = true;
+
+            return (
+              <>
+                {heading}
+                {afterFirstHeading}
+              </>
+            );
+          },
           h2: ({ children }) => (
             <h2 id={headingId(headingText(children))}>{children}</h2>
           ),
@@ -120,19 +132,7 @@ export function MarkdownContent({
           h6: ({ children }) => (
             <h6 id={headingId(headingText(children))}>{children}</h6>
           ),
-          p: ({ children }) => {
-            if (afterFirstParagraph === undefined || introInserted) {
-              return <p>{children}</p>;
-            }
-            introInserted = true;
-
-            return (
-              <>
-                <p>{children}</p>
-                {afterFirstParagraph}
-              </>
-            );
-          },
+          p: ({ children }) => <p>{children}</p>,
           pre: ({ children }) => (
             <CodeBlock
               copyLabel={copyLabel}

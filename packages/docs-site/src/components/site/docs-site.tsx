@@ -40,7 +40,7 @@ export type DocsSiteMessages = CommonSiteMessages &
 
 export interface DocsSiteConfiguration<TLocale extends string> {
   brandLabel: string;
-  brandMarkUrl: string;
+  brandMarkUrls: Readonly<{ light: string; dark: string }>;
   githubHref?: string;
   historyKeyPrefix: string;
   localeLabels: Readonly<Record<TLocale, string>>;
@@ -127,7 +127,7 @@ function ConfiguredSiteShell<TLocale extends string>({
       locales={languageOptions}
       messages={messages}
       brandLabel={site.brandLabel}
-      brandMarkUrl={site.brandMarkUrl}
+      brandMarkUrls={site.brandMarkUrls}
       homeHref={localePath(locale)}
       navigation={(['home', 'manual', 'api'] as const).map(page => ({
         key: page,

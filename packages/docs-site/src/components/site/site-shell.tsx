@@ -39,7 +39,7 @@ export interface SiteShellProps {
   locales: { value: string; label: string }[];
   messages: SiteShellMessages;
   brandLabel: string;
-  brandMarkUrl: string;
+  brandMarkUrls: Readonly<{ light: string; dark: string }>;
   homeHref: string;
   navigation: SiteShellNavigationItem[];
   githubHref?: string;
@@ -79,7 +79,7 @@ export function SiteShell({
   locales,
   messages: t,
   brandLabel,
-  brandMarkUrl,
+  brandMarkUrls,
   homeHref,
   navigation,
   githubHref,
@@ -98,7 +98,8 @@ export function SiteShell({
   const [search, setSearch] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const drawerRef = useRef<HTMLDialogElement>(null);
-  const { mode, change, persist, storageError } = useTheme();
+  const { mode, resolved, change, persist, storageError } = useTheme();
+  const brandMarkUrl = brandMarkUrls[resolved];
   const apiPage = pageKind === 'api';
   const themeIcon =
     mode === 'dark' ? 'moon' : mode === 'light' ? 'sun' : 'system';

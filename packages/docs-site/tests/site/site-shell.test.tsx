@@ -63,7 +63,7 @@ function RoutedSiteShell() {
       locales={locales}
       messages={messages}
       brandLabel="Example Docs"
-      brandMarkUrl="/brand.svg"
+      brandMarkUrls={{ light: '/brand-light.svg', dark: '/brand-dark.svg' }}
       homeHref={`/${locale}`}
       navigation={[{ key: 'manual', label: 'Manual', to: `/${locale}/manual` }]}
       historyKeyPrefix="example:docs:search"
@@ -176,6 +176,20 @@ afterEach(() => {
 });
 
 describe('SiteShell preferences', () => {
+  it('switches the brand mark with the resolved theme', async () => {
+    renderSite();
+
+    const logo = document.querySelector<HTMLImageElement>('.site-brand .brand-mark');
+
+    expect(logo?.getAttribute('src')).toBe('/brand-light.svg');
+    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Dark' }));
+
+    await waitFor(() =>
+      expect(logo?.getAttribute('src')).toBe('/brand-dark.svg'),
+    );
+  });
+
   it('shows a visible notice when preference storage is blocked', () => {
     renderSite({ failStorageRead: true });
 

@@ -46,7 +46,6 @@ export interface DocsSiteConfiguration<TLocale extends string> {
   localeLabels: Readonly<Record<TLocale, string>>;
   messages: (locale: TLocale) => DocsSiteMessages;
   manualSectionLabel: string;
-  manualArticleMeta?: ReactNode;
   api: import('../api/configured-api-page').DocsSiteAPIConfiguration;
   siteOrigin?: string;
   getSearchDataURL?: (locale: TLocale) => string;
@@ -261,9 +260,6 @@ export function DocsSite<TLocale extends string>({
                     locale={locale}
                     sectionLabel={site.manualSectionLabel}
                     messages={site.messages(locale)}
-                    {...(site.manualArticleMeta === undefined
-                      ? {}
-                      : { articleMeta: site.manualArticleMeta })}
                   />
                 }
               />

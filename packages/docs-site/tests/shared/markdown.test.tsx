@@ -40,21 +40,24 @@ describe('shared MarkdownContent', () => {
     expect(html).toContain('<a href="/#extractlottiefromzipzipdata">Jump</a>');
   });
 
-  it('resolves internal links and inserts consumer content after the first paragraph', () => {
+  it('resolves internal links and inserts consumer content after the first heading', () => {
     const html = renderToStaticMarkup(
       createElement(
         MemoryRouter,
         null,
         createElement(MarkdownContent, {
-          text: 'First paragraph.\n\n[Manual](manual/start/)\n\nSecond paragraph.',
+          text: '# Getting started\n\nFirst paragraph.\n\n[Manual](manual/start/)\n\nSecond paragraph.',
           resolveLink: url => `/en/${url}`,
-          afterFirstParagraph: createElement('aside', null, 'Consumer content'),
+          afterFirstHeading: createElement('aside', null, 'Consumer content'),
         }),
       ),
     );
 
-    expect(html.indexOf('<p>First paragraph.</p>')).toBeLessThan(
+    expect(html.indexOf('<h1 id="getting-started">Getting started</h1>')).toBeLessThan(
       html.indexOf('<aside>Consumer content</aside>'),
+    );
+    expect(html.indexOf('<aside>Consumer content</aside>')).toBeLessThan(
+      html.indexOf('<p>First paragraph.</p>'),
     );
     expect(html).toContain('href="/en/manual/start/"');
     expect(html).toContain('>Manual</a>');
@@ -120,6 +123,7 @@ describe('shared ManualPage', () => {
         next: 'Next',
         contents: 'Contents',
         mobileDirectory: 'Pages',
+        lastUpdated: 'Last updated',
         copy: 'Copy',
         copied: 'Copied',
         copyFailed: 'Copy failed',

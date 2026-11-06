@@ -15,7 +15,11 @@ describe('shared manual content client', () => {
     const fetcher: typeof fetch = vi.fn(async (input: RequestInfo | URL) =>
       String(input).endsWith('.json')
         ? Response.json(navigation)
-        : new Response('# Intro\n\n## Install\n\n### Detail\n\n## Next\n'),
+        : String(input).endsWith('/index.md')
+          ? new Response('# Intro\n\n## Install\n\n### Detail\n\n## Next\n')
+          : new Response('# Intro\n\n## Install\n\n### Detail\n\n## Next\n', {
+            headers: { 'Last-Modified': 'Fri, 06 Nov 2026 10:32:54 GMT' },
+          }),
     );
     const client = createManualContentClient({
       baseURL: '/site/',
@@ -37,6 +41,7 @@ describe('shared manual content client', () => {
       title: '开始使用',
       text: '# Intro\n\n## Install\n\n### Detail\n\n## Next\n',
       headings: ['Install', 'Next'],
+      lastModified: 'Fri, 06 Nov 2026 10:32:54 GMT',
     });
     expect(await client.loadOverview('en')).toEqual({
       text: '# Intro\n\n## Install\n\n### Detail\n\n## Next\n',

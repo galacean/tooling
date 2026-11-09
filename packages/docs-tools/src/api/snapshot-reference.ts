@@ -21,7 +21,10 @@ function isWithin(parent: string, child: string): boolean {
   );
 }
 
-function resolveReference(dataRoot: string, value: unknown): string | undefined {
+export function resolveAPISnapshotReference(
+  dataRoot: string,
+  value: unknown,
+): string | undefined {
   if (
     !isRecord(value) ||
     Object.keys(value).length !== 1 ||
@@ -58,7 +61,7 @@ export async function readAPISnapshot(
   await assertNoSymlinkPath(repositoryRoot, filename);
   const wrapperText = await readFile(filename, 'utf8');
   const wrapper = parseJSON(wrapperText, filename);
-  const referencePath = resolveReference(dataRoot, wrapper);
+  const referencePath = resolveAPISnapshotReference(dataRoot, wrapper);
 
   if (referencePath === undefined) {
     return { value: wrapper, text: wrapperText, resolvedPath: filename };

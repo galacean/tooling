@@ -11,6 +11,7 @@ import type { DocsSiteConfig } from '../config/site-config';
 import { assertNoSymlinkPath } from '../config/site-config';
 import { readJSON } from './read-json';
 import { sourceProject } from './snapshot';
+import { cleanAPISnapshots } from './snapshot-cleanup';
 import { readAPISnapshot } from './snapshot-reference';
 import {
   buildTranslationSource,
@@ -576,6 +577,20 @@ export async function assembleAPIDocumentation(
       );
     }
     throw error;
+  }
+
+  try {
+    const cleanup = await cleanAPISnapshots(config);
+
+    if (cleanup.skipped.length > 0) {
+      warnings.push(
+        `API snapshot cleanup skipped ${cleanup.skipped.length} file(s) with invalid content hashes.`,
+      );
+    }
+  } catch (error) {
+    warnings.push(
+      `API documentation was generated, but snapshot cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   const exportCount = selectedPackages

@@ -231,7 +231,7 @@ void test('preserves translations and does not overwrite an unselected package s
   assert.equal(agent.current.packageVersion, '0.4.0-alpha.1');
 });
 
-void test('retains latest versions per major/minor without deleting unreferenced snapshot files', async t => {
+void test('retains latest versions per major/minor and deletes unreferenced snapshots', async t => {
   const values = await fixture();
 
   t.onTestFinished(() =>
@@ -261,7 +261,12 @@ void test('retains latest versions per major/minor without deleting unreferenced
         await readFile(path.join(values.apiDirectory, 'manifest.json'), 'utf8'),
       ) as { packages: { key: string; current: { json: Record<string, string> } }[] };
 
-      unretainedSnapshotPath = interimManifest.packages.find(pkg => pkg.key === 'widget-dir')!.current.json['en'];
+      const wrapperPath = interimManifest.packages.find(pkg => pkg.key === 'widget-dir')!.current.json['en']!;
+      const wrapper = JSON.parse(
+        await readFile(snapshotFile(values, wrapperPath), 'utf8'),
+      ) as { $ref: string };
+
+      unretainedSnapshotPath = wrapper.$ref;
     }
   }
 
@@ -286,7 +291,10 @@ void test('retains latest versions per major/minor without deleting unreferenced
     '0.4.0-alpha.1',
   );
   assert.ok(unretainedSnapshotPath);
-  await assert.doesNotReject(readFile(snapshotFile(values, unretainedSnapshotPath)));
+  await assert.rejects(
+    readFile(snapshotFile(values, unretainedSnapshotPath)),
+    { code: 'ENOENT' },
+  );
 });
 
 void test('starts a new package-key history from current code and leaves flat snapshots untouched', async t => {

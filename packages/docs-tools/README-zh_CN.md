@@ -68,7 +68,7 @@ pnpm exec galacean-docs api generate --config site/site.config.ts [package-key..
 
 读取已配置包的版本和 TypeScript 声明，构建声明文件，再由 TypeDoc 生成反射数据；工具按配置的公开入口筛选导出，并组装各语言的 API 快照和 manifest。快照按内容哈希存储，包和版本对应的 JSON 文件引用共享快照；manifest 记录当前版本、保留版本及入口信息。已有历史中的有效译文会被保留，未翻译字段使用源语言文本，并在命令结果中报告回退警告。
 
-不提供包 key 时生成所有配置包。提供一个或多个 key 时只更新这些包，未选择包的 manifest 项和快照文件保持不变。首次生成必须包含全部配置包。该命令要求每个包的 `package.json`、`tsconfig`、源码入口和声明入口均可读取。
+不提供包 key 时生成所有配置包。提供一个或多个 key 时只更新这些包，未选择包的 manifest 项及仍被引用的快照保持不变；更新后不再被任何保留版本引用的有效 sidecar 会自动删除。首次生成必须包含全部配置包。该命令要求每个包的 `package.json`、`tsconfig`、源码入口和声明入口均可读取。
 
 ### `api extract`
 
@@ -100,7 +100,15 @@ pnpm exec galacean-docs api apply --config site/site.config.ts \
 }
 ```
 
-任务文件和译文文件必须来自 `translationWorkDirectory` 下的同一个运行目录。应用前会重新读取当前源和目标快照，核对配置、哈希、字段和 token，拒绝应用到已经变化的内容，并验证译文结构。通过校验后，工具会合并同一 TypeDoc 模型和目标语言下已有及本批译文，写入一个新的内容寻址快照，并将 manifest 中所有匹配的包/版本/语言索引更新为同一 `$ref`，同时更新关联的快照标识。旧快照保持不变；成功后会删除已应用的任务和译文文件。每组文件必须成对提供，可一次应用多组。对同一模型和语言的多个包，建议在同一批次应用；此前已应用导致索引变化时，旧任务会被判定为过期，需重新提取。
+任务文件和译文文件必须来自 `translationWorkDirectory` 下的同一个运行目录。应用前会重新读取当前源和目标快照，核对配置、哈希、字段和 token，拒绝应用到已经变化的内容，并验证译文结构。通过校验后，工具会合并同一 TypeDoc 模型和目标语言下已有及本批译文，写入一个新的内容寻址快照，并将 manifest 中所有匹配的包/版本/语言索引更新为同一 `$ref`，同时更新关联的快照标识。仍被保留版本引用的旧快照保持不变；失去所有引用的有效 sidecar 会自动删除。成功后会删除已应用的任务和译文文件。每组文件必须成对提供，可一次应用多组。对同一模型和语言的多个包，建议在同一批次应用；此前已应用导致索引变化时，旧任务会被判定为过期，需重新提取。
+
+### `api snapshots clean`
+
+```sh
+pnpm exec galacean-docs api snapshots clean --config site/site.config.ts
+```
+
+删除未被 manifest 中任何保留版本引用的内容寻址快照。工具会校验快照文件名与内容 hash；坏 hash 文件会跳过，manifest、索引或引用无效时会终止。该命令只扫描 `api/snapshots/` 顶层的 hash 命名普通文件，不清理 wrapper、临时文件或其他目录。`api generate` 和 `api apply` 在成功更新 manifest 后也会自动清理。
 
 ### `package-readmes build`
 

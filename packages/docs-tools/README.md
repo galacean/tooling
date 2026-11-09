@@ -68,7 +68,7 @@ pnpm exec galacean-docs api generate --config site/site.config.ts [package-key..
 
 Reads the versions and TypeScript declarations of configured packages, builds declaration files, and uses TypeDoc to produce reflection data. It filters exports according to the configured public entry points, then assembles API snapshots for each locale and a manifest. Snapshots are stored by content hash, and each package/version JSON file references a shared snapshot. The manifest records current versions, retained versions, and entry metadata. Valid translations from existing history are preserved; untranslated fields fall back to source text, with fallback warnings reported in the command output.
 
-Without package keys, all configured packages are generated. With one or more keys, only those packages are updated; manifest entries and snapshot files for unselected packages remain unchanged. The first generation must include every configured package. Each package's `package.json`, `tsconfig`, source entry, and declaration entry must be readable.
+Without package keys, all configured packages are generated. With one or more keys, only those packages are updated; manifest entries and snapshots still referenced by unselected packages remain unchanged. Valid sidecars no longer referenced by any retained version are deleted automatically. The first generation must include every configured package. Each package's `package.json`, `tsconfig`, source entry, and declaration entry must be readable.
 
 ### `api extract`
 
@@ -100,7 +100,15 @@ Applies translation results to their API snapshots. Each translation file must c
 }
 ```
 
-Task and translation files must come from the same run directory under `translationWorkDirectory`. Before applying results, the tool reloads the current source and target snapshots and checks the config, hashes, fields, and tokens; it rejects stale tasks and validates the translation structure. On success, it merges existing and supplied translations for the same TypeDoc model and locale, writes one new content-addressed snapshot, and updates every matching package/version/locale index to the same `$ref`, along with the associated manifest snapshot identifiers. Existing snapshots remain unchanged. Applied task and translation files are then deleted. Each task must be paired with a translation file, and multiple pairs can be applied in one invocation. Apply translations for packages sharing a model and locale in one batch when possible; after an earlier apply updates their indexes, previously extracted tasks become stale and must be extracted again.
+Task and translation files must come from the same run directory under `translationWorkDirectory`. Before applying results, the tool reloads the current source and target snapshots and checks the config, hashes, fields, and tokens; it rejects stale tasks and validates the translation structure. On success, it merges existing and supplied translations for the same TypeDoc model and locale, writes one new content-addressed snapshot, and updates every matching package/version/locale index to the same `$ref`, along with the associated manifest snapshot identifiers. Snapshots still referenced by retained versions remain unchanged; valid sidecars that become unreachable are deleted automatically. Applied task and translation files are then deleted. Each task must be paired with a translation file, and multiple pairs can be applied in one invocation. Apply translations for packages sharing a model and locale in one batch when possible; after an earlier apply updates their indexes, previously extracted tasks become stale and must be extracted again.
+
+### `api snapshots clean`
+
+```sh
+pnpm exec galacean-docs api snapshots clean --config site/site.config.ts
+```
+
+Deletes content-addressed snapshots not referenced by any retained manifest version. The command verifies each snapshot filename against its content hash, skips files with mismatched hashes, and aborts on invalid manifests, indexes, or references. It only scans hash-named regular files directly under `api/snapshots/`; wrappers, temporary files, and other directories are not cleaned. `api generate` and `api apply` also clean snapshots automatically after updating the manifest.
 
 ### `package-readmes build`
 

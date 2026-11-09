@@ -16,6 +16,7 @@ import {
 } from './translations';
 import type { DocumentationPackage } from './translations';
 import { readJSON } from './read-json';
+import { cleanAPISnapshots } from './snapshot-cleanup';
 import { readAPISnapshot } from './snapshot-reference';
 import { sourceProject } from './snapshot';
 
@@ -740,6 +741,15 @@ export async function applyTranslationPairsWithRename(
         throw error;
       }
     }
+  }
+
+  try {
+    await cleanAPISnapshots(config);
+  } catch (error) {
+    throw new Error(
+      `API translations were applied, but snapshot cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 
   return outputs.map(output => output.targetPath);

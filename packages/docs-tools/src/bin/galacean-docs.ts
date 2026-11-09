@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url';
 import {
   applyTranslationPairs,
+  cleanAPISnapshots,
   extractTranslationTasks,
   generateAPIDocumentation,
 } from '../api';
@@ -16,7 +17,7 @@ const [group, action, ...args] = process.argv.slice(2);
 
 function usage(): void {
   console.info(
-    `Usage:\n  galacean-docs api generate --config <path> [package-key...]\n  galacean-docs api extract --config <path> <snapshot-path...>\n  galacean-docs api apply --config <path> <task-path> <translation-path> [...pairs]\n  galacean-docs package-readmes build --config <path>\n  galacean-docs search build --config <path>\n  galacean-docs routes build --config <path>\n  galacean-docs skills sync --config <path> [--check]`,
+    `Usage:\n  galacean-docs api generate --config <path> [package-key...]\n  galacean-docs api extract --config <path> <snapshot-path...>\n  galacean-docs api apply --config <path> <task-path> <translation-path> [...pairs]\n  galacean-docs api snapshots clean --config <path>\n  galacean-docs package-readmes build --config <path>\n  galacean-docs search build --config <path>\n  galacean-docs routes build --config <path>\n  galacean-docs skills sync --config <path> [--check]`,
   );
 }
 
@@ -95,6 +96,33 @@ if (group === '--help' || group === '-h') {
 
   for (const targetPath of updatedPaths) {
     console.info(`Updated ${targetPath}`);
+  }
+} else if (group === 'api' && action === 'snapshots') {
+  const [snapshotAction, ...values] = args;
+
+  if (snapshotAction !== 'clean') {
+    throw new Error('Use api snapshots clean');
+  }
+  const { config: configFile, remaining } = parseConfig(values);
+
+  if (remaining.length > 0) {
+    throw new Error('api snapshots clean does not accept additional arguments');
+  }
+  const config = await loadSiteConfig(configFile, process.cwd());
+  const result = await cleanAPISnapshots(config);
+  const orphanedBytes = result.orphaned.reduce(
+    (total, file) => total + file.bytes,
+    0,
+  );
+
+  console.info(
+    `API snapshots: ${result.referenced} referenced; ${result.deleted.length} deleted; ${(orphanedBytes / 1024 / 1024).toFixed(2)} MiB reclaimed`,
+  );
+  for (const file of result.orphaned) {
+    console.info(`Deleted ${file.path} (${file.bytes} bytes)`);
+  }
+  for (const file of result.skipped) {
+    console.warn(`[SKIPPED] ${file.path}: ${file.reason}`);
   }
 } else if (group === 'search' && action === 'build') {
   const { config: configFile, remaining } = parseConfig(args);

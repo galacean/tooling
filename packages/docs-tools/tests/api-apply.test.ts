@@ -230,14 +230,24 @@ async function createTranslation(t: TestContext, shared = false) {
 
   if (shared) {
     const sharedDirectory = path.join(values.apiDirectory, 'snapshots');
-    const sharedSourcePath = path.join(sharedDirectory, 'source.api.json');
+    const sourceContents = await readFile(values.sourcePath, 'utf8');
+    const sourceName = `${createHash('sha256').update(sourceContents).digest('hex')}.api.json`;
+    const targetContents = await readFile(values.targetPath, 'utf8');
+    const targetName = `${createHash('sha256').update(targetContents).digest('hex')}.api.json`;
+    const sharedSourcePath = path.join(sharedDirectory, sourceName);
 
-    sharedTargetPath = path.join(sharedDirectory, 'target.api.json');
+    sharedTargetPath = path.join(sharedDirectory, targetName);
     await mkdir(sharedDirectory, { recursive: true });
     await renameFile(values.sourcePath, sharedSourcePath);
     await renameFile(values.targetPath, sharedTargetPath);
-    await writeFile(values.sourcePath, `${JSON.stringify({ $ref: 'api/snapshots/source.api.json' })}\n`);
-    await writeFile(values.targetPath, `${JSON.stringify({ $ref: 'api/snapshots/target.api.json' })}\n`);
+    await writeFile(
+      values.sourcePath,
+      `${JSON.stringify({ $ref: `api/snapshots/${sourceName}` })}\n`,
+    );
+    await writeFile(
+      values.targetPath,
+      `${JSON.stringify({ $ref: `api/snapshots/${targetName}` })}\n`,
+    );
   }
   const [task] = await extractTranslationTasks(
     ['site/public/data/api/widget/1.2.3/en.api.json'],
@@ -380,9 +390,8 @@ void test('rejects a stale target without changing it or consuming task files', 
   await readFile(values.translationPath);
 });
 
-void test('applies translations through shared snapshot references with copy-on-write', async t => {
+void test('applies translations through shared references and removes the orphan sidecar', async t => {
   const values = await createTranslation(t, true);
-  const sharedTargetBefore = await readFile(values.sharedTargetPath!, 'utf8');
 
   await applyTranslationPairs(
     [{ taskPath: values.taskPath, translationPath: values.translationPath }],
@@ -409,7 +418,7 @@ void test('applies translations through shared snapshot references with copy-on-
   ) as { $ref: string };
 
   assert.equal(siblingIndex.$ref, index.$ref);
-  assert.equal(await readFile(values.sharedTargetPath!, 'utf8'), sharedTargetBefore);
+  await assert.rejects(readFile(values.sharedTargetPath!), { code: 'ENOENT' });
 });
 
 void test('preserves existing target-locale content outside the translated package', async t => {

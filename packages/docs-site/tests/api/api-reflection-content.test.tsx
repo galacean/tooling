@@ -1,4 +1,7 @@
+// @vitest-environment jsdom
+
 import { renderToStaticMarkup } from 'react-dom/server';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import {
@@ -93,6 +96,37 @@ describe('shared API reflection content', () => {
     expect(markup).toContain('href="https://example.test/External"');
     expect(markup).toContain('title="External package Missing"');
     expect(markup).not.toContain('api-reference-content');
+  });
+
+  it('renders an open reference preview outside clipping containers', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <div className="api-scroll">
+          <APITypeReference
+            text="Result"
+            target={{
+              name: 'Result',
+              href: '/api/Result/',
+              definitionLabel: 'Definition',
+              locale: 'en',
+              signatures: [],
+              summary: 'A result type.',
+              originalLabel: 'Original',
+              noDescription: 'None',
+              members: [],
+            }}
+          />
+        </div>
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Result' }));
+
+    const preview = screen.getByRole('group', { name: 'Result Definition' });
+
+    expect(container.querySelector('.api-reference-content')).toBeNull();
+    expect(preview.parentElement).toBe(document.body);
+    expect(preview.classList.contains('is-open')).toBe(true);
   });
 
   it('passes distinct stable keys for repeated references', () => {

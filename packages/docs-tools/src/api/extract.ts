@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isRecord, parseProject } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
@@ -7,8 +7,8 @@ import type { DocsSiteConfig } from '../config/site-config';
 import { sourceProject } from './snapshot';
 import { buildTranslationSource, contentHash } from './translations';
 import type { DocumentationPackage, TranslationSource } from './translations';
-import { parseJSON } from './read-json';
 import { parseVersion } from './versions';
+import { readAPISnapshot } from './snapshot-reference';
 
 type ExtractConfig = Pick<
   DocsSiteConfig,
@@ -37,9 +37,11 @@ export interface TranslationInput {
   targetPath: string;
   sourceHash: string;
   targetHash: string;
+  targetSnapshotPath: string;
   configHash: string;
   fields: { key: string; sourceText: string; tokens: unknown[] }[];
   project: Record<string, unknown>;
+  targetProject: Record<string, unknown>;
   apiSnapshot: Record<string, unknown>;
   translationSource: TranslationSource;
 }
@@ -99,14 +101,13 @@ export async function loadTranslationInput(
     `${config.sourceLocale}.api.json`,
   );
 
-  await assertNoSymlinkPath(config.repositoryRoot, targetPath);
-  await assertNoSymlinkPath(config.repositoryRoot, sourcePath);
-  const [sourceText, targetText] = await Promise.all([
-    readFile(sourcePath, 'utf8'),
-    readFile(targetPath, 'utf8'),
+  const dataRoot = path.dirname(config.apiDirectory);
+  const [sourceData, targetData] = await Promise.all([
+    readAPISnapshot(sourcePath, dataRoot, config.repositoryRoot),
+    readAPISnapshot(targetPath, dataRoot, config.repositoryRoot),
   ]);
-  const sourceSnapshot: unknown = parseJSON(sourceText, sourcePath);
-  const targetSnapshot: unknown = parseJSON(targetText, targetPath);
+  const sourceSnapshot = sourceData.value;
+  const targetSnapshot = targetData.value;
 
   if (
     !isRecord(sourceSnapshot) ||
@@ -143,9 +144,19 @@ export async function loadTranslationInput(
       `API package metadata does not match snapshot path: ${packageKey}/${version}`,
     );
   }
-  const documentationPackages = packages as unknown as DocumentationPackage[];
+  const documentationPackages = (
+    packages as unknown as DocumentationPackage[]
+  ).filter(pkg => pkg.key === packageKey);
   const project = parseProject<Record<string, unknown>>(
     sourceProject(sourceSnapshot),
+    value => typeof value === 'string' && config.locales.includes(value),
+  );
+  const targetProjectValue = structuredClone(targetSnapshot);
+
+  delete targetProjectValue['locale'];
+  delete targetProjectValue['apiSnapshot'];
+  const targetProject = parseProject<Record<string, unknown>>(
+    targetProjectValue,
     value => typeof value === 'string' && config.locales.includes(value),
   );
   const translationSource = buildTranslationSource(
@@ -178,12 +189,14 @@ export async function loadTranslationInput(
     sourcePath: relativeSourcePath,
     targetPath: relativeTargetPath,
     sourceHash: translationSource.sourceHash,
-    targetHash: createHash('sha256').update(targetText).digest('hex'),
+    targetHash: createHash('sha256').update(targetData.text).digest('hex'),
+    targetSnapshotPath: targetData.resolvedPath,
     configHash,
     fields: translationSource.fields
       .filter(field => field.sourceLocale !== locale)
       .map(({ key, sourceText, tokens }) => ({ key, sourceText, tokens })),
     project,
+    targetProject,
     apiSnapshot,
     translationSource,
   };

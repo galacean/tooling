@@ -6,8 +6,12 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'vitest';
 import { ReflectionKind } from 'typedoc';
-import { generateAPIDocumentation } from '@galacean/docs-tools';
+import {
+  externalizeTypeDocDependencies,
+  generateAPIDocumentation,
+} from '@galacean/docs-tools';
 import type {
+  APIDocumentationPackage,
   APIGenerationDependencies,
   DocsSiteConfig,
 } from '@galacean/docs-tools';
@@ -141,6 +145,106 @@ async function fixture() {
     dependencies,
   };
 }
+
+void test('externalizes dependency trees while preserving public external exports as linked stubs', () => {
+  const project = {
+    schemaVersion: '2.0',
+    id: 1,
+    name: 'Fixture',
+    kind: 1,
+    variant: 'project',
+    flags: {},
+    symbolIdMap: {
+      11: {
+        packageName: '@galacean/effects-math',
+        packagePath: 'es/box2.d.ts',
+        qualifiedName: 'Box2',
+      },
+      13: {
+        packageName: '@galacean/effects-math',
+        packagePath: 'es/vector2.d.ts',
+        qualifiedName: 'Vector2',
+      },
+    },
+    files: { entries: {}, reflections: {} },
+    children: [{
+      id: 2,
+      name: '@example/widget',
+      kind: ReflectionKind.Module,
+      variant: 'declaration',
+      flags: {},
+      children: [
+        {
+          id: 11,
+          name: 'Box2',
+          kind: ReflectionKind.Class,
+          variant: 'declaration',
+          flags: { isExternal: true },
+          children: [{ id: 12, name: 'min', kind: ReflectionKind.Property, variant: 'declaration', flags: { isExternal: true } }],
+        },
+        {
+          id: 13,
+          name: 'Vector2',
+          kind: ReflectionKind.Class,
+          variant: 'declaration',
+          flags: { isExternal: true },
+        },
+        {
+          id: 14,
+          name: 'makeBox',
+          kind: ReflectionKind.Function,
+          variant: 'declaration',
+          flags: {},
+          signatures: [{
+            id: 15,
+            name: 'makeBox',
+            kind: ReflectionKind.CallSignature,
+            variant: 'signature',
+            flags: {},
+            type: { type: 'reference', name: 'Vector2', target: 13, package: '@galacean/effects-math' },
+          }],
+        },
+      ],
+    }],
+  } as unknown as import('typedoc').JSONOutput.ProjectReflection;
+  const packages = [{
+    key: 'widget',
+    name: '@example/widget',
+    version: '1.0.0',
+    entries: [{
+      key: 'root',
+      source: 'src/index.ts',
+      types: 'dist/index.d.ts',
+      id: 2,
+      symbols: [{ name: 'Box2', id: 11, kind: ReflectionKind.Class }],
+    }],
+  }] satisfies APIDocumentationPackage[];
+
+  const externalized = externalizeTypeDocDependencies(project, packages, 'zh-CN');
+  const module = externalized.children?.[0];
+  const box = module?.children?.find(child => child.name === 'Box2');
+  const makeBox = module?.children?.find(child => child.name === 'makeBox');
+  const vectorType = (makeBox?.signatures?.[0] as { type?: { externalUrl?: string } } | undefined)?.type;
+
+  assert.deepEqual(module?.children?.map(child => child.name), ['Box2', 'makeBox']);
+  assert.deepEqual(box, {
+    id: 11,
+    name: 'Box2',
+    kind: ReflectionKind.Class,
+    variant: 'declaration',
+    flags: { isExternal: true },
+    comment: {
+      summary: [{
+        kind: 'text',
+        text: '外部依赖包： [Box2](https://www.npmjs.com/package/@galacean/effects-math)。',
+      }],
+    },
+    externalUrl: 'https://www.npmjs.com/package/@galacean/effects-math',
+  });
+  assert.equal(vectorType?.externalUrl, 'https://www.npmjs.com/package/@galacean/effects-math');
+  assert.equal(Object.keys(externalized.symbolIdMap).includes('11'), false);
+  assert.equal(Object.keys(externalized.symbolIdMap).includes('13'), false);
+});
 
 void test('generates package-key snapshots after checking real package name and public exports', async t => {
   const values = await fixture();

@@ -268,10 +268,8 @@
   position: relative;
 }
 .api-reference-content {
-  position: absolute;
-  z-index: 10;
-  bottom: calc(100% + 8px);
-  left: 0;
+  position: fixed;
+  z-index: 1000;
   display: none;
   width: min(560px, calc(100vw - 48px));
   max-height: min(60dvh, 480px);
@@ -283,8 +281,7 @@
   box-shadow: 0 12px 36px #00000018;
   white-space: normal;
 }
-.api-reference-wrap:hover .api-reference-content,
-.api-reference-wrap:focus-within .api-reference-content {
+.api-reference-content.is-open {
   display: block;
 }
 .api-reference-header {

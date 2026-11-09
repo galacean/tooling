@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'vitest';
@@ -102,7 +102,11 @@ async function writeJSON(filename: string, value: unknown): Promise<void> {
   await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-void test('archives configured package versions independently under package-key paths', async t => {
+function snapshotFile(values: Awaited<ReturnType<typeof fixture>>, relativePath: string): string {
+  return path.join(path.dirname(values.apiDirectory), relativePath);
+}
+
+void test('shares one content-addressed snapshot across packages', async t => {
   const values = await fixture();
 
   t.onTestFinished(() =>
@@ -118,7 +122,7 @@ void test('archives configured package versions independently under package-key 
   ) as {
     packages: {
       key: string;
-      current: { packageVersion: string; json: Record<string, string> };
+      current: { packageVersion: string; snapshot: string; json: Record<string, string> };
     }[];
   };
   const byKey = new Map(manifest.packages.map(pkg => [pkg.key, pkg]));
@@ -134,6 +138,19 @@ void test('archives configured package versions independently under package-key 
     byKey.get('agent')?.current.json['zh-CN'],
     'api/agent/0.4.0-alpha.1/zh-CN.api.json',
   );
+  assert.equal(
+    byKey.get('widget-dir')?.current.snapshot,
+    byKey.get('agent')?.current.snapshot,
+  );
+  const widgetWrapper = JSON.parse(
+    await readFile(snapshotFile(values, byKey.get('widget-dir')!.current.json['en']!), 'utf8'),
+  ) as { $ref: string };
+  const agentWrapper = JSON.parse(
+    await readFile(snapshotFile(values, byKey.get('agent')!.current.json['en']!), 'utf8'),
+  ) as { $ref: string };
+
+  assert.equal(widgetWrapper.$ref, agentWrapper.$ref);
+  assert.equal((await readdir(path.dirname(snapshotFile(values, widgetWrapper.$ref)))).length, 2);
   assert.equal(result.warnings.length, 2);
 });
 
@@ -148,16 +165,15 @@ void test('preserves translations and does not overwrite an unselected package s
     values.metadata,
     values.config,
   );
-  const agentPath = path.join(
-    values.apiDirectory,
-    'agent/0.4.0-alpha.1/en.api.json',
-  );
+  const initialManifest = JSON.parse(
+    await readFile(path.join(values.apiDirectory, 'manifest.json'), 'utf8'),
+  ) as { packages: { key: string; current: { json: Record<string, string> } }[] };
+  const initialByKey = new Map(initialManifest.packages.map(pkg => [pkg.key, pkg]));
+  const agentPath = snapshotFile(values, initialByKey.get('agent')!.current.json['en']!);
   const agentBefore = await readFile(agentPath, 'utf8');
-  const targetPath = path.join(
-    values.apiDirectory,
-    'widget-dir/1.2.3/zh-CN.api.json',
-  );
-  const target = JSON.parse(await readFile(targetPath, 'utf8')) as {
+  const targetPath = snapshotFile(values, initialByKey.get('widget-dir')!.current.json['zh-CN']!);
+  const targetWrapper = JSON.parse(await readFile(targetPath, 'utf8')) as { $ref: string };
+  const target = JSON.parse(await readFile(snapshotFile(values, targetWrapper.$ref), 'utf8')) as {
     children: {
       name: string;
       comment: {
@@ -185,11 +201,18 @@ void test('preserves translations and does not overwrite an unselected package s
     values.config,
     ['widget-dir'],
   );
+  const manifest = JSON.parse(
+    await readFile(path.join(values.apiDirectory, 'manifest.json'), 'utf8'),
+  ) as {
+    packages: { key: string; current: { packageVersion: string; json: Record<string, string> } }[];
+  };
+  const widget = manifest.packages.find(pkg => pkg.key === 'widget-dir')!;
+  const agent = manifest.packages.find(pkg => pkg.key === 'agent')!;
   const localized = JSON.parse(
-    await readFile(
-      path.join(values.apiDirectory, 'widget-dir/1.2.4/zh-CN.api.json'),
-      'utf8',
-    ),
+    await readFile(snapshotFile(values, widget.current.json['zh-CN']!), 'utf8'),
+  ) as { $ref?: string };
+  const localizedSnapshot = JSON.parse(
+    await readFile(snapshotFile(values, localized.$ref!), 'utf8'),
   ) as {
     children: {
       name: string;
@@ -197,30 +220,18 @@ void test('preserves translations and does not overwrite an unselected package s
     }[];
     apiSnapshot: { packages: { key: string; version: string }[] };
   };
-  const manifest = JSON.parse(
-    await readFile(path.join(values.apiDirectory, 'manifest.json'), 'utf8'),
-  ) as {
-    packages: { key: string; current: { packageVersion: string } }[];
-  };
 
-  assert.equal(localized.children[0]?.comment.summary[0]?.text, '根类型译文。');
+  assert.equal(localizedSnapshot.children[0]?.comment.summary[0]?.text, '根类型译文。');
   assert.deepEqual(
-    localized.apiSnapshot.packages.map(pkg => pkg.key),
+    localizedSnapshot.apiSnapshot.packages.map(pkg => pkg.key),
     ['widget-dir', 'agent'],
   );
   assert.equal(await readFile(agentPath, 'utf8'), agentBefore);
-  assert.equal(
-    manifest.packages.find(pkg => pkg.key === 'widget-dir')?.current
-      .packageVersion,
-    '1.2.4',
-  );
-  assert.equal(
-    manifest.packages.find(pkg => pkg.key === 'agent')?.current.packageVersion,
-    '0.4.0-alpha.1',
-  );
+  assert.equal(widget.current.packageVersion, '1.2.4');
+  assert.equal(agent.current.packageVersion, '0.4.0-alpha.1');
 });
 
-void test('retains latest versions per major/minor without deleting unreferenced snapshot files', async t => {
+void test('retains latest versions per major/minor and deletes unreferenced snapshots', async t => {
   const values = await fixture();
 
   t.onTestFinished(() =>
@@ -231,6 +242,9 @@ void test('retains latest versions per major/minor without deleting unreferenced
     values.metadata,
     values.config,
   );
+
+  let unretainedSnapshotPath: string | undefined;
+
   for (const version of ['1.2.4', '2.0.0', '1.2.5']) {
     const metadata = {
       ...values.metadata,
@@ -242,7 +256,20 @@ void test('retains latest versions per major/minor without deleting unreferenced
     await assembleAPIDocumentation(values.project, metadata, values.config, [
       'widget-dir',
     ]);
+    if (version === '1.2.4') {
+      const interimManifest = JSON.parse(
+        await readFile(path.join(values.apiDirectory, 'manifest.json'), 'utf8'),
+      ) as { packages: { key: string; current: { json: Record<string, string> } }[] };
+
+      const wrapperPath = interimManifest.packages.find(pkg => pkg.key === 'widget-dir')!.current.json['en']!;
+      const wrapper = JSON.parse(
+        await readFile(snapshotFile(values, wrapperPath), 'utf8'),
+      ) as { $ref: string };
+
+      unretainedSnapshotPath = wrapper.$ref;
+    }
   }
+
   const manifest = JSON.parse(
     await readFile(path.join(values.apiDirectory, 'manifest.json'), 'utf8'),
   ) as {
@@ -263,8 +290,10 @@ void test('retains latest versions per major/minor without deleting unreferenced
     manifest.packages.find(pkg => pkg.key === 'agent')?.current.packageVersion,
     '0.4.0-alpha.1',
   );
-  await assert.doesNotReject(
-    readFile(path.join(values.apiDirectory, 'widget-dir/1.2.4/en.api.json')),
+  assert.ok(unretainedSnapshotPath);
+  await assert.rejects(
+    readFile(snapshotFile(values, unretainedSnapshotPath)),
+    { code: 'ENOENT' },
   );
 });
 
@@ -323,7 +352,7 @@ void test('starts a new package-key history from current code and leaves flat sn
   ) as {
     packages: {
       key: string;
-      current: { json: Record<string, string> };
+      current: { snapshot: string; json: Record<string, string> };
       versions: { version: string }[];
     }[];
   };
@@ -334,13 +363,10 @@ void test('starts a new package-key history from current code and leaves flat sn
     ),
   );
   assert.equal(manifest.packages[0]?.versions.length, 1);
-  assert.equal(
-    manifest.packages[0]?.current.json['en'],
-    'api/widget-dir/1.2.3/en.api.json',
-  );
+  assert.equal(manifest.packages[0]?.current.json['en'], 'api/widget-dir/1.2.3/en.api.json');
   assert.equal(await readFile(oldPath, 'utf8'), oldEnglishSnapshot);
   assert.equal(await readFile(oldChinesePath, 'utf8'), oldChineseSnapshot);
   await assert.doesNotReject(
-    readFile(path.join(values.apiDirectory, 'widget-dir/1.2.3/en.api.json')),
+    readFile(snapshotFile(values, manifest.packages[0].current.json['en'])),
   );
 });

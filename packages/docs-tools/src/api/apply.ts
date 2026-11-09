@@ -1,17 +1,24 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { isRecord, parseAPIManifest } from '@galacean/docs-site';
+import { isRecord, parseAPIManifest, parseProject } from '@galacean/docs-site';
 import type { APIManifest, APIVersion } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
 import { loadTranslationInput } from './extract';
 import {
+  buildTranslationSource,
+  collectCommentFields,
   contentHash,
-  localizeProject,
+  localizeProjectWithFallback,
+  translateParts,
   validateTranslation,
 } from './translations';
+import type { DocumentationPackage } from './translations';
 import { readJSON } from './read-json';
+import { cleanAPISnapshots } from './snapshot-cleanup';
+import { readAPISnapshot } from './snapshot-reference';
+import { sourceProject } from './snapshot';
 
 interface TranslationTaskField {
   key: string;
@@ -49,6 +56,20 @@ interface ApplyPair {
 interface StagedFile {
   temporaryPath: string;
   filename: string;
+}
+
+interface ApplyOutput {
+  taskPath: string;
+  translationPath: string;
+  targetPath: string;
+  targetSnapshotPath: string;
+  targetProject: Record<string, unknown>;
+  packageKey: string;
+  version: string;
+  locale: string;
+  apiSnapshot: Record<string, unknown>;
+  source: Record<string, unknown>;
+  translations: Record<string, string>;
 }
 
 type ApplyConfig = Pick<
@@ -234,8 +255,11 @@ async function loadVersionSnapshots(
     if (updated !== undefined) {
       snapshot = updated;
     } else {
-      await assertNoSymlinkPath(config.repositoryRoot, filename);
-      snapshot = await readJSON(filename);
+      snapshot = (await readAPISnapshot(
+        filename,
+        dataRoot,
+        config.repositoryRoot,
+      )).value;
     }
     if (
       !isRecord(snapshot) ||
@@ -248,6 +272,21 @@ async function loadVersionSnapshots(
   }
 
   return snapshots;
+}
+
+function localizedProject(
+  snapshot: Record<string, unknown>,
+  locales: string[],
+): Record<string, unknown> {
+  const project = structuredClone(snapshot);
+
+  delete project['locale'];
+  delete project['apiSnapshot'];
+
+  return parseProject<Record<string, unknown>>(
+    project,
+    value => typeof value === 'string' && locales.includes(value),
+  );
 }
 
 function updateManifestSnapshot(
@@ -324,17 +363,7 @@ export async function applyTranslationPairsWithRename(
     config.repositoryRoot,
     config.translationWorkDirectory,
   );
-  const outputs: {
-    taskPath: string;
-    translationPath: string;
-    targetPath: string;
-    target: Record<string, unknown>;
-    packageKey: string;
-    version: string;
-    locale: string;
-    apiSnapshot: Record<string, unknown>;
-    source: Record<string, unknown>;
-  }[] = [];
+  const outputs: ApplyOutput[] = [];
   const targets = new Set<string>();
 
   for (const pair of pairs) {
@@ -405,105 +434,277 @@ export async function applyTranslationPairsWithRename(
       );
     }
     const translation = translationFromResult(resultValue, input);
-    const localizedProject = localizeProject(
-      input.project,
-      input.translationSource,
-      translation,
-      input.locale,
-    );
-    const localized = { ...localizedProject, apiSnapshot: input.apiSnapshot };
 
     targets.add(absoluteTarget);
     outputs.push({
       taskPath,
       translationPath,
       targetPath: absoluteTarget,
-      target: localized,
+      targetSnapshotPath: input.targetSnapshotPath,
+      targetProject: input.targetProject,
       packageKey: input.packageKey,
       version: input.version,
       locale: input.locale,
       apiSnapshot: input.apiSnapshot,
       source: input.project,
+      translations: translation.translations,
     });
   }
 
   const manifestPath = path.join(config.apiDirectory, 'manifest.json');
+  const dataRoot = path.dirname(config.apiDirectory);
 
   await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
   let manifest = parseAPIManifest(await readJSON(manifestPath));
-  const updatedSnapshots = new Map(
-    outputs.map(output => [output.targetPath, output.target]),
-  );
-  const versionGroups = new Map<string, typeof outputs>();
+  const updatedSnapshots = new Map<string, Record<string, unknown>>();
+  const snapshotGroups = new Map<string, ApplyOutput[]>();
 
   for (const output of outputs) {
-    const key = `${output.packageKey}\u0000${output.version}`;
-    const group = versionGroups.get(key) ?? [];
+    const pkg = manifest.packages.find(item => item.key === output.packageKey);
+    const version = pkg?.versions.find(item => item.version === output.version);
+    const relativePath = version?.json[output.locale];
+
+    if (
+      relativePath === undefined ||
+      resolveManifestSnapshot(dataRoot, relativePath) !== output.targetPath
+    ) {
+      throw new Error(
+        `API manifest path does not match translation target: ${output.targetPath}`,
+      );
+    }
+    const key = `${output.locale}\u0000${contentHash(output.apiSnapshot)}`;
+    const group = snapshotGroups.get(key) ?? [];
 
     group.push(output);
-    versionGroups.set(key, group);
+    snapshotGroups.set(key, group);
   }
-  for (const group of versionGroups.values()) {
+  const snapshots = new Map<string, string>();
+  const indexes = new Map<string, string>();
+
+  for (const [groupKey, group] of snapshotGroups) {
     const first = group[0];
 
     if (first === undefined) {
       continue;
     }
-    const pkg = manifest.packages.find(item => item.key === first.packageKey);
-    const version = pkg?.versions.find(item => item.version === first.version);
+    const snapshotKey = groupKey.slice(groupKey.indexOf('\u0000') + 1);
 
-    if (version === undefined) {
-      throw new Error(
-        `API manifest does not contain ${first.packageKey}@${first.version}`,
-      );
+    if (
+      group.some(
+        output =>
+          contentHash(output.apiSnapshot) !== snapshotKey ||
+          contentHash(output.source) !== contentHash(first.source),
+      )
+    ) {
+      throw new Error('Cannot combine translations from different API models');
     }
-    const dataRoot = path.dirname(config.apiDirectory);
+    const packageValues = first.apiSnapshot['packages'];
 
+    if (!Array.isArray(packageValues)) {
+      throw new Error('Invalid API package metadata in translation task');
+    }
+    const documentationPackages =
+      packageValues as unknown as DocumentationPackage[];
+    const translationSource = buildTranslationSource(
+      first.source,
+      documentationPackages,
+      { sourceLocale: config.sourceLocale },
+    );
+    const sourceFields = new Map(
+      translationSource.fields.map(field => [field.key, field]),
+    );
+    const translations: Record<string, string> = {};
+    const suppliedTranslations: Record<string, string> = {};
+    const candidateIndexes = new Map<
+      string,
+      { packageKey: string; version: APIVersion }
+    >();
+    const candidateSnapshotPaths = new Set<string>();
+
+    for (const pkg of manifest.packages) {
+      for (const version of pkg.versions) {
+        const relativePath = version.json[first.locale];
+
+        if (relativePath === undefined) {
+          continue;
+        }
+        const filename = resolveManifestSnapshot(dataRoot, relativePath);
+        const loaded = await readAPISnapshot(
+          filename,
+          dataRoot,
+          config.repositoryRoot,
+        );
+        const snapshot = loaded.value;
+
+        if (
+          !isRecord(snapshot) ||
+          snapshot['locale'] !== first.locale ||
+          !isRecord(snapshot['apiSnapshot']) ||
+          contentHash(snapshot['apiSnapshot']) !== snapshotKey
+        ) {
+          continue;
+        }
+        const targetProject = localizedProject(
+          snapshot,
+          config.locales,
+        );
+
+        for (const field of collectCommentFields(
+          targetProject,
+          documentationPackages,
+          { sourceLocale: config.sourceLocale },
+        )) {
+          if (field.sourceLocale !== first.locale) {
+            continue;
+          }
+          const sourceField = sourceFields.get(field.key);
+
+          if (sourceField === undefined) {
+            throw new Error(`Unknown localized API field: ${first.locale}/${field.key}`);
+          }
+          translateParts(sourceField, field.sourceText);
+          const existing = translations[field.key];
+
+          if (existing !== undefined && existing !== field.sourceText) {
+            throw new Error(
+              `Conflicting existing API translations: ${first.locale}/${field.key}`,
+            );
+          }
+          translations[field.key] = field.sourceText;
+        }
+        candidateIndexes.set(filename, { packageKey: pkg.key, version });
+        candidateSnapshotPaths.add(loaded.resolvedPath);
+      }
+    }
     for (const output of group) {
-      const relativePath = version.json[output.locale];
-
       if (
-        relativePath === undefined ||
-        resolveManifestSnapshot(dataRoot, relativePath) !== output.targetPath
+        !candidateIndexes.has(output.targetPath) ||
+        !candidateSnapshotPaths.has(output.targetSnapshotPath)
       ) {
         throw new Error(
           `API manifest path does not match translation target: ${output.targetPath}`,
         );
       }
+      for (const [key, text] of Object.entries(output.translations)) {
+        const sourceField = sourceFields.get(key);
+
+        if (sourceField === undefined) {
+          throw new Error(`Unknown current API translation field: ${first.locale}/${key}`);
+        }
+        translateParts(sourceField, text);
+        const existing = suppliedTranslations[key];
+
+        if (existing !== undefined && existing !== text) {
+          throw new Error(
+            `Conflicting API translations in batch: ${first.locale}/${key}`,
+          );
+        }
+        suppliedTranslations[key] = text;
+      }
     }
-    const locales = await loadVersionSnapshots(
-      config,
-      version,
-      updatedSnapshots,
-      first.apiSnapshot,
-    );
-    const snapshotHash = contentHash({
-      source: first.source,
-      metadata: first.apiSnapshot,
-      locales,
-    });
+    Object.assign(translations, suppliedTranslations);
+    const mergedProject = {
+      ...localizeProjectWithFallback(
+        first.targetProject,
+        translationSource,
+        translations,
+        first.locale,
+      ),
+      apiSnapshot: first.apiSnapshot,
+    };
+    const contents = `${JSON.stringify(mergedProject)}\n`;
+    const relativePath = `api/snapshots/${createHash('sha256')
+      .update(contents)
+      .digest('hex')}.api.json`;
+    const snapshotPath = resolveManifestSnapshot(dataRoot, relativePath);
+    const existing = snapshots.get(snapshotPath);
 
-    manifest = updateManifestSnapshot(
-      manifest,
-      first.packageKey,
-      first.version,
-      snapshotHash,
-    );
+    if (existing !== undefined && existing !== contents) {
+      throw new Error(`API snapshot hash collision: ${relativePath}`);
+    }
+    snapshots.set(snapshotPath, contents);
+
+    for (const [filename, candidate] of candidateIndexes) {
+      const { packageKey, version } = candidate;
+      const previousIndex = indexes.get(filename);
+      const index = `${JSON.stringify({ $ref: relativePath })}\n`;
+
+      if (previousIndex !== undefined && previousIndex !== index) {
+        throw new Error(`API index belongs to multiple translation groups: ${filename}`);
+      }
+      indexes.set(filename, index);
+      updatedSnapshots.set(filename, mergedProject);
+
+      const sourcePath = version.json[config.sourceLocale];
+
+      if (sourcePath === undefined) {
+        throw new Error(
+          `API manifest is missing source locale path for ${version.version}`,
+        );
+      }
+      const sourceSnapshot = (
+        await readAPISnapshot(
+          resolveManifestSnapshot(dataRoot, sourcePath),
+          dataRoot,
+          config.repositoryRoot,
+        )
+      ).value;
+
+      if (
+        !isRecord(sourceSnapshot) ||
+        sourceSnapshot['locale'] !== config.sourceLocale ||
+        !isRecord(sourceSnapshot['apiSnapshot']) ||
+        contentHash(sourceSnapshot['apiSnapshot']) !== snapshotKey
+      ) {
+        throw new Error(`Invalid source API snapshot for ${version.version}`);
+      }
+      const locales = await loadVersionSnapshots(
+        config,
+        version,
+        updatedSnapshots,
+        first.apiSnapshot,
+      );
+      const snapshotHash = contentHash({
+        source: sourceProject(sourceSnapshot),
+        metadata: first.apiSnapshot,
+        locales,
+      });
+
+      manifest = updateManifestSnapshot(
+        manifest,
+        packageKey,
+        version.version,
+        snapshotHash,
+      );
+    }
   }
-
-  const updates = new Map<string, string>();
-
-  for (const output of outputs) {
-    updates.set(output.targetPath, `${JSON.stringify(output.target)}\n`);
-  }
-  updates.set(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   const staged: StagedFile[] = [];
 
   try {
-    for (const [filename, contents] of updates) {
+    for (const [filename, contents] of snapshots) {
       await mkdir(path.dirname(filename), { recursive: true });
+      await assertNoSymlinkPath(config.repositoryRoot, filename);
+      try {
+        const existing = await readFile(filename, 'utf8');
+
+        if (existing !== contents) {
+          throw new Error(`API snapshot hash collision: ${filename}`);
+        }
+      } catch (error) {
+        if (!(isRecord(error) && error['code'] === 'ENOENT')) {
+          throw error;
+        }
+        staged.push(await stageFile(filename, contents));
+      }
+    }
+    for (const [filename, contents] of indexes) {
+      await mkdir(path.dirname(filename), { recursive: true });
+      await assertNoSymlinkPath(config.repositoryRoot, filename);
       staged.push(await stageFile(filename, contents));
     }
+    staged.push(
+      await stageFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`),
+    );
   } catch (error) {
     await cleanupTemporaryFiles(staged);
     throw error;
@@ -540,6 +741,15 @@ export async function applyTranslationPairsWithRename(
         throw error;
       }
     }
+  }
+
+  try {
+    await cleanAPISnapshots(config);
+  } catch (error) {
+    throw new Error(
+      `API translations were applied, but snapshot cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 
   return outputs.map(output => output.targetPath);

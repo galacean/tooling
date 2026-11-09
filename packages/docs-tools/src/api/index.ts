@@ -4,5 +4,7 @@ export * from './extract';
 export * from './generate';
 export * from './read-json';
 export * from './snapshot';
+export * from './snapshot-cleanup';
+export * from './snapshot-reference';
 export * from './translations';
 export * from './versions';

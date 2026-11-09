@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import {
   mkdtemp,
@@ -24,6 +25,7 @@ import {
 const execFileAsync = promisify(execFile);
 const version = '1.2.3';
 const packageKey = 'widget';
+const siblingPackageKey = 'sibling';
 const sourceLocale = 'zh-CN';
 const targetLocale = 'en';
 
@@ -38,12 +40,25 @@ async function fixture(t: TestContext) {
     'tmp/docs-tools/api-translation',
   );
   const versionDirectory = path.join(apiDirectory, packageKey, version);
+  const siblingVersion = '2.0.0';
+  const siblingVersionDirectory = path.join(
+    apiDirectory,
+    siblingPackageKey,
+    siblingVersion,
+  );
   const apiEntry = {
     key: 'root',
     source: 'src/index.ts',
     types: './dist/index.d.ts',
     id: 1,
     symbols: [{ name: 'Widget', id: 2, kind: 256 }],
+  };
+  const siblingEntry = {
+    key: 'root',
+    source: 'src/index.ts',
+    types: './dist/index.d.ts',
+    id: 4,
+    symbols: [{ name: 'Sibling', id: 3, kind: 256 }],
   };
   const apiSnapshot = {
     commit: 'abc123',
@@ -53,6 +68,12 @@ async function fixture(t: TestContext) {
         name: '@example/widget',
         version,
         entries: [apiEntry],
+      },
+      {
+        key: siblingPackageKey,
+        name: '@example/sibling',
+        version: siblingVersion,
+        entries: [siblingEntry],
       },
     ],
   };
@@ -74,46 +95,87 @@ async function fixture(t: TestContext) {
         flags: {},
         comment: { summary: [{ kind: 'text', text: '一个组件。' }] },
       },
+      {
+        id: 3,
+        name: 'Sibling',
+        kind: 256,
+        variant: 'declaration',
+        flags: {},
+        comment: { summary: [{ kind: 'text', text: '另一个组件。' }] },
+      },
     ],
   };
+  const siblingTargetProject = structuredClone(project) as {
+    children: { comment: Record<string, unknown> }[];
+  };
+  const siblingComment = siblingTargetProject.children[1]?.comment;
+
+  assert.ok(siblingComment);
+  siblingComment['summary'] = [
+    { kind: 'text', text: 'Existing sibling translation.' },
+  ];
+  siblingComment['sourceLocale'] = targetLocale;
   const sourcePath = path.join(versionDirectory, `${sourceLocale}.api.json`);
   const targetPath = path.join(versionDirectory, `${targetLocale}.api.json`);
+  const siblingSourcePath = path.join(
+    siblingVersionDirectory,
+    `${sourceLocale}.api.json`,
+  );
+  const siblingTargetPath = path.join(
+    siblingVersionDirectory,
+    `${targetLocale}.api.json`,
+  );
   const manifestPath = path.join(apiDirectory, 'manifest.json');
   const json = {
     [sourceLocale]: `api/${packageKey}/${version}/${sourceLocale}.api.json`,
     [targetLocale]: `api/${packageKey}/${version}/${targetLocale}.api.json`,
   };
+  const siblingJSON = {
+    [sourceLocale]: `api/${siblingPackageKey}/${siblingVersion}/${sourceLocale}.api.json`,
+    [targetLocale]: `api/${siblingPackageKey}/${siblingVersion}/${targetLocale}.api.json`,
+  };
+
+  function manifestPackage(
+    key: string,
+    name: string,
+    packageVersion: string,
+    entries: typeof apiEntry[],
+    paths: Record<string, string>,
+  ) {
+    const item = {
+      version: packageVersion,
+      snapshot: 'a'.repeat(64),
+      commit: apiSnapshot.commit,
+      entries,
+      json: paths,
+    };
+
+    return {
+      key,
+      name,
+      latestVersion: packageVersion,
+      entries,
+      current: { ...item, version: 'current', packageVersion },
+      versions: [item],
+    };
+  }
   const manifest = {
     schemaVersion: 2,
     defaultVersion: 'current',
     packages: [
-      {
-        key: packageKey,
-        name: '@example/widget',
-        latestVersion: version,
-        entries: [apiEntry],
-        current: {
-          version: 'current',
-          packageVersion: version,
-          snapshot: 'a'.repeat(64),
-          commit: apiSnapshot.commit,
-          entries: [apiEntry],
-          json,
-        },
-        versions: [
-          {
-            version,
-            snapshot: 'a'.repeat(64),
-            commit: apiSnapshot.commit,
-            entries: [apiEntry],
-            json,
-          },
-        ],
-      },
+      manifestPackage(packageKey, '@example/widget', version, [apiEntry], json),
+      manifestPackage(
+        siblingPackageKey,
+        '@example/sibling',
+        siblingVersion,
+        [siblingEntry],
+        siblingJSON,
+      ),
     ],
   };
 
   await mkdir(versionDirectory, { recursive: true });
+  await mkdir(siblingVersionDirectory, { recursive: true });
   await writeFile(
     path.join(repositoryRoot, 'site/site.config.ts'),
     `export default ${JSON.stringify({
@@ -131,15 +193,26 @@ async function fixture(t: TestContext) {
     targetPath,
     `${JSON.stringify({ ...project, locale: targetLocale, apiSnapshot })}\n`,
   );
+  await writeFile(
+    siblingSourcePath,
+    `${JSON.stringify({ ...project, locale: sourceLocale, apiSnapshot })}\n`,
+  );
+  await writeFile(
+    siblingTargetPath,
+    `${JSON.stringify({ ...siblingTargetProject, locale: targetLocale, apiSnapshot })}\n`,
+  );
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   t.onTestFinished(() => rm(repositoryRoot, { recursive: true, force: true }));
 
   return {
     repositoryRoot,
+    dataDirectory,
     apiDirectory,
     translationWorkDirectory,
     sourcePath,
     targetPath,
+    siblingSourcePath,
+    siblingTargetPath,
     manifestPath,
     config: {
       repositoryRoot,
@@ -151,8 +224,31 @@ async function fixture(t: TestContext) {
   };
 }
 
-async function createTranslation(t: TestContext) {
+async function createTranslation(t: TestContext, shared = false) {
   const values = await fixture(t);
+  let sharedTargetPath: string | undefined;
+
+  if (shared) {
+    const sharedDirectory = path.join(values.apiDirectory, 'snapshots');
+    const sourceContents = await readFile(values.sourcePath, 'utf8');
+    const sourceName = `${createHash('sha256').update(sourceContents).digest('hex')}.api.json`;
+    const targetContents = await readFile(values.targetPath, 'utf8');
+    const targetName = `${createHash('sha256').update(targetContents).digest('hex')}.api.json`;
+    const sharedSourcePath = path.join(sharedDirectory, sourceName);
+
+    sharedTargetPath = path.join(sharedDirectory, targetName);
+    await mkdir(sharedDirectory, { recursive: true });
+    await renameFile(values.sourcePath, sharedSourcePath);
+    await renameFile(values.targetPath, sharedTargetPath);
+    await writeFile(
+      values.sourcePath,
+      `${JSON.stringify({ $ref: `api/snapshots/${sourceName}` })}\n`,
+    );
+    await writeFile(
+      values.targetPath,
+      `${JSON.stringify({ $ref: `api/snapshots/${targetName}` })}\n`,
+    );
+  }
   const [task] = await extractTranslationTasks(
     ['site/public/data/api/widget/1.2.3/en.api.json'],
     values.config,
@@ -184,7 +280,25 @@ async function createTranslation(t: TestContext) {
     )}\n`,
   );
 
-  return { ...values, taskPath: task.taskPath, translationPath };
+  return { ...values, taskPath: task.taskPath, translationPath, sharedTargetPath };
+}
+
+async function readTargetSnapshot(
+  targetPath: string,
+  dataDirectory: string,
+): Promise<Record<string, unknown>> {
+  const index: unknown = JSON.parse(await readFile(targetPath, 'utf8'));
+
+  assert.ok(index !== null && typeof index === 'object' && !Array.isArray(index));
+  const reference = (index as Record<string, unknown>)['$ref'];
+
+  if (typeof reference !== 'string') {
+    return index as Record<string, unknown>;
+  }
+
+  return JSON.parse(
+    await readFile(path.join(dataDirectory, reference), 'utf8'),
+  ) as Record<string, unknown>;
 }
 
 void test('applies a fresh translation and updates the version and current manifest hashes', async t => {
@@ -203,7 +317,17 @@ void test('applies a fresh translation and updates the version and current manif
     [{ taskPath: values.taskPath, translationPath: values.translationPath }],
     values.config,
   );
-  const target = JSON.parse(await readFile(values.targetPath, 'utf8')) as {
+  const index = JSON.parse(await readFile(values.targetPath, 'utf8')) as {
+    $ref: string;
+  };
+  const sidecarContents = await readFile(
+    path.join(values.dataDirectory, index.$ref),
+    'utf8',
+  );
+  const target = await readTargetSnapshot(
+    values.targetPath,
+    values.dataDirectory,
+  ) as {
     locale: string;
     children: { comment: { summary: { text: string }[] } }[];
   };
@@ -223,6 +347,12 @@ void test('applies a fresh translation and updates the version and current manif
   });
 
   assert.deepEqual(updatedPaths, [values.targetPath]);
+  assert.match(index.$ref, /^api\/snapshots\/[a-f\d]{64}\.api\.json$/u);
+  assert.deepEqual(Object.keys(index), ['$ref']);
+  assert.equal(
+    path.basename(index.$ref),
+    `${createHash('sha256').update(sidecarContents).digest('hex')}.api.json`,
+  );
   assert.equal(target.locale, targetLocale);
   assert.equal(target.children[0]?.comment.summary[0]?.text, 'A widget.');
   assert.notEqual(
@@ -258,6 +388,62 @@ void test('rejects a stale target without changing it or consuming task files', 
   assert.equal(await readFile(values.targetPath, 'utf8'), staleTarget);
   await readFile(values.taskPath);
   await readFile(values.translationPath);
+});
+
+void test('applies translations through shared references and removes the orphan sidecar', async t => {
+  const values = await createTranslation(t, true);
+
+  await applyTranslationPairs(
+    [{ taskPath: values.taskPath, translationPath: values.translationPath }],
+    values.config,
+  );
+
+  const index = JSON.parse(await readFile(values.targetPath, 'utf8')) as {
+    $ref: string;
+  };
+  const target = await readTargetSnapshot(
+    values.targetPath,
+    values.dataDirectory,
+  ) as {
+    locale: string;
+    children: { comment: { summary: { text: string }[] } }[];
+  };
+
+  assert.match(index.$ref, /^api\/snapshots\/[a-f\d]{64}\.api\.json$/u);
+  assert.notEqual(path.join(values.dataDirectory, index.$ref), values.sharedTargetPath);
+  assert.equal(target.locale, targetLocale);
+  assert.equal(target.children[0]?.comment.summary[0]?.text, 'A widget.');
+  const siblingIndex = JSON.parse(
+    await readFile(values.siblingTargetPath, 'utf8'),
+  ) as { $ref: string };
+
+  assert.equal(siblingIndex.$ref, index.$ref);
+  await assert.rejects(readFile(values.sharedTargetPath!), { code: 'ENOENT' });
+});
+
+void test('preserves existing target-locale content outside the translated package', async t => {
+  const values = await createTranslation(t);
+
+  await applyTranslationPairs(
+    [{ taskPath: values.taskPath, translationPath: values.translationPath }],
+    values.config,
+  );
+
+  const target = await readTargetSnapshot(
+    values.siblingTargetPath,
+    values.dataDirectory,
+  ) as {
+    children: {
+      name: string;
+      comment: { summary: { text: string }[] };
+    }[];
+  };
+  const sibling = target.children.find(child => child.name === 'Sibling');
+
+  assert.equal(
+    sibling?.comment.summary[0]?.text,
+    'Existing sibling translation.',
+  );
 });
 
 void test('rejects a target that is not referenced by the manifest locale path', async t => {
@@ -309,7 +495,10 @@ void test('reports partial commit failures and preserves task files for recovery
     /partially updated .*manifest consistency may require recovery/u,
   );
 
-  const target = JSON.parse(await readFile(values.targetPath, 'utf8')) as {
+  const target = await readTargetSnapshot(
+    values.targetPath,
+    values.dataDirectory,
+  ) as {
     children: { comment: { summary: { text: string }[] } }[];
   };
 
@@ -337,9 +526,10 @@ void test('runs api apply from the mjs CLI', async t => {
   );
 
   assert.match(result.stdout, /Updated .*\/widget\/1\.2\.3\/en\.api\.json/u);
-  const target = JSON.parse(await readFile(values.targetPath, 'utf8')) as {
-    locale: string;
-  };
+  const target = await readTargetSnapshot(
+    values.targetPath,
+    values.dataDirectory,
+  );
 
-  assert.equal(target.locale, targetLocale);
+  assert.equal(target['locale'], targetLocale);
 });

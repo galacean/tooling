@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   DocumentError,
@@ -17,6 +16,7 @@ export interface ManualNavigationPage {
 export interface ManualDocument {
   text: string;
   headings: string[];
+  lastModified?: string;
 }
 
 export interface ManualPageMessages {
@@ -31,6 +31,7 @@ export interface ManualPageMessages {
   next: string;
   contents: string;
   mobileDirectory: string;
+  lastUpdated: string;
   copy: string;
   copied: string;
   copyFailed: string;
@@ -46,7 +47,6 @@ export interface ManualPageProps {
   loadNavigation: (locale: string) => Promise<ManualNavigationPage[]>;
   loadOverview: (locale: string) => Promise<ManualDocument>;
   loadPage: (locale: string, slug: string) => Promise<ManualDocument>;
-  articleMeta?: ReactNode;
 }
 
 export function groupManualPages(pages: ManualNavigationPage[]) {
@@ -69,7 +69,6 @@ export function ManualPage({
   loadNavigation,
   loadOverview,
   loadPage,
-  articleMeta,
 }: ManualPageProps) {
   const location = useLocation();
   const [navigation, setNavigation] = useState<{
@@ -101,6 +100,15 @@ export function ManualPage({
     overview?.locale === locale ? overview.page : undefined;
   const toc = slug === undefined ? overviewContent : content;
   const failed = loadError?.locale === locale && loadError.slug === slug;
+  const parsedLastModified = content?.lastModified === undefined
+    ? undefined
+    : new Date(content.lastModified);
+  const lastModified = parsedLastModified !== undefined && !Number.isNaN(parsedLastModified.valueOf())
+    ? parsedLastModified
+    : undefined;
+  const formattedLastModified = lastModified === undefined
+    ? undefined
+    : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(lastModified);
 
   useEffect(() => {
     let cancelled = false;
@@ -282,7 +290,12 @@ export function ManualPage({
               copyLabel={t.copy}
               copied={t.copied}
               copyFailed={t.copyFailed}
-              afterFirstParagraph={articleMeta}
+              afterFirstHeading={formattedLastModified !== undefined && lastModified !== undefined ? (
+                <span className="manual-article-updated">
+                  {t.lastUpdated}{' '}
+                  <time dateTime={lastModified.toISOString()}>{formattedLastModified}</time>
+                </span>
+              ) : undefined}
             />
             <nav className="manual-pagination">
               {previous !== undefined && (

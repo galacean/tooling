@@ -59,5 +59,6 @@
   "copy": "Copy",
   "copied": "Copied",
   "copyFailed": "Copy failed. Check clipboard permissions.",
-  "mobileDirectory": "Documentation"
+  "mobileDirectory": "Documentation",
+  "lastUpdated": "Last updated"
 }

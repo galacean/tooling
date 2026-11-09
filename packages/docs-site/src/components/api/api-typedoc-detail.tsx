@@ -68,6 +68,23 @@ export function APITypeDocDetail<
   getGroupLabel,
   getRepositoryFileURL,
 }: APITypeDocDetailProps<TProject, TReflection, TLocale>) {
+  const reflectionRecord = reflection as unknown as Record<string, unknown>;
+  const reflectionFlags = reflectionRecord['flags'];
+
+  if (
+    reflectionFlags !== null &&
+    typeof reflectionFlags === 'object' &&
+    'isExternal' in reflectionFlags &&
+    reflectionFlags.isExternal === true &&
+    typeof reflectionRecord['externalUrl'] === 'string'
+  ) {
+    return (
+      <APITypeReference
+        text={String(reflectionRecord['name'])}
+        externalUrl={reflectionRecord['externalUrl']}
+      />
+    );
+  }
   const renderKind = (kind: number, compact: boolean) => (
     <APIKindLabel kind={kind} label={getGroupLabel(kind)} compact={compact} />
   );
@@ -118,6 +135,15 @@ export function APITypeDocDetail<
     text: string,
     key: Key,
   ): ReactNode {
+    if (reference.externalUrl !== undefined) {
+      return (
+        <APITypeReference
+          key={key}
+          text={text}
+          externalUrl={reference.externalUrl}
+        />
+      );
+    }
     const target = context.index.resolve(reference.target);
     const targetValue = target as unknown as
       JSONOutput.SomeReflection | undefined;

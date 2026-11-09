@@ -1,6 +1,6 @@
 {
   "name": "@galacean/eslint-config",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Shared ESLint configuration for Galacean TypeScript repositories",
   "type": "module",
   "exports": {

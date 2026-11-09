@@ -307,6 +307,151 @@ export function buildAPIDocumentationPackages(
   });
 }
 
+function externalPackageURL(packageName: unknown): string | undefined {
+  if (
+    typeof packageName !== 'string' ||
+    !/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/iu.test(packageName)
+  ) {
+    return undefined;
+  }
+
+  return `https://www.npmjs.com/package/${packageName}`;
+}
+
+export function externalizeTypeDocDependencies(
+  project: JSONOutput.ProjectReflection,
+  packages: APIDocumentationPackage[],
+  sourceLocale = 'en',
+): JSONOutput.ProjectReflection {
+  const reflections = collectTypeDocReflections(project, {
+    allowExternalReferences: true,
+  });
+  const externalIds = new Set(
+    [...reflections].flatMap(([id, reflection]) =>
+          reflection.flags.isExternal === true ? [id] : [],
+    ),
+  );
+  const publicExternalIds = new Set(
+    packages.flatMap(pkg =>
+      pkg.entries.flatMap(entry =>
+        entry.symbols.flatMap(symbol =>
+          externalIds.has(symbol.id) ? [symbol.id] : [],
+        ),
+      ),
+    ),
+  );
+  const symbolIdMap = isRecord(project.symbolIdMap)
+    ? project.symbolIdMap as Record<string, JSONOutput.ReflectionSymbolId>
+    : {};
+  const externalUrls = new Map<number, string>();
+
+  for (const id of externalIds) {
+    const symbol = symbolIdMap[String(id)];
+    const url = externalPackageURL(symbol?.packageName);
+
+    if (url !== undefined) {
+      externalUrls.set(id, url);
+    }
+  }
+  for (const id of publicExternalIds) {
+    if (!externalUrls.has(id)) {
+      const reflection = reflections.get(id);
+
+      throw new Error(
+        `Cannot externalize public dependency export: ${reflection?.name ?? id}`,
+      );
+    }
+  }
+
+  function transform(value: unknown, key = ''): unknown {
+    if (Array.isArray(value)) {
+      if (key === 'children' && value.every(item => typeof item === 'number')) {
+        return value.filter(
+          id => typeof id !== 'number' || !externalIds.has(id) || publicExternalIds.has(id),
+        );
+      }
+
+      return value.flatMap(item => {
+        if (
+          isRecord(item) &&
+          typeof item['id'] === 'number' &&
+          externalIds.has(item['id']) &&
+          !publicExternalIds.has(item['id'])
+        ) {
+          return [];
+        }
+        const transformed = transform(item);
+
+        return transformed === undefined ? [] : [transformed];
+      });
+    }
+    if (!isRecord(value)) {
+      return value;
+    }
+    if (
+      value['type'] === 'reference' &&
+      typeof value['target'] === 'number' &&
+      externalIds.has(value['target'])
+    ) {
+      const url = externalUrls.get(value['target']) ?? externalPackageURL(value['package']);
+
+      return {
+        ...value,
+        ...(url === undefined ? {} : { externalUrl: url }),
+      };
+    }
+    if (
+      typeof value['id'] === 'number' &&
+      externalIds.has(value['id'])
+    ) {
+      if (!publicExternalIds.has(value['id'])) {
+        return undefined;
+      }
+      const url = externalUrls.get(value['id']);
+
+      if (url === undefined) {
+        throw new Error(`Missing external URL for public reflection: ${String(value['name'])}`);
+      }
+
+      return {
+        id: value['id'],
+        name: value['name'],
+        kind: value['kind'],
+        variant: 'declaration',
+        flags: value['flags'],
+        comment: {
+          summary: [{
+            kind: 'text',
+            text: sourceLocale === 'zh-CN'
+              ? `外部依赖包： [${String(value['name'])}](${url})。`
+              : `External dependency: [${String(value['name'])}](${url}).`,
+          }],
+        },
+        externalUrl: url,
+      };
+    }
+    const output: Record<string, unknown> = {};
+
+    for (const [property, child] of Object.entries(value)) {
+      if (property === 'symbolIdMap' && isRecord(child)) {
+        output[property] = Object.fromEntries(
+          Object.entries(child).filter(([id]) => !externalIds.has(Number(id))),
+        );
+        continue;
+      }
+      const transformed = transform(child, property);
+
+      if (transformed !== undefined) {
+        output[property] = transformed;
+      }
+    }
+
+    return output;
+  }
+
+  return transform(project) as JSONOutput.ProjectReflection;
+}
+
 async function buildDeclarations(
   packages: APIPackageConfig[],
   repositoryRoot: string,
@@ -704,15 +849,20 @@ export async function generateAPIDocumentation(
     packageManifests,
     project,
   );
+  const publicProject = externalizeTypeDocDependencies(
+    project,
+    generatedPackages,
+    config.sourceLocale,
+  );
   const metadata: APIDocumentationMetadata = {
     commit,
     generatorVersion: await dependencies.generatorVersion(),
-    sourceHash: contentHash(project),
+    sourceHash: contentHash(publicProject),
     packages: generatedPackages,
   };
 
   return assembleAPIDocumentation(
-    metadataProject(project),
+    metadataProject(publicProject),
     metadata,
     config,
     selectedKeys,

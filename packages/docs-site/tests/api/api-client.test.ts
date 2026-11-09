@@ -39,7 +39,13 @@ describe('shared API documentation client', () => {
       const url = String(input);
 
       return Response.json(
-        url.endsWith('manifest.json') ? manifest : { locale: 'en' },
+        url.endsWith('manifest.json')
+          ? manifest
+          : url.includes('/snapshots/')
+            ? { locale: 'en' }
+          : url.endsWith('en.api.json')
+            ? { $ref: 'api/snapshots/sha256/en.api.json' }
+            : { locale: 'en' },
       );
     });
     const parseSnapshot = vi.fn(
@@ -82,6 +88,10 @@ describe('shared API documentation client', () => {
       2,
       '/site/data/api/example/1.0.0/en.api.json',
     );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      3,
+      '/site/data/api/snapshots/sha256/en.api.json',
+    );
   });
 
   it('drops failed manifest and snapshot promises so later requests can retry', async () => {
@@ -89,6 +99,7 @@ describe('shared API documentation client', () => {
       .fn()
       .mockResolvedValueOnce(new Response('', { status: 503 }))
       .mockResolvedValueOnce(Response.json(manifest))
+      .mockResolvedValueOnce(Response.json({ $ref: 'api/snapshots/sha256/en.api.json' }))
       .mockResolvedValueOnce(Response.json({ locale: 'en' }))
       .mockResolvedValueOnce(Response.json(manifest))
       .mockResolvedValueOnce(Response.json({ locale: 'en' }));
@@ -109,6 +120,6 @@ describe('shared API documentation client', () => {
     await expect(client.loadAPI('example', 'current', 'en')).resolves.toEqual({
       locale: 'en',
     });
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(4);
   });
 });

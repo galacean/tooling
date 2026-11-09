@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isRecord, parseAPIManifest } from '@galacean/docs-site';
@@ -11,6 +11,7 @@ import type { DocsSiteConfig } from '../config/site-config';
 import { assertNoSymlinkPath } from '../config/site-config';
 import { readJSON } from './read-json';
 import { sourceProject } from './snapshot';
+import { readAPISnapshot } from './snapshot-reference';
 import {
   buildTranslationSource,
   collectCommentFields,
@@ -57,6 +58,22 @@ function errorCode(error: unknown): string | undefined {
 async function readOptionalJSON(filename: string): Promise<unknown> {
   try {
     return await readJSON(filename);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return undefined;
+}
+
+async function readOptionalSnapshot(
+  filename: string,
+  dataRoot: string,
+  repositoryRoot: string,
+): Promise<unknown> {
+  try {
+    return (await readAPISnapshot(filename, dataRoot, repositoryRoot)).value;
   } catch (error) {
     if (errorCode(error) !== 'ENOENT') {
       throw error;
@@ -137,9 +154,10 @@ function historyLayout(
       for (const locale of locales) {
         const relativePath = version.json[locale];
         const packagePath = `api/${pkg.key}/${version.version}/${locale}.api.json`;
+        const sharedPath = `api/snapshots/${version.snapshot}/${locale}.api.json`;
         const flatPath = `api/${version.version}/${locale}.api.json`;
 
-        packageKeyLayout &&= relativePath === packagePath;
+        packageKeyLayout &&= relativePath === packagePath || relativePath === sharedPath;
         flatLayout &&= relativePath === flatPath;
       }
     }
@@ -171,8 +189,11 @@ async function recoverTranslations(
   }
   const oldEnglishPath = safeSnapshotPath(dataRoot, oldSourcePath);
 
-  await assertNoSymlinkPath(config.repositoryRoot, oldEnglishPath);
-  const oldSourceSnapshot = await readOptionalJSON(oldEnglishPath);
+  const oldSourceSnapshot = await readOptionalSnapshot(
+    oldEnglishPath,
+    dataRoot,
+    config.repositoryRoot,
+  );
 
   if (
     !isRecord(oldSourceSnapshot) ||
@@ -208,8 +229,11 @@ async function recoverTranslations(
     }
     const oldTargetPath = safeSnapshotPath(dataRoot, oldLocalizedPath);
 
-    await assertNoSymlinkPath(config.repositoryRoot, oldTargetPath);
-    const oldLocalizedSnapshot = await readOptionalJSON(oldTargetPath);
+    const oldLocalizedSnapshot = await readOptionalSnapshot(
+      oldTargetPath,
+      dataRoot,
+      config.repositoryRoot,
+    );
 
     if (
       !isRecord(oldLocalizedSnapshot) ||
@@ -380,11 +404,19 @@ export async function assembleAPIDocumentation(
       ]
     : [];
   const localizedSnapshots = new Map<string, string>();
+  const contentSnapshots = new Map<string, string>();
+  const preservedTranslations = new Map<string, Record<string, string>>(
+    config.locales.map(locale => [locale, {}]),
+  );
 
-  for (const pkg of selectedPackages) {
+  for (const pkg of metadata.packages) {
     const previousPackage = previous?.packages.find(
       item => item.key === pkg.key,
     );
+
+    if (previousPackage === undefined) {
+      continue;
+    }
     const preserved = await recoverTranslations(
       dataRoot,
       previousPackage,
@@ -393,26 +425,53 @@ export async function assembleAPIDocumentation(
     );
 
     warnings.push(...preserved.warnings);
+    for (const [locale, translations] of Object.entries(preserved.translations)) {
+      const merged = preservedTranslations.get(locale);
+
+      if (merged === undefined) {
+        continue;
+      }
+      for (const [key, translation] of Object.entries(translations)) {
+        const existing = merged[key];
+
+        if (existing !== undefined && existing !== translation) {
+          throw new Error(`Conflicting preserved API translations for ${locale}: ${key}`);
+        }
+        merged[key] = translation;
+      }
+    }
+  }
+
+  for (const pkg of selectedPackages) {
     for (const locale of config.locales) {
+      const translations = preservedTranslations.get(locale) ?? {};
       const localized =
         locale === config.sourceLocale
           ? localizeProject(project, source, undefined, locale)
           : localizeProjectWithFallback(
               project,
               source,
-              preserved.translations[locale] ?? {},
+              translations,
               locale,
             );
       const snapshot = Object.assign(localized, { locale, apiSnapshot });
+      const contents = `${JSON.stringify(snapshot)}\n`;
+      const contentHash = createHash('sha256').update(contents).digest('hex');
+      const contentPath = `api/snapshots/${contentHash}.api.json`;
+      const existing = contentSnapshots.get(contentPath);
 
+      if (existing !== undefined && existing !== contents) {
+        throw new Error(`API snapshot hash collision: ${contentPath}`);
+      }
+      contentSnapshots.set(contentPath, contents);
       localizedSnapshots.set(
         `${pkg.key}\0${locale}`,
-        `${JSON.stringify(snapshot)}\n`,
+        `${JSON.stringify({ $ref: contentPath })}\n`,
       );
       const missing = source.fields.filter(
         field =>
           field.sourceLocale !== locale &&
-          preserved.translations[locale]?.[field.key] === undefined,
+          translations[field.key] === undefined,
       ).length;
 
       if (missing > 0) {
@@ -478,18 +537,21 @@ export async function assembleAPIDocumentation(
   const completed: string[] = [];
 
   try {
+    for (const [relativePath, contents] of contentSnapshots) {
+      const filename = safeSnapshotPath(dataRoot, relativePath);
+
+      await assertNoSymlinkPath(config.repositoryRoot, filename);
+      staged.push(await stageFile(filename, contents));
+    }
     for (const pkg of selectedPackages) {
       for (const locale of config.locales) {
         const relativePath = `api/${pkg.key}/${pkg.version}/${locale}.api.json`;
         const filename = safeSnapshotPath(dataRoot, relativePath);
-
-        await assertNoSymlinkPath(config.repositoryRoot, filename);
         const contents = localizedSnapshots.get(`${pkg.key}\0${locale}`);
 
+        await assertNoSymlinkPath(config.repositoryRoot, filename);
         if (contents === undefined) {
-          throw new Error(
-            `Missing generated API snapshot: ${pkg.key}/${locale}`,
-          );
+          throw new Error(`Missing generated API snapshot: ${pkg.key}/${locale}`);
         }
         staged.push(await stageFile(filename, contents));
       }

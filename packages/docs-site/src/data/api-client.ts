@@ -53,6 +53,48 @@ export function createAPIDocumentationClient<TLocale extends string, TData>({
     providedFetcher ?? ((...args) => globalThis.fetch(...args));
   let cachedManifest: Promise<APIManifest> | undefined;
   const cachedSnapshots = new Map<string, Promise<TData>>();
+  const cachedSnapshotFiles = new Map<string, Promise<unknown>>();
+
+  function loadSnapshotFile(url: string): Promise<unknown> {
+    let pending = cachedSnapshotFiles.get(url);
+
+    if (pending === undefined) {
+      pending = loadJSON(url, fetcher).catch((error: unknown) => {
+        cachedSnapshotFiles.delete(url);
+
+        throw error;
+      });
+      cachedSnapshotFiles.set(url, pending);
+    }
+
+    return pending;
+  }
+
+  async function loadSnapshot(path: string): Promise<unknown> {
+    const wrapper = await loadSnapshotFile(`${base}data/${path}`);
+
+    if (
+      wrapper === null ||
+      typeof wrapper !== 'object' ||
+      Array.isArray(wrapper) ||
+      !('$ref' in wrapper)
+    ) {
+      return wrapper;
+    }
+    const reference = (wrapper as Record<string, unknown>)['$ref'];
+
+    if (
+      typeof reference !== 'string' ||
+      reference.length === 0 ||
+      reference.startsWith('/') ||
+      reference.includes('\\') ||
+      reference.split('/').some(part => part === '' || part === '.' || part === '..')
+    ) {
+      throw new Error('Invalid API snapshot reference');
+    }
+
+    return loadSnapshotFile(`${base}data/${reference}`);
+  }
 
   function loadManifest(): Promise<APIManifest> {
     if (cachedManifest === undefined) {
@@ -93,7 +135,7 @@ export function createAPIDocumentationClient<TLocale extends string, TData>({
     const cacheKey = `${info.snapshot}/${locale}/${version === 'current' ? 'preview' : 'release'}`;
     const pending =
       cachedSnapshots.get(cacheKey) ??
-      loadJSON(`${base}data/${path}`, fetcher).then(raw =>
+      loadSnapshot(path).then(raw =>
         parseSnapshot(
           raw,
           locale,

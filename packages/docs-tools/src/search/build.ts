@@ -11,22 +11,13 @@ import type { APIManifest, SearchResult } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
 import { readJSON } from '../api/read-json';
+import { readAPISnapshot } from '../api/snapshot-reference';
 import { readPackageReadme } from '../package-readmes/read';
 
 interface ManualNavigationItem {
   slug: string;
   title: Record<string, string>;
   group: Record<string, string>;
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 function isSafeSegment(value: string): boolean {
@@ -107,23 +98,6 @@ function commentText(
   };
 }
 
-async function readDataFile<T>(
-  repositoryRoot: string,
-  dataRoot: string,
-  relativePath: string,
-): Promise<T> {
-  const filename = path.resolve(dataRoot, relativePath);
-
-  if (!isWithin(dataRoot, filename)) {
-    throw new Error(
-      `Data path leaves the site data directory: ${relativePath}`,
-    );
-  }
-  await assertNoSymlinkPath(repositoryRoot, filename);
-
-  return readJSON<T>(filename);
-}
-
 async function buildAPIResults(
   config: DocsSiteConfig,
   manifest: APIManifest,
@@ -143,11 +117,11 @@ async function buildAPIResults(
         `Missing current API snapshot path: ${pkg.key}/${locale}`,
       );
     }
-    const snapshot: unknown = await readDataFile(
-      config.repositoryRoot,
+    const snapshot: unknown = (await readAPISnapshot(
+      path.resolve(dataRoot, snapshotPath),
       dataRoot,
-      snapshotPath,
-    );
+      config.repositoryRoot,
+    )).value;
 
     if (!isRecord(snapshot) || snapshot['locale'] !== locale) {
       throw new Error(`Invalid current API snapshot: ${pkg.key}/${locale}`);

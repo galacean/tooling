@@ -38,6 +38,14 @@ async function fixture(t: TestContext) {
         flags: {},
         comment: { summary: [{ kind: 'text', text: 'A widget.' }] },
       },
+      {
+        id: 3,
+        name: 'OtherWidget',
+        kind: 256,
+        variant: 'declaration',
+        flags: {},
+        comment: { summary: [{ kind: 'text', text: 'Another widget.' }] },
+      },
     ],
   };
   const apiSnapshot = {
@@ -54,6 +62,20 @@ async function fixture(t: TestContext) {
             types: './dist/index.d.ts',
             id: 1,
             symbols: [{ name: 'Widget', id: 2, kind: 256 }],
+          },
+        ],
+      },
+      {
+        key: 'other-dir',
+        name: '@example/other-widget',
+        version: '2.3.4',
+        entries: [
+          {
+            key: 'root',
+            source: 'src/index.ts',
+            types: './dist/index.d.ts',
+            id: 4,
+            symbols: [{ name: 'OtherWidget', id: 3, kind: 256 }],
           },
         ],
       },
@@ -116,7 +138,10 @@ void test('extracts tasks from package-key/version paths without modifying snaps
   assert.equal(task.locale, 'en');
   assert.equal(task.sourcePath, 'widget-dir/1.2.3/zh-CN.api.json');
   assert.equal(task.targetPath, 'widget-dir/1.2.3/en.api.json');
-  assert.equal(task.fields[0]?.key, '@example/real-widget|root|Widget|summary');
+  assert.deepEqual(
+    task.fields.map(field => field.key),
+    ['@example/real-widget|root|Widget|summary'],
+  );
   assert.equal(JSON.stringify(task).includes(values.repositoryRoot), false);
   assert.deepEqual(
     await Promise.all([

@@ -2,10 +2,16 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseSearch, searchResults } from '@galacean/docs-site';
-import type { SearchResult } from '@galacean/docs-site';
+import {
+  parseSearch,
+  searchResults,
+} from '@galacean/docs-site';
 import { SearchPanel } from '../../src/components/search/search-panel';
-import type { SearchPanelMessages } from '../../src/components/search/search-panel';
+import type {
+  SearchPanelMessages,
+  SearchPanelProps,
+} from '../../src/components/search/search-panel';
+import type { SearchResult } from '@galacean/docs-site';
 import { SiteShell } from '../../src/components/site/site-shell';
 import type { SiteShellProps } from '../../src/components/site/site-shell';
 import { ThemeProvider } from '../../src/providers/theme';
@@ -76,20 +82,18 @@ describe('shared search query', () => {
 
 describe('shared SearchPanel', () => {
   it('renders consumer-provided copy, brand, and empty history state', () => {
+    const props: SearchPanelProps = {
+      locale: 'en',
+      brandLabel: 'Example Docs',
+      brandMarkUrl: '/brand.svg',
+      historyKeyPrefix: 'example:site:search',
+      messages,
+      loadItems: async () => items,
+      navigate: () => undefined,
+      close: () => undefined,
+    };
     const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(SearchPanel, {
-          locale: 'en',
-          brandLabel: 'Example Docs',
-          brandMarkUrl: '/brand.svg',
-          historyKeyPrefix: 'example:site:search',
-          messages,
-          loadItems: async () => items,
-          close: () => undefined,
-        }),
-      ),
+      createElement(SearchPanel, props),
     );
 
     expect(markup).toContain('aria-labelledby="site-search-title"');

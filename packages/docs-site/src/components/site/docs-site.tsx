@@ -1,4 +1,4 @@
-import { lazy, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   BrowserRouter,
@@ -20,20 +20,17 @@ import {
 } from '../../i18n';
 import { ThemeProvider } from '../../providers';
 import { DocumentError } from '../shared';
+import { lazyComponent } from '../shared/lazy-component';
 import { SiteShell } from './site-shell';
 import type { ManualPageMessages } from '../manual';
 import type { CommonSiteMessages } from '../../i18n';
 
-const ManualRoute = lazy(async () => {
-  const module = await import('../manual/manual-route.js');
-
-  return { default: module.ManualRoute };
-});
-const ConfiguredAPIPage = lazy(async () => {
-  const module = await import('../api/configured-api-page.js');
-
-  return { default: module.ConfiguredAPIPage };
-});
+const ManualRoute = lazyComponent(() =>
+  import('../manual/manual-route.js').then(module => module.ManualRoute),
+);
+const ConfiguredAPIPage = lazyComponent(() =>
+  import('../api/configured-api-page.js').then(module => module.ConfiguredAPIPage),
+);
 
 export type DocsSiteMessages = CommonSiteMessages &
   Pick<ManualPageMessages, 'manualIntro'>;

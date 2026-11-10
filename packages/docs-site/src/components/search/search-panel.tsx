@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Icon } from '../shared';
 import { searchResults } from '../../search';
 import type { SearchResult } from '../../search';
@@ -29,6 +28,7 @@ export interface SearchPanelProps {
   historyKeyPrefix: string;
   messages: SearchPanelMessages;
   loadItems: (locale: string) => Promise<SearchResult[]>;
+  navigate: (url: string) => void;
   close: () => void;
 }
 
@@ -53,6 +53,7 @@ export function SearchPanel({
   historyKeyPrefix,
   messages: t,
   loadItems,
+  navigate,
   close,
 }: SearchPanelProps) {
   const [query, setQuery] = useState('');
@@ -66,7 +67,6 @@ export function SearchPanel({
   const input = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   const key = `${historyKeyPrefix}:${locale}`;
 
   useEffect(() => {
@@ -282,7 +282,7 @@ export function SearchPanel({
                         ].slice(0, 12),
                       );
                       close();
-                      void navigate(item.url);
+                      navigate(item.url);
                     }}
                   >
                     <span

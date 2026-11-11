@@ -2,8 +2,8 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { APIReferencePage } from '../../src/components/api/api-reference-page';
 import type { APIManifest } from '@galacean/docs-site';
+import { APIReferencePage } from '../../src/components/api/api-reference-page';
 
 const entry = {
   key: 'root',
@@ -49,8 +49,11 @@ const messages = {
 };
 
 function renderPage(loadManifest = vi.fn(async () => manifest)) {
+  const loadAPI = vi.fn(async () => ({ index: { byId: new Map() } }));
+
   return {
     loadManifest,
+    loadAPI,
     ...render(
       <MemoryRouter initialEntries={['/en/api/example']}>
         <Routes>
@@ -61,7 +64,7 @@ function renderPage(loadManifest = vi.fn(async () => manifest)) {
                 locale="en"
                 messages={messages}
                 loadManifest={loadManifest}
-                loadAPI={vi.fn(async () => ({ index: { byId: new Map() } }))}
+                loadAPI={loadAPI}
                 getAPIHref={locale => `/${locale}/api`}
                 getPackageHref={(locale, key) => `/${locale}/api/${key}`}
                 getSymbolHref={(
@@ -115,11 +118,12 @@ describe('APIReferencePage', () => {
   });
 
   it('loads the manifest and renders a package landing page without loading a snapshot', async () => {
-    const { loadManifest } = renderPage();
+    const { loadAPI, loadManifest } = renderPage();
 
     expect(await screen.findByText('README:example:en')).toBeDefined();
-    expect(screen.getByRole('link', { name: '@scope/example' })).toBeDefined();
-    expect(screen.getByText('1 symbols')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Package' })).toBeDefined();
+    expect(screen.getByText('@scope/example')).toBeDefined();
+    expect(loadAPI).not.toHaveBeenCalled();
     expect(loadManifest).toHaveBeenCalledOnce();
   });
 });

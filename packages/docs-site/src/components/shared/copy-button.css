@@ -16,9 +16,6 @@
   display: inline-flex;
   align-items: center;
 }
-.copy-button:hover {
-  background: #ffffff16;
-}
 .copy-feedback {
   position: absolute;
   top: 50%;

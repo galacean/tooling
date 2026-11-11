@@ -14,10 +14,11 @@ function SiteProbe() {
   );
 }
 
-function renderSite(baseURL = '/') {
+function renderSite(baseURL = '/', dataBaseURL = baseURL) {
   return render(
     <DocsSite
       baseURL={baseURL}
+      dataBaseURL={dataBaseURL}
       locales={locales}
       defaultLocale="zh-CN"
       preferenceNamespace="docs-site-test"
@@ -71,6 +72,26 @@ afterEach(() => {
 });
 
 describe('DocsSite routing', () => {
+  it('loads manual data from a base separate from the route basename', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      return url.endsWith('navigation.json')
+        ? Response.json([])
+        : new Response('# Manual introduction', { status: 200 });
+    });
+
+    vi.stubGlobal('fetch', fetcher);
+    window.history.replaceState({}, '', '/pub/docs/en/manual');
+    renderSite('/pub/docs/', '/pub/');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Manual introduction' }),
+    ).toBeDefined();
+    expect(fetcher).toHaveBeenCalledWith('/pub/data/manual/navigation.json');
+    expect(fetcher).toHaveBeenCalledWith('/pub/data/manual/en/index.md');
+  });
+
   it('redirects the locale root while preserving query and hash', async () => {
     window.history.replaceState({}, '', '/?mode=all#intro');
 

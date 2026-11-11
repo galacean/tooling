@@ -23,7 +23,8 @@ export function resolveAPIVersionTarget(
     selected?.entries.find(item => item.key === entryKey) ??
     selected?.entries[0];
   const symbol =
-    entry?.symbols.find(item => item.name === symbolName) ?? entry?.symbols[0];
+    entry?.symbols.find(item => item.name === symbolName) ??
+    entry?.symbols[0];
 
   return entry === undefined || symbol === undefined
     ? undefined
@@ -58,7 +59,7 @@ export function APISymbolMenu({
   }
 
   return (
-    <nav className="api-menu" aria-label={ariaLabel}>
+    <nav className="api-menu docs-scroll-area" aria-label={ariaLabel}>
       {[...grouped].map(([name, items]) => (
         <section className="api-menu-group" key={name}>
           <h2>{name}</h2>
@@ -103,7 +104,6 @@ export interface APINavigationToolbarProps {
     apiPackage: string;
     showInherited: string;
   };
-  apiHref: string;
   getPackageHref: (key: string) => string;
   getSymbolHref: (target: APIVersionTarget) => string;
   renderKind: (kind: number) => ReactNode;
@@ -119,7 +119,6 @@ export function APINavigationToolbar({
   showInherited,
   onShowInheritedChange,
   messages: t,
-  apiHref,
   getPackageHref,
   getSymbolHref,
   renderKind,
@@ -129,10 +128,23 @@ export function APINavigationToolbar({
   return (
     <>
       <div className="api-breadcrumb">
-        <Link to={apiHref}>{t.api}</Link>
-        <span>/</span>
+        <SelectControl
+          className="api-package-select"
+          ariaLabel={t.apiPackage}
+          value={pkg.key}
+          options={packages.map(item => ({
+            value: item.key,
+            label: item.name,
+          }))}
+          onChange={value => {
+            if (packages.some(item => item.key === value)) {
+              void navigate(getPackageHref(value), { replace: true });
+            }
+          }}
+        />
         {!packageHome && (
           <>
+            <span>/</span>
             <SelectControl
               className="api-version-select"
               ariaLabel={t.version}
@@ -157,23 +169,8 @@ export function APINavigationToolbar({
                 }
               }}
             />
-            <span>/</span>
           </>
         )}
-        <SelectControl
-          className="api-package-select"
-          ariaLabel={t.apiPackage}
-          value={pkg.key}
-          options={packages.map(item => ({
-            value: item.key,
-            label: item.name,
-          }))}
-          onChange={value => {
-            if (packages.some(item => item.key === value)) {
-              void navigate(getPackageHref(value), { replace: true });
-            }
-          }}
-        />
         {!packageHome && symbol !== undefined && (
           <span className="api-current-symbol">
             / {renderKind(symbol.kind)} {symbol.name}

@@ -7,6 +7,12 @@ const navigation = [
     slug: 'getting-started',
     title: { 'zh-CN': '开始使用', en: 'Getting started' },
     group: { 'zh-CN': '指南', en: 'Guide' },
+    source: {
+      type: 'yuque',
+      namespace: 'team/book',
+      slug: 'opaque-source-slug',
+      docId: '123',
+    },
   },
 ];
 
@@ -16,10 +22,15 @@ describe('shared manual content client', () => {
       String(input).endsWith('.json')
         ? Response.json(navigation)
         : String(input).endsWith('/index.md')
-          ? new Response('# Intro\n\n## Install\n\n### Detail\n\n## Next\n')
-          : new Response('# Intro\n\n## Install\n\n### Detail\n\n## Next\n', {
-            headers: { 'Last-Modified': 'Fri, 06 Nov 2026 10:32:54 GMT' },
-          }),
+          ? new Response(
+              '# Intro\n\n## Install\n\n### Detail\n\n#### Deep\n\n## Next\n',
+            )
+          : new Response(
+              '# Intro\n\n## Install\n\n### Detail\n\n#### Deep\n\n## Next\n',
+              {
+                headers: { 'Last-Modified': 'Fri, 06 Nov 2026 10:32:54 GMT' },
+              },
+            ),
     );
     const client = createManualContentClient({
       baseURL: '/site/',
@@ -39,13 +50,25 @@ describe('shared manual content client', () => {
     expect(await client.loadPage('zh-CN', 'getting-started', first)).toEqual({
       slug: 'getting-started',
       title: '开始使用',
-      text: '# Intro\n\n## Install\n\n### Detail\n\n## Next\n',
-      headings: ['Install', 'Next'],
+      text: '# Intro\n\n## Install\n\n### Detail\n\n#### Deep\n\n## Next\n',
+      headings: [
+        { title: 'Install', level: 2 },
+        { title: 'Detail', level: 3 },
+        { title: 'Deep', level: 4 },
+        { title: 'Next', level: 2 },
+      ],
+      format: 'markdown',
       lastModified: 'Fri, 06 Nov 2026 10:32:54 GMT',
     });
     expect(await client.loadOverview('en')).toEqual({
-      text: '# Intro\n\n## Install\n\n### Detail\n\n## Next\n',
-      headings: ['Install', 'Next'],
+      text: '# Intro\n\n## Install\n\n### Detail\n\n#### Deep\n\n## Next\n',
+      headings: [
+        { title: 'Install', level: 2 },
+        { title: 'Detail', level: 3 },
+        { title: 'Deep', level: 4 },
+        { title: 'Next', level: 2 },
+      ],
+      format: 'markdown',
     });
   });
 
@@ -98,6 +121,44 @@ describe('shared manual content client', () => {
     await expect(
       client.loadPage('en', 'getting-started', pages),
     ).resolves.toMatchObject({ lastModified: '2026-11-09' });
+  });
+
+  it('loads HTML documents from .html and extracts headings from the fragment', async () => {
+    const htmlNavigation = [
+      {
+        ...navigation[0],
+        format: { 'zh-CN': 'html', en: 'markdown' },
+      },
+    ];
+    const html =
+      '<article><h2 id="install">Install</h2><h3>Detail</h3><p>Body</p></article>';
+    const requestedURLs: string[] = [];
+    const fetcher: typeof fetch = vi.fn(async (input: RequestInfo | URL) => {
+      requestedURLs.push(String(input));
+
+      return String(input).endsWith('.json')
+        ? Response.json(htmlNavigation)
+        : new Response(html);
+    });
+    const client = createManualContentClient({
+      baseURL: '/site/',
+      locales,
+      fetcher,
+    });
+    const pages = await client.loadNavigation();
+    const page = await client.loadPage('zh-CN', 'getting-started', pages);
+
+    expect(page).toMatchObject({
+      text: html,
+      headings: [
+        { title: 'Install', level: 2 },
+        { title: 'Detail', level: 3 },
+      ],
+      format: 'html',
+    });
+    expect(requestedURLs.at(-1)).toBe(
+      '/site/data/manual/zh-CN/getting-started.html',
+    );
   });
 
   it('prefers the response Last-Modified header over navigation metadata', async () => {

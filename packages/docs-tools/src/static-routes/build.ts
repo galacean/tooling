@@ -7,13 +7,9 @@ import {
 } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
+import { isManualNavigation } from '../manual/navigation';
+import { isSafePathSegment } from '../path-validation';
 import { readJSON } from '../api/read-json';
-
-interface ManualNavigationItem {
-  slug: string;
-  title: Record<string, string>;
-  group: Record<string, string>;
-}
 
 interface StaticRoute {
   locale: string;
@@ -34,15 +30,6 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
-function isSafeSegment(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value !== '.' &&
-    value !== '..' &&
-    !/[\\/\0]/u.test(value)
-  );
-}
-
 function isWithin(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
 
@@ -50,22 +37,6 @@ function isWithin(parent: string, child: string): boolean {
     relative !== '..' &&
     !relative.startsWith(`..${path.sep}`) &&
     !path.isAbsolute(relative)
-  );
-}
-
-function isManualNavigation(value: unknown): value is ManualNavigationItem[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      item =>
-        isRecord(item) &&
-        typeof item['slug'] === 'string' &&
-        isSafeSegment(item['slug']) &&
-        isRecord(item['title']) &&
-        Object.values(item['title']).every(text => typeof text === 'string') &&
-        isRecord(item['group']) &&
-        Object.values(item['group']).every(text => typeof text === 'string'),
-    )
   );
 }
 
@@ -169,7 +140,7 @@ export async function buildStaticRoutes(
     const relativePath = [locale, ...segments].join('/');
     const folded = relativePath.toLocaleLowerCase('en-US');
 
-    if (segments.some(segment => !isSafeSegment(segment))) {
+    if (segments.some(segment => !isSafePathSegment(segment))) {
       throw new Error(`Unsafe static route: ${route}`);
     }
     if (diskPaths.has(folded) && diskPaths.get(folded) !== relativePath) {
@@ -265,18 +236,29 @@ export async function buildStaticRoutes(
       }
     }
     for (const manual of navigationValue) {
-      const markdownPath = path.join(
+      const format = manual.format?.[locale] ?? 'markdown';
+      const extension = format === 'html' ? 'html' : 'md';
+      const contentPath = path.join(
         dataRoot,
         'manual',
         locale,
-        `${manual.slug}.md`,
+        `${manual.slug}.${extension}`,
       );
-      const markdown = await readFile(markdownPath, 'utf8');
+      const content = await readFile(contentPath, 'utf8');
+      const targets =
+        format === 'html'
+          ? [...content.matchAll(/(?:href|src)\s*=\s*["']([^"']+)["']/giu)].map(
+              match => match[1],
+            )
+          : [...content.matchAll(/!?(?:\[[^\]]*\])\(([^)]+)\)/gu)].map(
+              match => match[1],
+            );
 
-      for (const match of markdown.matchAll(/!?(?:\[[^\]]*\])\(([^)]+)\)/gu)) {
-        const target = match[1];
-
-        if (target === undefined || /^(https?:|mailto:)/u.test(target)) {
+      for (const target of targets) {
+        if (
+          target === undefined ||
+          /^(?:https?:|mailto:|tel:|data:|\/\/)/iu.test(target)
+        ) {
           continue;
         }
         const url = new URL(
@@ -290,7 +272,9 @@ export async function buildStaticRoutes(
         const manualPrefix = `/${locale}/manual/`;
 
         if (
-          !/\.(?:png|jpe?g|gif|webp|svg|pdf)$/iu.test(url.pathname) ||
+          !/\.(?:png|jpe?g|gif|webp|svg|pdf|mp4|webm|zip)$/iu.test(
+            url.pathname,
+          ) ||
           !url.pathname.startsWith(manualPrefix)
         ) {
           throw new Error(
@@ -309,7 +293,7 @@ export async function buildStaticRoutes(
         );
 
         if (
-          assetSegments.some(segment => !isSafeSegment(segment)) ||
+          assetSegments.some(segment => !isSafePathSegment(segment)) ||
           !isWithin(path.join(dataRoot, 'manual', locale), assetPath)
         ) {
           throw new Error(

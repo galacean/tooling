@@ -1,10 +1,16 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Icon } from '../shared';
+import { BackToTopButton, DocsSidebarCollapse, Icon } from '../shared';
 
 export interface APIReferenceLayoutProps {
-  messages: { api: string; menu: string; close: string; top: string };
-  sidebarHeading: ReactNode;
+  messages: {
+    api: string;
+    menu: string;
+    close: string;
+    top: string;
+    collapseSidebar?: string;
+    expandSidebar?: string;
+  };
   renderNavigation: (close: () => void) => ReactNode;
   toolbar: ReactNode;
   children: ReactNode;
@@ -18,7 +24,6 @@ export interface APIReferenceLayoutProps {
 
 export function APIReferenceLayout({
   messages: t,
-  sidebarHeading,
   renderNavigation,
   toolbar,
   children,
@@ -52,18 +57,20 @@ export function APIReferenceLayout({
 
   return (
     <main className={`ge-api${collapsed ? ' collapsed' : ''}`}>
-      <aside className="api-sidebar" ref={sidebar}>
-        <div className="api-sidebar-heading">{sidebarHeading}</div>
+      <aside className="api-sidebar" id="api-sidebar" ref={sidebar}>
         {renderNavigation(() => onDrawerChange(false))}
       </aside>
-      <button
-        type="button"
-        aria-label={t.menu}
-        className="api-collapse icon-action"
-        onClick={onToggleCollapsed}
-      >
-        <Icon name="menu" />
-      </button>
+      <DocsSidebarCollapse
+        label={
+          collapsed
+            ? (t.expandSidebar ?? t.menu)
+            : (t.collapseSidebar ?? t.menu)
+        }
+        expanded={!collapsed}
+        controlsId="api-sidebar"
+        className="docs-sidebar-collapse-region--api"
+        onToggle={onToggleCollapsed}
+      />
       <div className="api-content-layout">
         <header className="api-toolbar">
           {toolbar}
@@ -76,20 +83,11 @@ export function APIReferenceLayout({
             <Icon name="menu" />
           </button>
         </header>
-        <div ref={scrollRef} className="api-scroll">
+        <div ref={scrollRef} className="api-scroll docs-scroll-area">
           {children}
         </div>
-        <button
-          type="button"
-          className="api-back-top icon-action"
-          aria-label={t.top}
-          onClick={() =>
-            scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-          }
-        >
-          <Icon name="top" />
-        </button>
       </div>
+      <BackToTopButton label={t.top} scrollRef={scrollRef} />
       <dialog
         ref={drawerRef}
         className="api-drawer"

@@ -248,24 +248,18 @@ describe('shared API reflection content', () => {
     expect(markup).toContain('<dt>Returns</dt><dd><code>Result</code></dd>');
   });
 
-  it('renders a consumer-owned outline and reflection body', () => {
+  it('renders the reflection body without an API outline', () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
-        <APIReflectionLayout
-          contentsLabel="Contents"
-          overviewLabel="Overview"
-          overviewHref="#overview"
-          outline={[{ key: 'methods', label: 'Methods', href: '#methods' }]}
-        >
+        <APIReflectionLayout>
           <article>TypeDoc reflection body</article>
         </APIReflectionLayout>
       </MemoryRouter>,
     );
 
     expect(markup).toContain('class="api-detail"');
-    expect(markup).toContain('aria-label="Contents"');
-    expect(markup).toContain('href="/#overview"');
-    expect(markup).toContain('href="/#methods"');
+    expect(markup).toContain('class="api-detail-main"');
+    expect(markup).not.toContain('api-outline');
     expect(markup).toContain('<article>TypeDoc reflection body</article>');
   });
 

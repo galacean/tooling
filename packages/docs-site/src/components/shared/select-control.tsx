@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
+import { Icon } from './icon';
 
 export type SelectOption = { value: string; label: string };
 
@@ -125,7 +126,10 @@ export function SelectControl({
   };
 
   return (
-    <div className={`site-select ${className}`} ref={root}>
+    <div
+      className={`site-select${open ? ' is-open' : ''}${className === '' ? '' : ` ${className}`}`}
+      ref={root}
+    >
       <button
         ref={trigger}
         type="button"
@@ -146,12 +150,14 @@ export function SelectControl({
             {options[selectedIndex]?.label ?? value}
           </span>
         )}
-        <span className="site-select-chevron" aria-hidden="true" />
+        <span className="site-select-chevron" aria-hidden="true">
+          <Icon name="chevronDown" style={{ width: 16, height: 16 }} />
+        </span>
       </button>
       {open && (
         <div
           id={listboxId}
-          className="site-select-menu"
+          className="site-select-menu docs-dropdown-menu docs-scroll-area"
           role="listbox"
           aria-label={ariaLabel}
         >
@@ -167,8 +173,8 @@ export function SelectControl({
               aria-selected={option.value === value}
               className={
                 index === activeIndex
-                  ? 'site-select-option active'
-                  : 'site-select-option'
+                  ? 'site-select-option docs-dropdown-item active'
+                  : 'site-select-option docs-dropdown-item'
               }
               onKeyDown={handleKeyDown}
               onPointerDown={event => event.preventDefault()}

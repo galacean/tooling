@@ -1,17 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
-export interface APIReflectionOutlineItem {
-  key: string;
-  label: string;
-  href: string;
-}
-
 export interface APIReflectionLayoutProps {
-  contentsLabel: string;
-  overviewLabel: string;
-  overviewHref: string;
-  outline: APIReflectionOutlineItem[];
   children: ReactNode;
 }
 
@@ -37,24 +27,9 @@ export interface APIReflectionSectionsProps {
   groups: APIReflectionGroup[];
 }
 
-export function APIReflectionLayout({
-  contentsLabel,
-  overviewLabel,
-  overviewHref,
-  outline,
-  children,
-}: APIReflectionLayoutProps) {
+export function APIReflectionLayout({ children }: APIReflectionLayoutProps) {
   return (
     <div className="api-detail">
-      <aside className="api-outline" aria-label={contentsLabel}>
-        <strong>{contentsLabel}</strong>
-        <Link to={overviewHref}>{overviewLabel}</Link>
-        {outline.map(item => (
-          <Link key={item.key} to={item.href}>
-            {item.label}
-          </Link>
-        ))}
-      </aside>
       <div className="api-detail-main">{children}</div>
     </div>
   );

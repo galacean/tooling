@@ -10,6 +10,7 @@ import { loadSiteConfig } from '../config/site-config';
 import { buildPackageReadmes } from '../package-readmes/build';
 import { buildSearchIndexes } from '../search/build';
 import { buildStaticRoutes } from '../static-routes/build';
+import { syncManuals } from '../manual/sync';
 import { syncManagedSkill } from '../skills/sync';
 import packageJSON from '../../package.json' with { type: 'json' };
 
@@ -17,7 +18,7 @@ const [group, action, ...args] = process.argv.slice(2);
 
 function usage(): void {
   console.info(
-    `Usage:\n  galacean-docs api generate --config <path> [package-key...]\n  galacean-docs api extract --config <path> <snapshot-path...>\n  galacean-docs api apply --config <path> <task-path> <translation-path> [...pairs]\n  galacean-docs api snapshots clean --config <path>\n  galacean-docs package-readmes build --config <path>\n  galacean-docs search build --config <path>\n  galacean-docs routes build --config <path>\n  galacean-docs skills sync --config <path> [--check]`,
+    `Usage:\n  galacean-docs api generate --config <path> [package-key...]\n  galacean-docs api extract --config <path> <snapshot-path...>\n  galacean-docs api apply --config <path> <task-path> <translation-path> [...pairs]\n  galacean-docs api snapshots clean --config <path>\n  galacean-docs manual sync --config <path>\n  galacean-docs package-readmes build --config <path>\n  galacean-docs search build --config <path>\n  galacean-docs routes build --config <path>\n  galacean-docs skills sync --config <path> [--check]`,
   );
 }
 
@@ -136,6 +137,18 @@ if (group === '--help' || group === '-h') {
   for (const [locale, count] of Object.entries(counts)) {
     console.info(`${locale}: ${count} search results`);
   }
+} else if (group === 'manual' && action === 'sync') {
+  const { config: configFile, remaining } = parseConfig(args);
+
+  if (remaining.length > 0) {
+    throw new Error('manual sync does not accept additional arguments');
+  }
+  const config = await loadSiteConfig(configFile, process.cwd());
+  const result = await syncManuals(config);
+
+  console.info(
+    `Manuals: ${result.collections} collections; ${result.documents} documents synchronized`,
+  );
 } else if (group === 'package-readmes' && action === 'build') {
   const { config: configFile, remaining } = parseConfig(args);
 
@@ -180,19 +193,25 @@ if (group === '--help' || group === '-h') {
     const repositoryRoot = process.cwd();
 
     await loadSiteConfig(config, repositoryRoot);
-    const sourceDirectory = fileURLToPath(
-      new URL('../../skills/api-documentation-translation/', import.meta.url),
-    );
-    const result = await syncManagedSkill({
-      repositoryRoot,
-      sourceDirectory,
-      packageVersion: packageJSON.version,
-      check,
-    });
+    for (const skillName of [
+      'api-documentation-translation',
+      'manual-documentation-translation',
+    ]) {
+      const sourceDirectory = fileURLToPath(
+        new URL(`../../skills/${skillName}/`, import.meta.url),
+      );
+      const result = await syncManagedSkill({
+        repositoryRoot,
+        sourceDirectory,
+        packageVersion: packageJSON.version,
+        skillName,
+        check,
+      });
 
-    console.info(
-      `${check ? 'Verified' : result.changed ? 'Synchronized' : 'Already current'}: ${result.targetDirectory}`,
-    );
+      console.info(
+        `${check ? 'Verified' : result.changed ? 'Synchronized' : 'Already current'}: ${result.targetDirectory}`,
+      );
+    }
   }
 } else {
   usage();

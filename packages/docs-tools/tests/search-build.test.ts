@@ -258,6 +258,79 @@ void test('builds search indexes from each package current path and localized co
   assert.deepEqual(counts, { en: english.length, 'zh-CN': chinese.length });
 });
 
+void test('builds manual-only indexes without an API manifest and accepts short pages', async t => {
+  const values = await fixture(t);
+  const manualOnlyConfig = { ...values.config };
+
+  Reflect.deleteProperty(manualOnlyConfig, 'packageReadmes');
+  await rm(path.join(values.apiDirectory, 'manifest.json'));
+  await writeFile(
+    path.join(values.repositoryRoot, 'site/public/data/manual/en/intro.md'),
+    '# Introduction\n\nA short manual page.\n',
+  );
+  await writeFile(
+    path.join(values.repositoryRoot, 'site/public/data/manual/zh-CN/intro.md'),
+    '# 介绍\n\n简短手册内容。\n',
+  );
+
+  const counts = await buildSearchIndexes(manualOnlyConfig);
+  const english = JSON.parse(
+    await readFile(path.join(values.outputDirectory, 'en.json'), 'utf8'),
+  ) as { category: string; name: string; url: string }[];
+  const chinese = JSON.parse(
+    await readFile(path.join(values.outputDirectory, 'zh-CN.json'), 'utf8'),
+  ) as { category: string; name: string; url: string }[];
+
+  assert.deepEqual(counts, { en: 1, 'zh-CN': 1 });
+  assert.deepEqual(english, [
+    {
+      category: 'manual',
+      name: 'Introduction',
+      summary: 'Introduction A short manual page.',
+      keywords: 'Introduction A short manual page.',
+      sourceLocale: 'en',
+      url: '/en/manual/intro/',
+    },
+  ]);
+  assert.equal(chinese[0]?.category, 'manual');
+  assert.equal(chinese[0]?.name, '介绍');
+});
+
+void test('indexes text from HTML manuals without changing their display format', async t => {
+  const values = await fixture(t);
+  const manualOnlyConfig = { ...values.config };
+
+  Reflect.deleteProperty(manualOnlyConfig, 'packageReadmes');
+  await rm(path.join(values.apiDirectory, 'manifest.json'));
+  await writeFile(
+    path.join(values.repositoryRoot, 'site/public/data/manual/navigation.json'),
+    JSON.stringify([
+      {
+        slug: 'intro',
+        title: { en: 'Introduction', 'zh-CN': '介绍' },
+        group: { en: 'Start', 'zh-CN': '开始' },
+        format: { en: 'html', 'zh-CN': 'markdown' },
+      },
+    ]),
+  );
+  await writeFile(
+    path.join(values.repositoryRoot, 'site/public/data/manual/en/intro.html'),
+    '<article><h1>Introduction</h1><p>HTML body is searchable.</p></article>',
+  );
+
+  await buildSearchIndexes(manualOnlyConfig);
+
+  const english = JSON.parse(
+    await readFile(path.join(values.outputDirectory, 'en.json'), 'utf8'),
+  ) as { category: string; name: string; summary: string; keywords: string }[];
+
+  assert.equal(english.length, 1);
+  assert.equal(english[0]?.name, 'Introduction');
+  assert.match(english[0]?.summary ?? '', /HTML body is searchable/u);
+  assert.doesNotMatch(english[0]?.summary ?? '', /<\/?(?:article|p|h1)/iu);
+  assert.doesNotMatch(english[0]?.keywords ?? '', /<\/?(?:article|p|h1)/iu);
+});
+
 void test('runs search build from the mjs CLI', async t => {
   const values = await fixture(t);
   const cliPath = path.resolve(import.meta.dirname, '../bin/galacean-docs.mjs');

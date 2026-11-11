@@ -119,3 +119,28 @@ void test('preserves a legacy tmp directory while synchronizing only the managed
     check: true,
   });
 });
+
+void test('synchronizes additional named skills with independent managed manifests', async t => {
+  const { source, repositoryRoot } = await fixture(t);
+  const result = await syncManagedSkill({
+    repositoryRoot,
+    sourceDirectory: source,
+    packageVersion: '0.0.1',
+    skillName: 'manual-documentation-translation',
+  });
+
+  assert.equal(
+    result.targetDirectory,
+    path.join(
+      repositoryRoot,
+      '.agents/skills/manual-documentation-translation',
+    ),
+  );
+  await syncManagedSkill({
+    repositoryRoot,
+    sourceDirectory: source,
+    packageVersion: '0.0.1',
+    skillName: 'manual-documentation-translation',
+    check: true,
+  });
+});

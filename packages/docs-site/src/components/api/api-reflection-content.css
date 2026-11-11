@@ -11,15 +11,12 @@
   border: 1px solid transparent;
   border-radius: 3px;
 }
-.api-source:hover {
-  color: var(--site-link);
-}
 .api-descriptions {
   margin: 4px 0 12px;
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 13px;
+  font-size: var(--site-doc-body-size);
 }
 .api-description-row {
   display: grid;
@@ -51,6 +48,7 @@
   margin: 2px 0 8px;
   overflow: hidden;
   border: 1px solid var(--site-border);
+  border-radius: 5px;
   background: var(--site-surface);
 }
 .api-signature-panel .api-descriptions {
@@ -88,7 +86,7 @@
 }
 .api-no-description {
   color: var(--site-muted);
-  font-size: 13px;
+  font-size: var(--site-doc-body-size);
 }
 
 @media (max-width: 767px) {

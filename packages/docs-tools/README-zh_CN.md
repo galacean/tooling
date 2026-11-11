@@ -18,6 +18,7 @@ pnpm add -D @galacean/docs-tools
 
 ```sh
 pnpm exec galacean-docs api generate --config site/site.config.ts
+pnpm exec galacean-docs manual sync --config site/site.config.ts
 pnpm exec galacean-docs package-readmes build --config site/site.config.ts
 pnpm exec galacean-docs search build --config site/site.config.ts
 pnpm exec galacean-docs routes build --config site/site.config.ts
@@ -57,6 +58,71 @@ export default {
 `api.packages` 用于 API 生成：`key` 是文档数据中的稳定标识，`name` 必须与包的 `package.json` 一致，`directory` 指向包目录，`tsconfig` 指向包内 TypeScript 配置。每个 `entries` 项配置一个公开入口；`types` 用于确定导出的声明，`source` 用于关联源码。可选的 `api.typedocOptions` 和 `api.sourceLinkTemplate` 分别传递 TypeDoc 选项和源码链接模板。
 
 `packageReadmes` 将 API 包 key 映射到各语言的 README 路径。缺少某种语言的路径，或该语言文件不存在时，会回退到 README 源语言。`packageReadmeSourceLocales` 可为个别包指定不同于 `sourceLocale` 的 README 源语言。`translationWorkDirectory` 默认为 `tmp/docs-tools/api-translation`。配置中的数据目录、包目录和文件路径必须位于仓库内。
+
+### 手册集合
+
+`manuals` 为可选配置，因此现有站点可以继续自行维护 `manual/navigation.json` 和 Markdown。配置后，`manual sync` 会将所有集合归一化为同一静态数据格式。集合 key 和生成后的路由 slug 必须唯一。
+
+```ts
+manuals: [
+  {
+    key: 'product-guide',
+    routePrefix: 'product',
+    source: {
+      type: 'yuque',
+      mode: 'repo',
+      baseURL: 'https://www.yuque.com/api/v2',
+      namespace: 'team/product-guide',
+      tokenEnv: 'YUQUE_TOKEN',
+      locale: 'zh-CN',
+    },
+    ignore: {
+      docIds: [],
+      slugs: ['draft'],
+      titleContains: ['[private]'],
+    },
+    translations: { en: 'site/manual-translations/product-guide/en' },
+  },
+  {
+    key: 'selected-articles',
+    source: {
+      type: 'yuque',
+      mode: 'documents',
+      baseURL: 'https://www.yuque.com/api/v2',
+      tokenEnv: 'YUQUE_TOKEN',
+      locale: 'zh-CN',
+      documents: [
+        {
+          namespace: 'team/one',
+          slug: 'getting-started',
+          routeSlug: 'getting-started',
+          group: '指南',
+        },
+        {
+          namespace: 'team/two',
+          slug: 'migration',
+          routeSlug: 'migration',
+          group: '迁移',
+        },
+      ],
+    },
+  },
+  {
+    key: 'local-notes',
+    source: {
+      type: 'local',
+      directory: 'site/manual-local/notes',
+      locale: 'en',
+    },
+  },
+];
+```
+
+`repo` 按 TOC 顺序读取知识库，并在拉取正文前应用 `ignore`；命中 `TITLE` 目录节点时会排除其整个子树。`documents` 只按清单顺序请求明确列出的文档，不读取 TOC。清单项可提供 `docId`，供 `ignore.docIds` 在请求前过滤；`documentRefs` 按精确的 `namespace`/`slug` 匹配。`slugs` 和 `titleContains` 仅用于 repo 模式。本地集合目录包含 `navigation.json` 和 `<locale>/<slug>.md` 文件。
+
+Yuque `baseURL` 必须是 HTTP(S) API 地址，可配置外网或获准的内网 endpoint。`tokenEnv` 只配置环境变量名，不能把 Token 写入站点配置；手册源语言必须属于站点支持语言。`routePrefix` 会添加到生成的路由 slug 前。翻译目录中使用 `<route-slug>.md`；可选的 `navigation.json` 以路由 slug 为 key，维护翻译后的 `title` 和 `group`。缺少译文时回退到源 Markdown。
+
+本地集合也可以直接与输出目录 `manual/` 共用同一目录。此时在 `navigation.json` 的本地手册项上标记 `source: { type: 'local' }`；同步只读取带该标记的条目，Yuque 生成项会标记为 `source.type: 'yuque'`，不会被再次当作本地输入。对应 Markdown 仍放在 `<locale>/<slug>.md`。
 
 ## 命令
 
@@ -126,6 +192,14 @@ pnpm exec galacean-docs search build --config site/site.config.ts
 
 为每种语言构建 `search/<locale>.json`。数据来源包括当前 API 快照中的公开符号及成员、包 README，以及 `manual/navigation.json` 列出的手册页面。索引包含名称、摘要、关键词和站内 URL；README 未翻译时也会按配置回退到源语言。构建需要有效的 API manifest、对应快照、README 配置和各语言手册内容。
 
+### `manual sync`
+
+```sh
+pnpm exec galacean-docs manual sync --config site/site.config.ts
+```
+
+将配置的本地和 Yuque 集合同步到 API 数据目录同级的 `manual/navigation.json` 与 `manual/<locale>/<route-slug>.md` 或 `.html`。Yuque 请求只从 `tokenEnv` 指定的环境变量读取凭证，设置 15 秒超时，并对限流和服务端错误进行有限重试；支持原始 Markdown 与 Yuque Lake HTML，翻译文件仍使用 Markdown。数据先写入临时目录并完成校验，再替换生成目录。应在搜索和前端构建前运行。未配置 `manuals` 的站点仍可自行管理静态手册数据。
+
 ### `routes build`
 
 ```sh
@@ -145,17 +219,18 @@ pnpm exec galacean-docs skills sync --config site/site.config.ts
 pnpm exec galacean-docs skills sync --config site/site.config.ts --check
 ```
 
-将本工具随包发布的 `api-documentation-translation` 技能同步到仓库的 `.agents/skills/api-documentation-translation`。同步清单会记录包版本和文件哈希；如果目标目录不是由本工具管理，或受管理文件被手动修改，命令会拒绝覆盖。`--check` 只检查目标是否与当前包版本一致，不写入文件；不一致时以错误退出。
+将本工具随包发布的 `api-documentation-translation` 和 `manual-documentation-translation` 技能同步到仓库 `.agents/skills` 下的对应目录。每个托管清单都会记录包版本和文件哈希；如果目标目录不是由本工具管理，或托管文件被手动修改，命令会拒绝覆盖。`--check` 同时校验两个技能且不写入文件；任一缺失或过期都会以错误退出。
 
 ## 推荐流水线
 
 首次构建或更新站点数据时，通常按以下顺序执行：
 
 1. 运行 `api generate`，生成 API 快照和 manifest。
-2. 如需更新 API 注释译文，运行 `api extract`，完成翻译后运行 `api apply`。
-3. 运行 `package-readmes build` 和 `search build`，生成 README 数据和搜索索引。
-4. 使用站点自身的构建命令生成 `site/dist`，再运行 `routes build`。
-5. 如仓库使用翻译技能，运行 `skills sync`；CI 可用 `--check` 验证同步状态。
+2. 配置了 `manuals` 时，在进程可读取 Yuque Token 环境变量的前提下运行 `manual sync`。
+3. 如需更新 API 注释译文，运行 `api extract`，完成翻译后运行 `api apply`。
+4. 运行 `package-readmes build` 和 `search build`，生成 README 数据和搜索索引。
+5. 使用站点自身的构建命令生成 `site/dist`，再运行 `routes build`。
+6. 运行 `skills sync`；CI 可用 `--check` 同时校验两个托管技能。
 
 查询命令语法：
 

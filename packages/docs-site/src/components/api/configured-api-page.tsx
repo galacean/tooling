@@ -5,10 +5,7 @@ import {
   resolveAPIReadmeImage,
   resolveAPIReadmeLink,
 } from '../../data';
-import type {
-  APIReadmeLinkOptions,
-  TypeDocAPIDocumentationData,
-} from '../../data';
+import type { APIReadmeLinkOptions, TypeDocAPIDocumentationData } from '../../data';
 import type { DocsSiteMessages } from '../site/docs-site';
 import { APIReferenceRoute } from './api-reference-route';
 
@@ -24,7 +21,7 @@ export interface DocsSiteAPIConfiguration {
   packageReadmes: Record<string, Partial<Record<string, string>>>;
 }
 
-function renderSourceURL(
+function renderSourceURL (
   template: string,
   revision: string,
   filePath: string,
@@ -35,7 +32,7 @@ function renderSourceURL(
     .replaceAll('{path}', filePath);
 }
 
-function getTypeDocClient(
+function getTypeDocClient (
   baseURL: string,
   locales: readonly string[],
 ): TypeDocClient {
@@ -50,7 +47,7 @@ function getTypeDocClient(
   return client;
 }
 
-export function ConfiguredAPIPage({
+export function ConfiguredAPIPage ({
   baseURL,
   locales,
   locale,

@@ -1,56 +1,29 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { convert } from 'html-to-text';
 import {
-  indexReflections,
-  getAPISymbolRouteSegment,
-  isRecord,
-  parseAPIManifest,
-  parseProject,
+  indexReflections, getAPISymbolRouteSegment, isRecord, parseAPIManifest, parseProject,
 } from '@galacean/docs-site';
 import type { APIManifest, SearchResult } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
 import { readJSON } from '../api/read-json';
 import { readAPISnapshot } from '../api/snapshot-reference';
+import { isManualNavigation } from '../manual/navigation';
+import type { ManualNavigationItem } from '../manual/navigation';
+import { isSafePathSegment } from '../path-validation';
 import { readPackageReadme } from '../package-readmes/read';
 
-interface ManualNavigationItem {
-  slug: string;
-  title: Record<string, string>;
-  group: Record<string, string>;
+function errorCode (error: unknown): string | undefined {
+  return error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
 }
 
-function isSafeSegment(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value !== '.' &&
-    value !== '..' &&
-    !/[\\/\0]/u.test(value)
-  );
-}
-
-function isLocalizedRecord(value: unknown): value is Record<string, string> {
-  return (
-    isRecord(value) &&
-    Object.values(value).every(item => typeof item === 'string')
-  );
-}
-
-function isManualNavigation(value: unknown): value is ManualNavigationItem[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      item =>
-        isRecord(item) &&
-        typeof item['slug'] === 'string' &&
-        isSafeSegment(item['slug']) &&
-        isLocalizedRecord(item['title']) &&
-        isLocalizedRecord(item['group']),
-    )
-  );
-}
-
-function typeKeywords(value: unknown): string[] {
+function typeKeywords (value: unknown): string[] {
   if (value === null || typeof value !== 'object') {
     return typeof value === 'string' ? [value] : [];
   }
@@ -58,7 +31,7 @@ function typeKeywords(value: unknown): string[] {
   return Object.values(value).flatMap(typeKeywords);
 }
 
-function searchableMarkdown(markdown: string): string {
+function searchableMarkdown (markdown: string): string {
   return markdown
     .replace(/```[\s\S]*?```/gu, ' ')
     .replace(/!?\[([^\]]*)\]\([^)]+\)/gu, '$1')
@@ -67,7 +40,7 @@ function searchableMarkdown(markdown: string): string {
     .trim();
 }
 
-function commentText(
+function commentText (
   reflection: Record<string, unknown>,
   sourceLocale: string,
 ) {
@@ -84,9 +57,9 @@ function commentText(
   const summary =
     isRecord(comment) && Array.isArray(comment['summary'])
       ? comment['summary']
-          .filter(isRecord)
-          .map(part => (typeof part['text'] === 'string' ? part['text'] : ''))
-          .join('')
+        .filter(isRecord)
+        .map(part => (typeof part['text'] === 'string' ? part['text'] : ''))
+        .join('')
       : '';
 
   return {
@@ -98,7 +71,7 @@ function commentText(
   };
 }
 
-async function buildAPIResults(
+async function buildAPIResults (
   config: DocsSiteConfig,
   manifest: APIManifest,
   locale: string,
@@ -107,7 +80,7 @@ async function buildAPIResults(
   const results: SearchResult[] = [];
 
   for (const pkg of manifest.packages) {
-    if (!isSafeSegment(pkg.key)) {
+    if (!isSafePathSegment(pkg.key)) {
       throw new Error(`Unsafe API package key in manifest: ${pkg.key}`);
     }
     const snapshotPath = pkg.current.json[locale];
@@ -117,11 +90,13 @@ async function buildAPIResults(
         `Missing current API snapshot path: ${pkg.key}/${locale}`,
       );
     }
-    const snapshot: unknown = (await readAPISnapshot(
-      path.resolve(dataRoot, snapshotPath),
-      dataRoot,
-      config.repositoryRoot,
-    )).value;
+    const snapshot: unknown = (
+      await readAPISnapshot(
+        path.resolve(dataRoot, snapshotPath),
+        dataRoot,
+        config.repositoryRoot,
+      )
+    ).value;
 
     if (!isRecord(snapshot) || snapshot['locale'] !== locale) {
       throw new Error(`Invalid current API snapshot: ${pkg.key}/${locale}`);
@@ -188,7 +163,7 @@ async function buildAPIResults(
   return results;
 }
 
-async function buildReadmeResults(
+async function buildReadmeResults (
   config: DocsSiteConfig,
   manifest: APIManifest,
   locale: string,
@@ -196,7 +171,7 @@ async function buildReadmeResults(
   const results: SearchResult[] = [];
 
   for (const pkg of manifest.packages) {
-    if (!isSafeSegment(pkg.key)) {
+    if (!isSafePathSegment(pkg.key)) {
       throw new Error(`Unsafe API package key in manifest: ${pkg.key}`);
     }
     const { text: readme, sourceLocale } = await readPackageReadme(
@@ -223,7 +198,7 @@ async function buildReadmeResults(
   return results;
 }
 
-async function buildManualResults(
+async function buildManualResults (
   config: DocsSiteConfig,
   navigation: ManualNavigationItem[],
   locale: string,
@@ -233,20 +208,37 @@ async function buildManualResults(
   const results: SearchResult[] = [];
 
   for (const manual of navigation) {
-    const markdownPath = path.join(manualRoot, locale, `${manual.slug}.md`);
+    const format = manual.format?.[locale] ?? 'markdown';
+    const extension = format === 'html' ? 'html' : 'md';
+    const contentPath = path.join(
+      manualRoot,
+      locale,
+      `${manual.slug}.${extension}`,
+    );
 
-    await assertNoSymlinkPath(config.repositoryRoot, markdownPath);
-    const markdown = await readFile(markdownPath, 'utf8');
-    const title = /^# (.+)$/mu.exec(markdown)?.[1];
+    await assertNoSymlinkPath(config.repositoryRoot, contentPath);
+    const content = await readFile(contentPath, 'utf8');
+    const searchableText =
+      format === 'html'
+        ? convert(content, { wordwrap: false })
+        : searchableMarkdown(content);
+    const title =
+      format === 'html'
+        ? manual.title[locale]
+        : /^# (.+)$/mu.exec(content)?.[1];
 
-    if (title === undefined || markdown.trim().length < 150) {
+    if (
+      title === undefined ||
+      title.trim() === '' ||
+      searchableText.trim() === ''
+    ) {
       throw new Error(`Missing manual content: ${locale}/${manual.slug}`);
     }
     results.push({
       category: 'manual',
       name: title,
-      summary: searchableMarkdown(markdown).slice(0, 250),
-      keywords: markdown,
+      summary: searchableText.slice(0, 250),
+      keywords: searchableText,
       sourceLocale: locale,
       url: `/${locale}/manual/${manual.slug}/`,
     });
@@ -255,7 +247,7 @@ async function buildManualResults(
   return results;
 }
 
-export async function buildSearchIndexes(
+export async function buildSearchIndexes (
   config: DocsSiteConfig,
 ): Promise<Record<string, number>> {
   const dataRoot = path.dirname(config.apiDirectory);
@@ -264,7 +256,19 @@ export async function buildSearchIndexes(
 
   await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
   await assertNoSymlinkPath(config.repositoryRoot, navigationPath);
-  const manifest = parseAPIManifest(await readJSON(manifestPath));
+  let manifest: APIManifest | undefined;
+
+  try {
+    manifest = parseAPIManifest(await readJSON(manifestPath));
+  } catch (error) {
+    if (
+      errorCode(error) !== 'ENOENT' ||
+      config.apiPackages !== undefined ||
+      config.packageReadmes !== undefined
+    ) {
+      throw error;
+    }
+  }
   const navigationValue: unknown = await readJSON(navigationPath);
 
   if (!isManualNavigation(navigationValue)) {
@@ -277,8 +281,12 @@ export async function buildSearchIndexes(
   await mkdir(outputDirectory, { recursive: true });
   for (const locale of config.locales) {
     const results = [
-      ...(await buildAPIResults(config, manifest, locale)),
-      ...(await buildReadmeResults(config, manifest, locale)),
+      ...(manifest === undefined
+        ? []
+        : await buildAPIResults(config, manifest, locale)),
+      ...(manifest === undefined
+        ? []
+        : await buildReadmeResults(config, manifest, locale)),
       ...(await buildManualResults(config, navigationValue, locale)),
     ];
 

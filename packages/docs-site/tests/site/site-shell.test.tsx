@@ -5,7 +5,9 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MemoryRouter,
@@ -13,10 +15,14 @@ import {
   Routes,
   useNavigate,
   useLocation,
+  useOutletContext,
   useParams,
 } from 'react-router-dom';
 import { SiteShell } from '../../src/components/site/site-shell';
-import type { SiteShellMessages } from '../../src/components/site/site-shell';
+import type {
+  SiteShellMessages,
+  SiteShellOutletContext,
+} from '../../src/components/site/site-shell';
 import { ThemeProvider } from '../../src/providers/theme';
 
 const messages: SiteShellMessages = {
@@ -54,9 +60,18 @@ function CurrentLocation() {
 function RoutedManualPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { setManualPageTitle, setManualSidebarCollapsed } =
+    useOutletContext<SiteShellOutletContext>();
+
+  useEffect(() => {
+    setManualPageTitle(slug ?? 'Manual');
+  }, [setManualPageTitle, slug]);
 
   return (
     <aside className="manual-sidebar">
+      <button type="button" onClick={() => setManualSidebarCollapsed(true)}>
+        Collapse directory
+      </button>
       <button
         type="button"
         onClick={() => {
@@ -70,7 +85,9 @@ function RoutedManualPage() {
   );
 }
 
-function RoutedSiteShell() {
+function RoutedSiteShell({
+  pageKind = 'manual',
+}: { pageKind?: 'manual' | 'api' | 'other' } = {}) {
   const { locale = 'en' } = useParams();
   const locales = [
     { value: 'en', label: 'English' },
@@ -83,11 +100,21 @@ function RoutedSiteShell() {
       locales={locales}
       messages={messages}
       brandLabel="Example Docs"
-      brandMarkUrls={{ light: '/brand-light.svg', dark: '/brand-dark.svg' }}
+      brandMarkUrls={{
+        light: '/artis-logo.svg',
+        dark: '/artis-logo-dark.svg',
+      }}
+      docsBrandMarkUrls={{
+        light: '/brand/artis-mark-light.svg',
+        dark: '/brand/artis-mark-dark.svg',
+      }}
       homeHref={`/${locale}`}
-      navigation={[{ key: 'manual', label: 'Manual', to: `/${locale}/manual` }]}
+      navigation={[
+        { key: 'manual', label: 'Manual', to: `/${locale}/manual` },
+        { key: 'api', label: 'API', to: `/${locale}/api` },
+      ]}
       historyKeyPrefix="example:docs:search"
-      pageKind="manual"
+      pageKind={pageKind}
       canonicalHref={`https://example.test/${locale}/manual`}
       getAlternateHref={language => `https://example.test/${language}/manual`}
       getLocaleHref={(language, search, hash) =>
@@ -131,9 +158,19 @@ function renderSite({
     <ThemeProvider namespace="example:docs">
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
+          <Route
+            path="/:locale"
+            element={<RoutedSiteShell pageKind="other" />}
+          />
           <Route path="/:locale/manual" element={<RoutedSiteShell />}>
             <Route index element={<CurrentLocation />} />
             <Route path=":slug" element={<RoutedManualPage />} />
+          </Route>
+          <Route
+            path="/:locale/api"
+            element={<RoutedSiteShell pageKind="api" />}
+          >
+            <Route index element={<CurrentLocation />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -198,17 +235,153 @@ afterEach(() => {
 });
 
 describe('SiteShell preferences', () => {
+  it('renders the shared left brand and responsive search for API pages', async () => {
+    renderSite({ initialEntry: '/en/api' });
+
+    expect(await screen.findByText('/en/api')).toBeDefined();
+    const sidebarHead = document.querySelector('.api-shell .docs-sidebar-head');
+
+    expect(sidebarHead).not.toBeNull();
+    expect(
+      sidebarHead?.querySelector('.docs-page-switcher-current')?.textContent,
+    ).toBe('API');
+    expect(
+      sidebarHead
+        ?.querySelector('.docs-page-switcher-current')
+        ?.getAttribute('href'),
+    ).toBe('/en/api');
+    expect(
+      sidebarHead?.querySelector('.docs-sidebar-search-trigger'),
+    ).not.toBeNull();
+    const sidebarSearchShortcut =
+      sidebarHead?.querySelector('kbd')?.textContent;
+    const headerSearch = document.querySelector(
+      '.api-shell .docs-header-tools .docs-mobile-search',
+    );
+    const expectedShortcut = /Mac|iPhone|iPad|iPod/u.test(navigator.platform)
+      ? '⌘ K'
+      : 'Ctrl K';
+
+    expect(sidebarSearchShortcut).toBe(expectedShortcut);
+    expect(headerSearch?.querySelector('kbd')?.textContent).toBe(
+      sidebarSearchShortcut,
+    );
+    expect(
+      document.querySelector('.api-shell .docs-site-header .search-trigger'),
+    ).toBeNull();
+  });
+
+  it('switches document sections from the sidebar crumb menu', async () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+
+    const switcher = screen.getByRole('button', { name: 'Switch page' });
+
+    fireEvent.click(switcher);
+
+    const menu = screen.getByRole('menu', { name: 'Switch page' });
+
+    expect(menu.classList.contains('docs-dropdown-menu')).toBe(true);
+    expect(within(menu).getByRole('menuitem', { name: 'Home' })).not.toBeNull();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Manual' }),
+    ).not.toBeNull();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'API' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('/en/api')).toBeDefined();
+    });
+  });
+
+  it('navigates from the crumb label without opening the page menu', async () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+
+    fireEvent.click(screen.getByRole('link', { name: 'Manual' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('/en/manual')).toBeDefined();
+    });
+    expect(screen.queryByRole('menu', { name: 'Switch page' })).toBeNull();
+  });
+
+  it('closes the sidebar page menu on Escape and outside pointer', () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+    const trigger = screen.getByRole('button', { name: 'Switch page' });
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Switch page' })).toBeDefined();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('menu', { name: 'Switch page' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole('menu', { name: 'Switch page' })).toBeNull();
+  });
+
+  it('tracks the collapsed manual sidebar state on the shell', async () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+    const shell = document.querySelector('.site-shell');
+
+    expect(shell?.classList.contains('manual-sidebar-collapsed')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse directory' }));
+
+    await waitFor(() =>
+      expect(shell?.classList.contains('manual-sidebar-collapsed')).toBe(true),
+    );
+  });
+
+  it('renders the current manual title in the document header', async () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+
+    expect(
+      await screen.findByText('first', { selector: '.docs-shell-title' }),
+    ).toBeDefined();
+    expect(document.querySelector('.docs-site-header')).not.toBeNull();
+    expect(document.querySelector('.manual-shell .site-header')).toBeNull();
+    expect(document.querySelector('.manual-reader-title')).toBeNull();
+  });
+
   it('switches the brand mark with the resolved theme', async () => {
     renderSite();
 
-    const logo = document.querySelector<HTMLImageElement>('.site-brand .brand-mark');
+    const logo = document.querySelector<HTMLImageElement>(
+      '.docs-sidebar-logo .brand-mark',
+    );
 
-    expect(logo?.getAttribute('src')).toBe('/brand-light.svg');
+    expect(logo?.getAttribute('src')).toBe('/brand/artis-mark-light.svg');
     fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
     fireEvent.click(screen.getByRole('option', { name: 'Dark' }));
 
     await waitFor(() =>
-      expect(logo?.getAttribute('src')).toBe('/brand-dark.svg'),
+      expect(logo?.getAttribute('src')).toBe('/brand/artis-mark-dark.svg'),
+    );
+
+    fireEvent.click(document.querySelector('.docs-sidebar-search-nav button')!);
+
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector<HTMLImageElement>('.site-search-heading > img')
+          ?.getAttribute('src'),
+      ).toBe('/brand/artis-mark-dark.svg'),
+    );
+  });
+
+  it('keeps the original product logo on the home site brand', async () => {
+    renderSite({ initialEntry: '/en' });
+
+    const logo = document.querySelector<HTMLImageElement>(
+      '.site-brand .brand-mark',
+    );
+
+    expect(logo?.getAttribute('src')).toBe('/artis-logo.svg');
+    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Dark' }));
+
+    await waitFor(() =>
+      expect(logo?.getAttribute('src')).toBe('/artis-logo-dark.svg'),
     );
   });
 
@@ -226,11 +399,22 @@ describe('SiteShell preferences', () => {
     const { storage } = renderSite();
 
     fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+    expect(
+      screen
+        .getByRole('listbox', { name: 'Language' })
+        .classList.contains('docs-dropdown-menu'),
+    ).toBe(true);
+    expect(
+      document.querySelector('.language-select')?.classList.contains('is-open'),
+    ).toBe(true);
     fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
 
     await waitFor(() => {
       expect(screen.getByText('/zh-CN/manual?tab=read#intro')).toBeDefined();
     });
+    expect(
+      document.querySelector('.language-select')?.classList.contains('is-open'),
+    ).toBe(false);
     expect(storage.setItem).toHaveBeenCalledWith(
       'example:docs:locale',
       'zh-CN',
@@ -262,7 +446,9 @@ describe('SiteShell preferences', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
 
     await waitFor(() =>
-      expect(screen.getByText('second', { selector: '.manual-sidebar span' })).toBeDefined(),
+      expect(
+        screen.getByText('second', { selector: '.manual-sidebar span' }),
+      ).toBeDefined(),
     );
     expect(document.querySelector('.manual-sidebar')).toBe(sidebar);
     expect(sidebar?.scrollTop).toBe(120);
@@ -280,5 +466,64 @@ describe('SiteShell preferences', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Search' })).toBeNull(),
     );
+  });
+
+  it('shows the platform shortcut consistently for narrow and sidebar search', async () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+
+    const expectedShortcut = /Mac|iPhone|iPad|iPod/u.test(navigator.platform)
+      ? '⌘ K'
+      : 'Ctrl K';
+
+    expect(
+      document.querySelector('.docs-sidebar-search-trigger kbd')?.textContent,
+    ).toBe(expectedShortcut);
+    expect(
+      document.querySelector('.docs-header-tools .docs-mobile-search kbd')
+        ?.textContent,
+    ).toBe(expectedShortcut);
+    expect(
+      document.querySelector('.docs-site-header .search-trigger'),
+    ).toBeNull();
+    fireEvent.keyDown(window, { key: 'j', metaKey: true });
+
+    expect(screen.queryByRole('dialog', { name: 'Search' })).toBeNull();
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+
+    expect(await screen.findByRole('dialog', { name: 'Search' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Search' })).toBeNull(),
+    );
+  });
+
+  it('shows Command-K on Apple platforms', () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(
+      navigator,
+      'platform',
+    );
+
+    try {
+      Object.defineProperty(navigator, 'platform', {
+        configurable: true,
+        value: 'MacIntel',
+      });
+      renderSite({ initialEntry: '/en/manual/first' });
+
+      expect(
+        document.querySelector('.docs-sidebar-search-trigger kbd')?.textContent,
+      ).toBe('⌘ K');
+      expect(
+        document.querySelector('.docs-header-tools .docs-mobile-search kbd')
+          ?.textContent,
+      ).toBe('⌘ K');
+    } finally {
+      if (originalPlatform === undefined) {
+        Reflect.deleteProperty(navigator, 'platform');
+      } else {
+        Object.defineProperty(navigator, 'platform', originalPlatform);
+      }
+    }
   });
 });

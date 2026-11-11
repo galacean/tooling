@@ -103,7 +103,9 @@ export function MarkdownContent({
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => {
-            const heading = <h1 id={headingId(headingText(children))}>{children}</h1>;
+            const heading = (
+              <h1 id={headingId(headingText(children))}>{children}</h1>
+            );
 
             if (afterFirstHeading === undefined || headingInserted) {
               return heading;
@@ -182,5 +184,37 @@ export function MarkdownContent({
         {text}
       </Markdown>
     </div>
+  );
+}
+
+export function HTMLDocumentContent({ html }: { html: string }) {
+  const container = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = container.current;
+
+    if (root === null) {
+      return;
+    }
+    root
+      .querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')
+      .forEach(heading => {
+        if (heading.id === '') {
+          heading.id = headingId(heading.textContent ?? '');
+        }
+      });
+    root.querySelectorAll<HTMLElement>('pre code').forEach(element => {
+      if (element.dataset['highlighted'] === undefined) {
+        hljs.highlightElement(element);
+      }
+    });
+  }, [html]);
+
+  return (
+    <div
+      ref={container}
+      className="markdown-content"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }

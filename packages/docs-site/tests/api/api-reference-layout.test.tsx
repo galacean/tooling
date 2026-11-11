@@ -1,24 +1,24 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import type {
+  APIEntry,
+  APIManifestPackage,
+  APIVersion,
+} from '@galacean/docs-site';
 import {
   APINavigationToolbar,
   APISymbolMenu,
   resolveAPIVersionTarget,
 } from '../../src/components/api/api-navigation';
 import { APIReferenceLayout } from '../../src/components/api/api-reference-layout';
-import type {
-  APIEntry,
-  APIManifestPackage,
-  APIVersion,
-} from '@galacean/docs-site';
 
 describe('shared APIReferenceLayout', () => {
   it.each([false, true])(
     'composes consumer slots with collapsed=%s',
     collapsed => {
       const renderNavigation = vi.fn((_close: () => void) => (
-        <nav>Consumer symbols</nav>
+        <nav className="api-menu docs-scroll-area">Consumer symbols</nav>
       ));
       const onDrawerChange = vi.fn();
       const markup = renderToStaticMarkup(
@@ -28,8 +28,9 @@ describe('shared APIReferenceLayout', () => {
             menu: 'Symbols',
             close: 'Dismiss',
             top: 'Scroll up',
+            collapseSidebar: 'Collapse sidebar',
+            expandSidebar: 'Expand sidebar',
           }}
-          sidebarHeading={<strong>Example package</strong>}
           renderNavigation={renderNavigation}
           toolbar={<span>Consumer versions</span>}
           navigationKey="example/symbol"
@@ -46,13 +47,25 @@ describe('shared APIReferenceLayout', () => {
       expect(markup).toContain(
         `class="ge-api${collapsed ? ' collapsed' : ''}"`,
       );
-      expect(markup).toContain('<strong>Example package</strong>');
       expect(markup).toContain('Consumer versions');
+      expect(markup).not.toContain('api-sidebar-heading');
+      expect(markup).toContain('class="api-sidebar"');
+      expect(markup).not.toContain('class="api-sidebar docs-scroll-area"');
+      expect(markup).toContain('class="api-menu docs-scroll-area"');
       expect(markup).toContain('<article>Consumer reflection</article>');
-      expect(markup).toContain('class="api-scroll"');
+      expect(markup).toContain('class="api-scroll docs-scroll-area"');
       expect(markup).toContain('aria-label="Reference"');
+      expect(markup).toContain(
+        `aria-label="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}"`,
+      );
+      expect(markup).toContain(`aria-expanded="${!collapsed}"`);
+      expect(markup).toContain(
+        'class="docs-sidebar-collapse-region docs-sidebar-collapse-region--api"',
+      );
+      expect(markup).toContain('class="docs-sidebar-collapse icon-action"');
       expect(markup).toContain('aria-label="Dismiss"');
       expect(markup).toContain('aria-label="Scroll up"');
+      expect(markup).toContain('class="docs-back-top icon-action"');
       expect(markup).not.toContain('Design Bridge');
       expect(renderNavigation).toHaveBeenCalledTimes(2);
       expect(renderNavigation).toHaveBeenCalledWith(expect.any(Function));
@@ -184,45 +197,52 @@ describe('shared API navigation', () => {
     expect(markup).toContain('data-kind="256"');
   });
 
-  it.each([false, true])('renders toolbar with packageHome=%s', packageHome => {
-    const markup = renderToStaticMarkup(
-      <MemoryRouter>
-        <APINavigationToolbar
-          pkg={pkg}
-          packages={[pkg]}
-          version="current"
-          entryKey="sub"
-          symbol={{ name: 'keep', kind: 256 }}
-          packageHome={packageHome}
-          showInherited={true}
-          onShowInheritedChange={() => undefined}
-          messages={{
-            api: 'Reference',
-            version: 'Release',
-            apiPackage: 'Library',
-            showInherited: 'Inherited members',
-          }}
-          apiHref="/fr/reference/"
-          getPackageHref={key => `/fr/reference/${key}/`}
-          getSymbolHref={target =>
-            `/fr/reference/${target.version}/${target.symbolName}/`
-          }
-          renderKind={kind => <span data-kind={kind}>Badge</span>}
-        />
-      </MemoryRouter>,
-    );
+  it.each([false, true])(
+    'renders toolbar with packageHome=%s',
+    packageHome => {
+      const markup = renderToStaticMarkup(
+        <MemoryRouter>
+          <APINavigationToolbar
+            pkg={pkg}
+            packages={[pkg]}
+            version="current"
+            entryKey="sub"
+            symbol={{ name: 'keep', kind: 256 }}
+            packageHome={packageHome}
+            showInherited={true}
+            onShowInheritedChange={() => undefined}
+            messages={{
+              api: 'Reference',
+              version: 'Release',
+              apiPackage: 'Library',
+              showInherited: 'Inherited members',
+            }}
+            getPackageHref={key => `/fr/reference/${key}/`}
+            getSymbolHref={target =>
+              `/fr/reference/${target.version}/${target.symbolName}/`
+            }
+            renderKind={kind => <span data-kind={kind}>Badge</span>}
+          />
+        </MemoryRouter>,
+      );
 
-    expect(markup).toContain('href="/fr/reference/"');
-    expect(markup).toContain('aria-label="Library"');
-    if (packageHome) {
-      expect(markup).not.toContain('api-version-select');
-      expect(markup).not.toContain('api-inherited-toggle');
-      expect(markup).not.toContain('api-current-symbol');
-    } else {
-      expect(markup).toContain('current (1.0.0)');
-      expect(markup).toContain('aria-label="Release"');
-      expect(markup).toContain('aria-label="Inherited members" checked=""');
-      expect(markup).toContain('api-current-symbol');
-    }
-  });
+      expect(markup).not.toContain('>Reference</a><span>/</span>');
+      expect(markup).toContain('aria-label="Library"');
+      if (packageHome) {
+        expect(markup).not.toContain('api-version-select');
+        expect(markup).not.toContain('api-inherited-toggle');
+        expect(markup).not.toContain('api-current-symbol');
+      } else {
+        expect(markup).toContain('current (1.0.0)');
+        expect(markup).toContain('aria-label="Release"');
+        expect(markup).toContain('aria-label="Inherited members" checked=""');
+        expect(markup).toContain('api-current-symbol');
+        expect(
+          markup.indexOf('class="site-select api-package-select"'),
+        ).toBeLessThan(
+          markup.indexOf('class="site-select api-version-select"'),
+        );
+      }
+    },
+  );
 });

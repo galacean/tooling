@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useOutletContext, useParams } from 'react-router-dom';
 import { isSupportedLocale, localePath } from '../../i18n';
 import { createManualContentClient } from '../../manual';
 import type { ManualContentClient } from '../../manual';
 import { ManualPage } from './manual-page';
-import type {
-  ManualPageMessages,
-  ManualNavigationPage,
-  ManualDocument,
-} from './manual-page';
+import type { ManualPageMessages, ManualNavigationPage, ManualDocument } from './manual-page';
+import type { SiteShellOutletContext } from '../site/site-shell';
 
 export interface ManualRouteProps<TLocale extends string> {
   baseURL: string;
@@ -24,7 +21,7 @@ interface ManualRouteLoaders {
   loadPage: (locale: string, slug: string) => Promise<ManualDocument>;
 }
 
-export function ManualRoute<TLocale extends string>({
+export function ManualRoute<TLocale extends string> ({
   baseURL,
   locales,
   locale,
@@ -32,6 +29,8 @@ export function ManualRoute<TLocale extends string>({
   messages,
 }: ManualRouteProps<TLocale>) {
   const { slug } = useParams();
+  const { setManualPageTitle, setManualSidebarCollapsed } =
+    useOutletContext<SiteShellOutletContext>();
   const [client] = useState(() =>
     createManualContentClient({ baseURL, locales }),
   );
@@ -42,6 +41,8 @@ export function ManualRoute<TLocale extends string>({
       locale={locale}
       slug={slug}
       messages={messages}
+      onTitleChange={setManualPageTitle}
+      onSidebarCollapsed={setManualSidebarCollapsed}
       sectionLabel={sectionLabel}
       homeHref={localePath(locale)}
       getPageHref={value =>
@@ -54,11 +55,11 @@ export function ManualRoute<TLocale extends string>({
   );
 }
 
-function createRouteLoaders<TLocale extends string>(
+function createRouteLoaders<TLocale extends string> (
   client: ManualContentClient<TLocale>,
   locales: readonly TLocale[],
 ): ManualRouteLoaders {
-  function parseLocale(value: string): TLocale {
+  function parseLocale (value: string): TLocale {
     if (!isSupportedLocale(value, locales)) {
       throw new Error(`Unknown manual locale: ${value}`);
     }
@@ -67,15 +68,15 @@ function createRouteLoaders<TLocale extends string>(
   }
 
   return {
-    async loadNavigation(locale) {
+    async loadNavigation (locale) {
       const parsedLocale = parseLocale(locale);
 
       return client.manualPages(parsedLocale, await client.loadNavigation());
     },
-    loadOverview(locale) {
+    loadOverview (locale) {
       return client.loadOverview(parseLocale(locale));
     },
-    async loadPage(locale, slug) {
+    async loadPage (locale, slug) {
       const parsedLocale = parseLocale(locale);
 
       return client.loadPage(parsedLocale, slug, await client.loadNavigation());

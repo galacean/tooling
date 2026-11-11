@@ -2,25 +2,14 @@ import { Link, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { JSONOutput } from 'typedoc';
 import {
-  childrenOf,
-  formatGenerics,
-  formatSignature,
-  isDeclaration,
-  signaturesOf,
+  childrenOf, formatGenerics, formatSignature, isDeclaration, signaturesOf,
 } from '../../data';
 import type { TypeToken } from '../../data';
 import { apiKindGroup } from './api-kind-label';
-import {
-  APIDescriptionList,
-  APISignaturePanel,
-} from './api-reflection-content';
-import {
-  APIReflectionLayout,
-  APIReflectionSections,
-} from './api-reflection-layout';
+import { APIDescriptionList, APISignaturePanel } from './api-reflection-content';
+import { APIReflectionLayout, APIReflectionSections } from './api-reflection-layout';
 
 export interface APIReflectionDetailMessages {
-  contents: string;
   overview: string;
   signature: string;
   description: string;
@@ -48,7 +37,7 @@ export interface APIReflectionDetailProps<TReflection extends object> {
   isExternalInherited: (reflection: TReflection) => boolean;
 }
 
-export function APIReflectionDetail<TReflection extends object>({
+export function APIReflectionDetail<TReflection extends object> ({
   reflection,
   showInherited,
   messages: t,
@@ -70,7 +59,8 @@ export function APIReflectionDetail<TReflection extends object>({
   const genericParameters =
     'typeParameters' in value
       ? (value.typeParameters as
-          JSONOutput.TypeParameterReflection[] | undefined)
+        | JSONOutput.TypeParameterReflection[]
+        | undefined)
       : undefined;
   const signatures = signaturesOf<JSONOutput.SignatureReflection>(reflection);
   const comment = value.comment ?? signatures[0]?.comment;
@@ -84,7 +74,7 @@ export function APIReflectionDetail<TReflection extends object>({
     groups.set(title, [...(groups.get(title) ?? []), member]);
   }
 
-  function SignatureDetail({
+  function SignatureDetail ({
     signature,
   }: {
     signature: JSONOutput.SignatureReflection;
@@ -147,16 +137,7 @@ export function APIReflectionDetail<TReflection extends object>({
   }
 
   return (
-    <APIReflectionLayout
-      contentsLabel={t.contents}
-      overviewLabel={t.overview}
-      overviewHref={`${location.pathname}${location.search}#api-overview`}
-      outline={[...groups].map(([label, children]) => ({
-        key: label,
-        label,
-        href: `${location.pathname}${location.search}#api-group-${apiKindGroup(children[0]?.kind ?? 0)}`,
-      }))}
-    >
+    <APIReflectionLayout>
       <div className="api-title" id={value.name}>
         <Link to={anchorHref(value.name)} className="anchor-link">
           #
@@ -179,25 +160,25 @@ export function APIReflectionDetail<TReflection extends object>({
               ...(value.extendedTypes === undefined
                 ? []
                 : [
-                    {
-                      key: 'extends',
-                      label: t.extends,
-                      content: value.extendedTypes.map((type, index) => (
-                        <span key={index}>{renderType(type)}</span>
-                      )),
-                    },
-                  ]),
+                  {
+                    key: 'extends',
+                    label: t.extends,
+                    content: value.extendedTypes.map((type, index) => (
+                      <span key={index}>{renderType(type)}</span>
+                    )),
+                  },
+                ]),
               ...(value.implementedTypes === undefined
                 ? []
                 : [
-                    {
-                      key: 'implements',
-                      label: t.implements,
-                      content: value.implementedTypes.map((type, index) => (
-                        <span key={index}>{renderType(type)}</span>
-                      )),
-                    },
-                  ]),
+                  {
+                    key: 'implements',
+                    label: t.implements,
+                    content: value.implementedTypes.map((type, index) => (
+                      <span key={index}>{renderType(type)}</span>
+                    )),
+                  },
+                ]),
             ]}
           />
         )}

@@ -197,7 +197,11 @@ export function SearchPanel({
           {t.storageError}
         </p>
       )}
-      <div className="search-results" ref={list} aria-busy={loading}>
+      <div
+        className="search-results docs-scroll-area"
+        ref={list}
+        aria-busy={loading}
+      >
         {loading ? (
           <div className="search-state" role="status">
             <Icon name="search" />
@@ -261,7 +265,9 @@ export function SearchPanel({
           </div>
         ) : (
           ['manual', 'api'].map(category => {
-            const matches = results.filter(item => item.category === category);
+            const matches = results.filter(
+              item => item.category === category,
+            );
 
             return matches.length === 0 ? null : (
               <section key={category} className="search-result-group">

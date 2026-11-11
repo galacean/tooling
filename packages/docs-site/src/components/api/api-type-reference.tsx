@@ -61,13 +61,17 @@ export function APITypeReference({
   };
 
   useEffect(() => {
-    if (!open || externalUrl !== undefined || target === undefined) {return;}
+    if (!open || externalUrl !== undefined || target === undefined) {
+      return;
+    }
 
     const updatePosition = () => {
       const wrap = wrapRef.current;
       const content = contentRef.current;
 
-      if (wrap === null || content === null) {return;}
+      if (wrap === null || content === null) {
+        return;
+      }
 
       const anchor = wrap.getBoundingClientRect();
       const { innerHeight, innerWidth } = window;
@@ -77,8 +81,7 @@ export function APITypeReference({
       const contentWidth = content.offsetWidth;
       const topSpace = anchor.top - gap - padding;
       const bottomSpace = innerHeight - anchor.bottom - gap - padding;
-      const placeAbove =
-        topSpace >= contentHeight || topSpace >= bottomSpace;
+      const placeAbove = topSpace >= contentHeight || topSpace >= bottomSpace;
       const top = placeAbove
         ? anchor.top - gap - contentHeight
         : anchor.bottom + gap;
@@ -131,7 +134,7 @@ export function APITypeReference({
   const preview = (
     <span
       ref={contentRef}
-      className={`api-reference-content${open ? ' is-open' : ''}`}
+      className={`api-reference-content docs-scroll-area${open ? ' is-open' : ''}`}
       style={
         position === undefined
           ? { visibility: 'hidden' }
@@ -144,7 +147,9 @@ export function APITypeReference({
       onFocus={showPreview}
       onBlur={scheduleClose}
       onKeyDown={event => {
-        if (event.key === 'Escape') {setOpen(false);}
+        if (event.key === 'Escape') {
+          setOpen(false);
+        }
       }}
     >
       <span className="api-reference-header">
@@ -164,7 +169,7 @@ export function APITypeReference({
             {target.originalLabel}: {target.sourceLocale}
           </small>
         )}
-      <span className="api-reference-members">
+      <span className="api-reference-members docs-scroll-area">
         {target.members.map(member => (
           <Link key={member.name} to={member.href}>
             {member.name}
@@ -184,7 +189,9 @@ export function APITypeReference({
         onFocus={showPreview}
         onBlur={scheduleClose}
         onKeyDown={event => {
-          if (event.key === 'Escape') {setOpen(false);}
+          if (event.key === 'Escape') {
+            setOpen(false);
+          }
         }}
       >
         {text}

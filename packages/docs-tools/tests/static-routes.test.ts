@@ -145,6 +145,44 @@ void test('requires linked manual images to exist inside the locale manual direc
   );
 });
 
+void test('validates HTML manual image assets under the locale manual directory', async t => {
+  const values = await fixture(t);
+  const manualRoot = path.join(
+    values.repositoryRoot,
+    'site/public/data/manual',
+  );
+  const navigationPath = path.join(manualRoot, 'navigation.json');
+  const navigation = JSON.parse(await readFile(navigationPath, 'utf8')) as {
+    slug: string;
+    title: Record<string, string>;
+    group: Record<string, string>;
+  }[];
+
+  await writeFile(
+    navigationPath,
+    JSON.stringify([
+      {
+        ...navigation[0],
+        format: { en: 'html', 'zh-CN': 'markdown' },
+      },
+    ]),
+  );
+  await mkdir(path.join(manualRoot, 'en/intro'), { recursive: true });
+  await writeFile(
+    path.join(manualRoot, 'en/intro.html'),
+    '<article><h1>Intro</h1><img src="diagram.svg" alt="Diagram"></article>',
+  );
+  await writeFile(path.join(manualRoot, 'en/intro/diagram.svg'), '<svg/>');
+
+  await buildStaticRoutes(values.config, { base: '/docs/' });
+
+  await rm(path.join(manualRoot, 'en/intro/diagram.svg'));
+  await assert.rejects(
+    buildStaticRoutes(values.config, { base: '/docs/' }),
+    /Manual asset does not exist/u,
+  );
+});
+
 void test('rejects invalid bases and unmaterialized search routes', async t => {
   const values = await fixture(t);
 

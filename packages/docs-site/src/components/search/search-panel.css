@@ -87,9 +87,12 @@ dialog.site-search .site-search-header {
   min-width: 0;
 }
 .site-search-heading > img {
-  width: 25px;
-  height: 28px;
+  width: auto;
+  height: auto;
+  max-width: 48px;
+  max-height: 28px;
   flex: 0 0 auto;
+  object-fit: contain;
 }
 .site-search-eyebrow {
   display: block;

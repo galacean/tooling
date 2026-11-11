@@ -72,4 +72,59 @@ describe('shared manual content client', () => {
     );
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
+
+  it('prefers locale-specific last-modified metadata when response headers are unavailable', async () => {
+    const datedNavigation = [
+      {
+        ...navigation[0],
+        lastModified: { 'zh-CN': '2026-11-10', en: '2026-11-09' },
+      },
+    ];
+    const fetcher: typeof fetch = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('.json')
+        ? Response.json(datedNavigation)
+        : new Response('# Intro\n\n## Install\n'),
+    );
+    const client = createManualContentClient({
+      baseURL: '/site/',
+      locales,
+      fetcher,
+    });
+    const pages = await client.loadNavigation();
+
+    await expect(
+      client.loadPage('zh-CN', 'getting-started', pages),
+    ).resolves.toMatchObject({ lastModified: '2026-11-10' });
+    await expect(
+      client.loadPage('en', 'getting-started', pages),
+    ).resolves.toMatchObject({ lastModified: '2026-11-09' });
+  });
+
+  it('prefers the response Last-Modified header over navigation metadata', async () => {
+    const datedNavigation = [
+      {
+        ...navigation[0],
+        lastModified: { 'zh-CN': '2026-11-10', en: '2026-11-09' },
+      },
+    ];
+    const fetcher: typeof fetch = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('.json')
+        ? Response.json(datedNavigation)
+        : new Response('# Intro\n', {
+            headers: { 'Last-Modified': 'Fri, 06 Nov 2026 10:32:54 GMT' },
+          }),
+    );
+    const client = createManualContentClient({
+      baseURL: '/site/',
+      locales,
+      fetcher,
+    });
+    const pages = await client.loadNavigation();
+
+    await expect(
+      client.loadPage('en', 'getting-started', pages),
+    ).resolves.toMatchObject({
+      lastModified: 'Fri, 06 Nov 2026 10:32:54 GMT',
+    });
+  });
 });

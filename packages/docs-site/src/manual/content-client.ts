@@ -4,6 +4,7 @@ export interface ManualNavigationItem<TLocale extends string> {
   slug: string;
   title: Record<TLocale, string>;
   group: Record<TLocale, string>;
+  lastModified?: Readonly<Record<TLocale, string>>;
 }
 
 export interface ManualPageDocument {
@@ -31,6 +32,7 @@ export interface ManualContentClient<TLocale extends string> {
     title: string;
     text: string;
     headings: string[];
+    lastModified?: string;
   }>;
   loadOverview: (locale: TLocale) => Promise<ManualPageDocument>;
 }
@@ -78,7 +80,9 @@ export function createManualContentClient<TLocale extends string>({
           isRecord(item) &&
           typeof item['slug'] === 'string' &&
           isLocalized(item['title']) &&
-          isLocalized(item['group']),
+          isLocalized(item['group']) &&
+          (item['lastModified'] === undefined ||
+            isLocalized(item['lastModified'])),
       )
     );
   }
@@ -138,8 +142,16 @@ export function createManualContentClient<TLocale extends string>({
 
       const url = `${base}data/manual/${locale}/${encodeURIComponent(slug)}.md`;
       const document = await loadMarkdown(url);
+      const pageLastModified = page.lastModified?.[locale];
 
-      return { slug, title: page.title[locale], ...document };
+      return {
+        slug,
+        title: page.title[locale],
+        ...document,
+        ...(document.lastModified === undefined && pageLastModified !== undefined
+          ? { lastModified: pageLastModified }
+          : {}),
+      };
     },
     loadOverview(locale) {
       return loadMarkdown(`${base}data/manual/${locale}/index.md`);

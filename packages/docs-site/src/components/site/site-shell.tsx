@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Component, Suspense, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   Link,
@@ -8,15 +8,10 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { DocumentLoading, Icon, SelectControl } from '../shared';
+import { LazySearchPanel as SearchPanel } from '../search/lazy-search-panel';
 import { useTheme } from '../../providers';
 import type { SearchResult } from '../../search';
 import type { SearchPanelMessages } from '../search';
-
-const SearchPanel = lazy(async () => {
-  const module = await import('../search/search-panel.js');
-
-  return { default: module.SearchPanel };
-});
 
 export interface SiteShellMessages extends SearchPanelMessages {
   menu: string;
@@ -320,6 +315,9 @@ export function SiteShell({
               historyKeyPrefix={historyKeyPrefix}
               messages={t}
               loadItems={loadSearchItems}
+              navigate={url => {
+                void navigate(url);
+              }}
               close={() => setSearch(false)}
             />
           </Suspense>

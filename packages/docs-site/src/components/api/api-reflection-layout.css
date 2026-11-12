@@ -1,12 +1,14 @@
 .api-detail {
   width: 100%;
-  max-width: 1280px;
-  margin-inline: auto;
-  padding: 42px clamp(24px, 3.5vw, 56px) 88px;
+  max-width: none;
+  margin: 0;
+  padding: 28px 50px 64px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 168px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 44px;
+  gap: 0;
+  font-size: var(--site-doc-body-size);
+  line-height: var(--site-doc-body-leading);
   overflow-wrap: anywhere;
 }
 .api-detail-main {
@@ -15,39 +17,10 @@
   gap: 14px;
   min-width: 0;
 }
-.api-outline {
-  position: sticky;
-  top: 28px;
-  grid-column: 2;
-  grid-row: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: calc(100dvh - 150px);
-  overflow-y: auto;
-  padding: 4px 0 4px 15px;
-  border-left: 1px solid var(--site-border);
-}
-.api-outline strong {
-  margin-bottom: 8px;
-  color: var(--site-muted);
-  font:
-    10px 'IBM Plex Mono',
-    monospace;
-  text-transform: uppercase;
-}
-.api-outline a {
-  padding: 6px 8px;
-  color: var(--site-muted);
-  font-size: 11px;
-  line-height: 1.45;
-}
-.api-outline a:hover {
-  color: var(--site-accent);
-}
 .api-overview {
   padding: 15px 17px;
   border: 1px solid var(--site-border);
+  border-radius: 6px;
   background: var(--site-surface);
 }
 .api-overview > strong {
@@ -67,7 +40,7 @@
   font-weight: 650;
 }
 .api-overview summary::marker {
-  color: var(--site-accent);
+  color: currentColor;
 }
 .api-overview ul {
   list-style: none;
@@ -95,7 +68,7 @@
   align-items: center;
   gap: 12px;
   margin: 28px 0 0;
-  font-size: 18px;
+  font-size: var(--site-doc-heading-4-size);
   font-weight: 700;
   scroll-margin-top: 24px;
 }
@@ -143,15 +116,12 @@
     max-width: 920px;
     gap: 0;
   }
-  .api-outline {
-    display: none;
-  }
 }
 
 @media (max-width: 1050px) {
   .api-detail {
-    grid-template-columns: minmax(0, 1fr) 142px;
-    gap: 28px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
     padding-inline: 32px;
   }
 }
@@ -163,9 +133,6 @@
   }
   .api-detail-main {
     gap: 13px;
-  }
-  .api-outline {
-    display: none;
   }
   .api-overview {
     padding: 14px;

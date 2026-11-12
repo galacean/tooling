@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Icon } from '../shared';
 import { searchResults } from '../../search';
 import type { SearchResult } from '../../search';
@@ -8,6 +7,7 @@ export interface SearchPanelMessages {
   search: string;
   close: string;
   searchPlaceholder: string;
+  manualSearchPlaceholder: string;
   storageError: string;
   loading: string;
   loadError: string;
@@ -28,7 +28,9 @@ export interface SearchPanelProps {
   brandMarkUrl: string;
   historyKeyPrefix: string;
   messages: SearchPanelMessages;
+  includeAPI?: boolean;
   loadItems: (locale: string) => Promise<SearchResult[]>;
+  navigate: (url: string) => void;
   close: () => void;
 }
 
@@ -52,7 +54,9 @@ export function SearchPanel({
   brandMarkUrl,
   historyKeyPrefix,
   messages: t,
+  includeAPI = true,
   loadItems,
+  navigate,
   close,
 }: SearchPanelProps) {
   const [query, setQuery] = useState('');
@@ -66,7 +70,6 @@ export function SearchPanel({
   const input = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   const key = `${historyKeyPrefix}:${locale}`;
 
   useEffect(() => {
@@ -99,7 +102,11 @@ export function SearchPanel({
       const results = await loadItems(locale);
 
       if (!cancelled) {
-        setItems(results);
+        setItems(
+          includeAPI
+            ? results
+            : results.filter(item => item.category === 'manual'),
+        );
       }
     })()
       .catch((reason: unknown) => {
@@ -116,7 +123,7 @@ export function SearchPanel({
     return () => {
       cancelled = true;
     };
-  }, [locale, attempt, loadItems]);
+  }, [locale, attempt, loadItems, includeAPI]);
   useEffect(() => {
     const element = dialog.current;
 
@@ -131,7 +138,7 @@ export function SearchPanel({
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebounced(query.trim());
-      list.current?.scrollTo({ top: 0 });
+      list.current?.scrollTo?.({ top: 0 });
     }, 300);
 
     return () => window.clearTimeout(timer);
@@ -145,6 +152,9 @@ export function SearchPanel({
     }
   };
   const results = searchResults(items, debounced);
+  const categories = includeAPI
+    ? (['manual', 'api'] as const)
+    : (['manual'] as const);
 
   return (
     <dialog
@@ -187,8 +197,12 @@ export function SearchPanel({
           ref={input}
           type="search"
           value={query}
-          placeholder={t.searchPlaceholder}
-          aria-label={t.searchPlaceholder}
+          placeholder={
+            includeAPI ? t.searchPlaceholder : t.manualSearchPlaceholder
+          }
+          aria-label={
+            includeAPI ? t.searchPlaceholder : t.manualSearchPlaceholder
+          }
           onChange={event => setQuery(event.target.value)}
         />
       </label>
@@ -197,7 +211,11 @@ export function SearchPanel({
           {t.storageError}
         </p>
       )}
-      <div className="search-results" ref={list} aria-busy={loading}>
+      <div
+        className="search-results docs-scroll-area"
+        ref={list}
+        aria-busy={loading}
+      >
         {loading ? (
           <div className="search-state" role="status">
             <Icon name="search" />
@@ -260,7 +278,7 @@ export function SearchPanel({
             <p>{t.noResults}</p>
           </div>
         ) : (
-          ['manual', 'api'].map(category => {
+          categories.map(category => {
             const matches = results.filter(item => item.category === category);
 
             return matches.length === 0 ? null : (
@@ -282,7 +300,7 @@ export function SearchPanel({
                         ].slice(0, 12),
                       );
                       close();
-                      void navigate(item.url);
+                      navigate(item.url);
                     }}
                   >
                     <span
@@ -320,10 +338,12 @@ export function SearchPanel({
         )}
       </div>
       <footer className="site-search-footer">
-        <span>
-          <Icon name="source" />
-          {t.api}
-        </span>
+        {includeAPI && (
+          <span>
+            <Icon name="source" />
+            {t.api}
+          </span>
+        )}
         <span>
           <Icon name="book" />
           {t.manual}

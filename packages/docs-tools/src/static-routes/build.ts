@@ -7,13 +7,9 @@ import {
 } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
+import { isManualNavigation } from '../manual/navigation';
+import { isSafePathSegment } from '../path-validation';
 import { readJSON } from '../api/read-json';
-
-interface ManualNavigationItem {
-  slug: string;
-  title: Record<string, string>;
-  group: Record<string, string>;
-}
 
 interface StaticRoute {
   locale: string;
@@ -34,15 +30,6 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
-function isSafeSegment(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value !== '.' &&
-    value !== '..' &&
-    !/[\\/\0]/u.test(value)
-  );
-}
-
 function isWithin(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
 
@@ -50,22 +37,6 @@ function isWithin(parent: string, child: string): boolean {
     relative !== '..' &&
     !relative.startsWith(`..${path.sep}`) &&
     !path.isAbsolute(relative)
-  );
-}
-
-function isManualNavigation(value: unknown): value is ManualNavigationItem[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      item =>
-        isRecord(item) &&
-        typeof item['slug'] === 'string' &&
-        isSafeSegment(item['slug']) &&
-        isRecord(item['title']) &&
-        Object.values(item['title']).every(text => typeof text === 'string') &&
-        isRecord(item['group']) &&
-        Object.values(item['group']).every(text => typeof text === 'string'),
-    )
   );
 }
 
@@ -147,15 +118,24 @@ export async function buildStaticRoutes(
   }
   const base = normalizeBase(baseValue);
   const dist = path.join(config.repositoryRoot, 'site/dist');
-  const dataRoot = path.dirname(config.apiDirectory);
+  const dataRoot = path.dirname(
+    config.apiConfigured === false
+      ? config.manualDirectory
+      : config.apiDirectory,
+  );
   const manifestPath = path.join(config.apiDirectory, 'manifest.json');
-  const navigationPath = path.join(dataRoot, 'manual/navigation.json');
+  const navigationPath = path.join(config.manualDirectory, 'navigation.json');
 
   await assertNoSymlinkPath(config.repositoryRoot, dist);
-  await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
   await assertNoSymlinkPath(config.repositoryRoot, navigationPath);
-  const manifest = parseAPIManifest(await readJSON(manifestPath));
-  const navigationValue: unknown = await readJSON(navigationPath);
+  let apiPackages: ReturnType<typeof parseAPIManifest>['packages'] = [];
+
+  if (config.apiConfigured !== false) {
+    await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
+    apiPackages = parseAPIManifest(await readJSON(manifestPath)).packages;
+  }
+  const navigationValue: unknown =
+    config.manualConfigured === false ? [] : await readJSON(navigationPath);
 
   if (!isManualNavigation(navigationValue)) {
     throw new Error('Invalid manual navigation');
@@ -169,7 +149,7 @@ export async function buildStaticRoutes(
     const relativePath = [locale, ...segments].join('/');
     const folded = relativePath.toLocaleLowerCase('en-US');
 
-    if (segments.some(segment => !isSafeSegment(segment))) {
+    if (segments.some(segment => !isSafePathSegment(segment))) {
       throw new Error(`Unsafe static route: ${route}`);
     }
     if (diskPaths.has(folded) && diskPaths.get(folded) !== relativePath) {
@@ -181,13 +161,16 @@ export async function buildStaticRoutes(
 
   for (const locale of config.locales) {
     add(locale);
-    for (const section of ['api', 'manual']) {
-      add(locale, [section]);
+    if (config.apiConfigured !== false) {
+      add(locale, ['api']);
     }
-    for (const manual of navigationValue) {
-      add(locale, ['manual', manual.slug]);
+    if (config.manualConfigured !== false) {
+      add(locale, ['manual']);
+      for (const manual of navigationValue) {
+        add(locale, ['manual', manual.slug]);
+      }
     }
-    for (const pkg of manifest.packages) {
+    for (const pkg of apiPackages) {
       add(locale, ['api', pkg.key]);
       for (const version of [pkg.current, ...pkg.versions]) {
         for (const entry of version.entries) {
@@ -265,18 +248,30 @@ export async function buildStaticRoutes(
       }
     }
     for (const manual of navigationValue) {
-      const markdownPath = path.join(
-        dataRoot,
-        'manual',
+      const format = manual.format?.[locale] ?? 'markdown';
+      const extension = format === 'html' ? 'html' : 'md';
+      const contentPath = path.join(
+        config.manualDirectory,
         locale,
-        `${manual.slug}.md`,
+        `${manual.slug}.${extension}`,
       );
-      const markdown = await readFile(markdownPath, 'utf8');
+      const content = await readFile(contentPath, 'utf8');
+      const targets =
+        format === 'html'
+          ? [
+              ...content.matchAll(
+                /(?:^|[\s<])(?:href|src)\s*=\s*["']([^"']+)["']/giu,
+              ),
+            ].map(match => match[1])
+          : [...content.matchAll(/!?(?:\[[^\]]*\])\(([^)]+)\)/gu)].map(
+              match => match[1],
+            );
 
-      for (const match of markdown.matchAll(/!?(?:\[[^\]]*\])\(([^)]+)\)/gu)) {
-        const target = match[1];
-
-        if (target === undefined || /^(https?:|mailto:)/u.test(target)) {
+      for (const target of targets) {
+        if (
+          target === undefined ||
+          /^(?:https?:|mailto:|tel:|data:|\/\/)/iu.test(target)
+        ) {
           continue;
         }
         const url = new URL(
@@ -290,7 +285,9 @@ export async function buildStaticRoutes(
         const manualPrefix = `/${locale}/manual/`;
 
         if (
-          !/\.(?:png|jpe?g|gif|webp|svg|pdf)$/iu.test(url.pathname) ||
+          !/\.(?:png|jpe?g|gif|webp|svg|pdf|mp4|webm|zip)$/iu.test(
+            url.pathname,
+          ) ||
           !url.pathname.startsWith(manualPrefix)
         ) {
           throw new Error(
@@ -302,15 +299,14 @@ export async function buildStaticRoutes(
           .split('/')
           .map(decodeURIComponent);
         const assetPath = path.resolve(
-          dataRoot,
-          'manual',
+          config.manualDirectory,
           locale,
           ...assetSegments,
         );
 
         if (
-          assetSegments.some(segment => !isSafeSegment(segment)) ||
-          !isWithin(path.join(dataRoot, 'manual', locale), assetPath)
+          assetSegments.some(segment => !isSafePathSegment(segment)) ||
+          !isWithin(path.join(config.manualDirectory, locale), assetPath)
         ) {
           throw new Error(
             `Unsafe manual asset link: ${locale}/${manual.slug} -> ${target}`,

@@ -5,7 +5,6 @@ import { APIReflectionDetail } from '../../src/components/api/api-reflection-det
 import type { APIReflectionDetailMessages } from '../../src/components/api/api-reflection-detail';
 
 const messages: APIReflectionDetailMessages = {
-  contents: 'Contents',
   overview: 'Overview',
   signature: 'Signature',
   description: 'Description',

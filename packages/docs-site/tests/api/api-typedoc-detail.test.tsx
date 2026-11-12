@@ -19,7 +19,6 @@ type Reflection = {
 };
 
 const messages: APITypeDocDetailMessages = {
-  contents: 'Contents',
   overview: 'Overview',
   signature: 'Signature',
   description: 'Description',
@@ -151,62 +150,71 @@ describe('APITypeDocDetail', () => {
       kind: 1,
       variant: 'project',
       flags: {},
-      children: [{
-        id: 9,
-        name: '@example/alpha',
-        kind: 2,
-        variant: 'declaration',
-        flags: {},
-        children: [
-          {
-            id: 10,
-            name: 'ExternalShape',
-            kind: 128,
-            variant: 'declaration',
-            flags: { isExternal: true },
-            externalUrl: 'https://www.npmjs.com/package/@example/shape',
-          },
-          {
-            id: 11,
-            name: 'makeShape',
-            kind: 64,
-            variant: 'declaration',
-            flags: {},
-            signatures: [{
-              id: 12,
+      children: [
+        {
+          id: 9,
+          name: '@example/alpha',
+          kind: 2,
+          variant: 'declaration',
+          flags: {},
+          children: [
+            {
+              id: 10,
+              name: 'ExternalShape',
+              kind: 128,
+              variant: 'declaration',
+              flags: { isExternal: true },
+              externalUrl: 'https://www.npmjs.com/package/@example/shape',
+            },
+            {
+              id: 11,
               name: 'makeShape',
-              kind: 4096,
-              variant: 'signature',
+              kind: 64,
+              variant: 'declaration',
               flags: {},
-              parameters: [],
-              type: {
-                type: 'reference',
-                name: 'ExternalShape',
-                target: 10,
-                package: '@example/shape',
-                externalUrl: 'https://www.npmjs.com/package/@example/shape',
-              },
-            }],
+              signatures: [
+                {
+                  id: 12,
+                  name: 'makeShape',
+                  kind: 4096,
+                  variant: 'signature',
+                  flags: {},
+                  parameters: [],
+                  type: {
+                    type: 'reference',
+                    name: 'ExternalShape',
+                    target: 10,
+                    package: '@example/shape',
+                    externalUrl: 'https://www.npmjs.com/package/@example/shape',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const externalPackages = [
+      {
+        key: 'alpha',
+        name: '@example/alpha',
+        version: '1.0.0',
+        entries: [
+          {
+            key: 'root',
+            symbols: [
+              { name: 'ExternalShape', id: 10, kind: 128 },
+              { name: 'makeShape', id: 11, kind: 64 },
+            ],
           },
         ],
-      }],
-    };
-    const externalPackages = [{
-      key: 'alpha',
-      name: '@example/alpha',
-      version: '1.0.0',
-      entries: [{
-        key: 'root',
-        symbols: [
-          { name: 'ExternalShape', id: 10, kind: 128 },
-          { name: 'makeShape', id: 11, kind: 64 },
-        ],
-      }],
-    }];
+      },
+    ];
     const externalIndex = buildReflectionIndex<Reflection>(
       externalProject,
       externalPackages,
-      (_locale, packageKey, version, symbol) => `/${packageKey}/${version}/${symbol}`,
+      (_locale, packageKey, version, symbol) =>
+        `/${packageKey}/${version}/${symbol}`,
     );
     const externalReflection = externalIndex.byId.get(10);
 
@@ -219,7 +227,11 @@ describe('APITypeDocDetail', () => {
         {},
         createElement(APITypeDocDetail, {
           reflection: externalReflection,
-          context: { ...context, project: externalProject, index: externalIndex },
+          context: {
+            ...context,
+            project: externalProject,
+            index: externalIndex,
+          },
           showInherited: false,
           messages,
           isLocale: (value: unknown): value is 'en' => value === 'en',
@@ -231,7 +243,9 @@ describe('APITypeDocDetail', () => {
       ),
     );
 
-    expect(html).toContain('href="https://www.npmjs.com/package/@example/shape"');
+    expect(html).toContain(
+      'href="https://www.npmjs.com/package/@example/shape"',
+    );
     expect(html).toContain('ExternalShape');
 
     const makeShape = externalIndex.byId.get(11);
@@ -245,7 +259,11 @@ describe('APITypeDocDetail', () => {
         {},
         createElement(APITypeDocDetail, {
           reflection: makeShape,
-          context: { ...context, project: externalProject, index: externalIndex },
+          context: {
+            ...context,
+            project: externalProject,
+            index: externalIndex,
+          },
           showInherited: false,
           messages,
           isLocale: (value: unknown): value is 'en' => value === 'en',
@@ -257,7 +275,9 @@ describe('APITypeDocDetail', () => {
       ),
     );
 
-    expect(signatureHTML).toContain('href="https://www.npmjs.com/package/@example/shape"');
+    expect(signatureHTML).toContain(
+      'href="https://www.npmjs.com/package/@example/shape"',
+    );
   });
 
   it('resolves cross-package references inside signature tokens', () => {

@@ -1,26 +1,66 @@
 :root {
   font-synthesis: none;
+  --site-doc-font-family:
+    'Chinese Quote', -apple-system, system-ui, 'Segoe UI', Roboto,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue',
+    Helvetica, Arial, sans-serif;
+  --site-doc-body-size: 14px;
+  --site-doc-body-leading: 1.57;
+  --site-doc-code-size: 13px;
+  --site-doc-title-size: 36px;
+  --site-doc-heading-2-size: 28px;
+  --site-doc-heading-3-size: 24px;
+  --site-doc-heading-4-size: 20px;
+  --site-doc-nav-size: 14px;
+  --site-doc-outline-size: 14px;
+  --site-doc-sidebar-width: 260px;
+  --site-doc-sidebar-compact-width: 240px;
+  --site-doc-outline-width: 305px;
+  --site-doc-reading-width: 1120px;
+  --site-doc-reading-gutter: clamp(24px, 4vw, 64px);
+  --docs-scrollbar-track: #fff;
+  --docs-scrollbar-thumb: #585a5a;
+  --docs-scrollbar-thumb-hover: #585a5a;
+}
+:root[data-theme='dark'] {
+  --docs-scrollbar-track: var(--site-background, #202320);
+  --docs-scrollbar-thumb: var(--site-muted, #71766f);
+  --docs-scrollbar-thumb-hover: var(--site-ink, #fff);
 }
 * {
   box-sizing: border-box;
   letter-spacing: 0;
-  scrollbar-color: var(--site-muted) var(--site-background);
+  scrollbar-color: var(--docs-scrollbar-thumb) var(--docs-scrollbar-track);
   scrollbar-width: thin;
+}
+.docs-scroll-area {
+  scrollbar-gutter: stable;
+}
+.docs-reading-content {
+  max-width: calc(
+    var(--site-doc-reading-width) - var(--site-doc-reading-gutter) -
+      var(--site-doc-reading-gutter)
+  );
+  margin-inline: auto;
 }
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 *::-webkit-scrollbar-track {
-  background: var(--site-background);
+  background: var(--docs-scrollbar-track);
 }
 *::-webkit-scrollbar-thumb {
-  border: 3px solid var(--site-background);
+  border: 3px solid var(--docs-scrollbar-track);
   border-radius: 5px;
-  background: color-mix(in srgb, var(--site-muted) 55%, var(--site-background));
+  background: color-mix(
+    in srgb,
+    var(--docs-scrollbar-thumb) 55%,
+    var(--docs-scrollbar-track)
+  );
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--site-muted);
+  background: var(--docs-scrollbar-thumb-hover);
 }
 body {
   margin: 0;

@@ -4,11 +4,23 @@ export interface ManualNavigationItem<TLocale extends string> {
   slug: string;
   title: Record<TLocale, string>;
   group: Record<TLocale, string>;
+  parent?: string;
+  format?: Readonly<Record<TLocale, ManualContentFormat>>;
+  lastModified?: Readonly<Record<TLocale, string>>;
+}
+
+export type ManualContentFormat = 'markdown' | 'html';
+
+export interface ManualHeading {
+  title: string;
+  level: number;
+  id?: string;
 }
 
 export interface ManualPageDocument {
   text: string;
-  headings: string[];
+  headings: ManualHeading[];
+  format?: ManualContentFormat;
   lastModified?: string;
 }
 
@@ -21,6 +33,7 @@ export interface ManualContentClient<TLocale extends string> {
     slug: string;
     title: string;
     group: string;
+    parent?: string;
   }[];
   loadPage: (
     locale: TLocale,
@@ -30,13 +43,16 @@ export interface ManualContentClient<TLocale extends string> {
     slug: string;
     title: string;
     text: string;
-    headings: string[];
+    headings: ManualHeading[];
+    format: ManualContentFormat;
+    lastModified?: string;
   }>;
   loadOverview: (locale: TLocale) => Promise<ManualPageDocument>;
 }
 
 interface ManualContentOptions<TLocale extends string> {
   baseURL: string;
+  manualDataURL?: string;
   locales: readonly TLocale[];
   fetcher?: typeof fetch;
 }
@@ -45,18 +61,86 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function extractHeadings(text: string): string[] {
-  return [...text.matchAll(/^## (.+)$/gmu)].flatMap(match =>
-    match[1] === undefined ? [] : [match[1]],
+function isFormatMap(
+  value: unknown,
+  locales: readonly string[],
+): value is Record<string, ManualContentFormat> {
+  return (
+    isRecord(value) &&
+    locales.every(
+      locale => value[locale] === 'markdown' || value[locale] === 'html',
+    )
+  );
+}
+
+function extractHeadings(
+  text: string,
+  format: ManualContentFormat,
+): ManualHeading[] {
+  if (format === 'html') {
+    if (typeof DOMParser === 'undefined') {
+      return [
+        ...text.matchAll(/<h([1-6])\b([^>]*)>([\s\S]*?)<\/h\1\s*>/giu),
+      ].flatMap(match => {
+        const title = match[3]
+          ?.replace(/<[^>]*>/gu, '')
+          .replace(/&nbsp;/giu, ' ')
+          .replace(/&amp;/giu, '&')
+          .replace(/&lt;/giu, '<')
+          .replace(/&gt;/giu, '>')
+          .trim();
+        const idMatch = match[2]?.match(
+          /\bid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/iu,
+        );
+        const id = idMatch?.[1] ?? idMatch?.[2] ?? idMatch?.[3];
+
+        return title === undefined || title.length === 0
+          ? []
+          : [
+              {
+                title,
+                level: Number(match[1]),
+                ...(id === undefined || id.length === 0 ? {} : { id }),
+              },
+            ];
+      });
+    }
+    const document = new DOMParser().parseFromString(text, 'text/html');
+
+    return [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].flatMap(
+      heading =>
+        heading.textContent === null
+          ? []
+          : [
+              {
+                title: heading.textContent.trim(),
+                level: Number(heading.tagName.slice(1)),
+                ...(heading.id === '' ? {} : { id: heading.id }),
+              },
+            ],
+    );
+  }
+
+  return [...text.matchAll(/^(#{1,6})\s+(.+?)\s*#*\s*$/gmu)].flatMap(match =>
+    match[2] === undefined
+      ? []
+      : [{ title: match[2], level: match[1]?.length ?? 2 }],
   );
 }
 
 export function createManualContentClient<TLocale extends string>({
   baseURL,
+  manualDataURL,
   locales,
   fetcher: providedFetcher,
 }: ManualContentOptions<TLocale>): ManualContentClient<TLocale> {
   const base = baseURL.endsWith('/') ? baseURL : `${baseURL}/`;
+  const manualBaseURL =
+    manualDataURL === undefined
+      ? `${base}data/manual/`
+      : manualDataURL.endsWith('/')
+        ? manualDataURL
+        : `${manualDataURL}/`;
   const fetcher: typeof fetch =
     providedFetcher ?? ((...args) => globalThis.fetch(...args));
   let cachedNavigation: Promise<ManualNavigationItem<TLocale>[]> | undefined;
@@ -78,12 +162,21 @@ export function createManualContentClient<TLocale extends string>({
           isRecord(item) &&
           typeof item['slug'] === 'string' &&
           isLocalized(item['title']) &&
-          isLocalized(item['group']),
+          isLocalized(item['group']) &&
+          (item['parent'] === undefined ||
+            typeof item['parent'] === 'string') &&
+          (item['format'] === undefined ||
+            isFormatMap(item['format'], locales)) &&
+          (item['lastModified'] === undefined ||
+            isLocalized(item['lastModified'])),
       )
     );
   }
 
-  async function loadMarkdown(url: string): Promise<ManualPageDocument> {
+  async function loadDocument(
+    url: string,
+    format: ManualContentFormat = 'markdown',
+  ): Promise<ManualPageDocument> {
     const response = await fetcher(url);
 
     if (!response.ok) {
@@ -95,7 +188,8 @@ export function createManualContentClient<TLocale extends string>({
 
     return {
       text,
-      headings: extractHeadings(text),
+      headings: extractHeadings(text, format),
+      format,
       ...(lastModified === null ? {} : { lastModified }),
     };
   }
@@ -103,7 +197,7 @@ export function createManualContentClient<TLocale extends string>({
   return {
     loadNavigation() {
       if (cachedNavigation === undefined) {
-        const url = `${base}data/manual/navigation.json`;
+        const url = `${manualBaseURL}navigation.json`;
 
         cachedNavigation = loadJSON(url, fetcher)
           .then(raw => {
@@ -123,10 +217,11 @@ export function createManualContentClient<TLocale extends string>({
       return cachedNavigation;
     },
     manualPages(locale, navigation) {
-      return navigation.map(({ slug, title, group }) => ({
+      return navigation.map(({ slug, title, group, parent }) => ({
         slug,
         title: title[locale],
         group: group[locale],
+        ...(parent === undefined ? {} : { parent }),
       }));
     },
     async loadPage(locale, slug, navigation) {
@@ -136,13 +231,27 @@ export function createManualContentClient<TLocale extends string>({
         throw new Error(`Missing manual ${locale}/${slug}`);
       }
 
-      const url = `${base}data/manual/${locale}/${encodeURIComponent(slug)}.md`;
-      const document = await loadMarkdown(url);
+      const format = page.format?.[locale] ?? 'markdown';
+      const extension = format === 'html' ? 'html' : 'md';
+      const document = await loadDocument(
+        `${manualBaseURL}${locale}/${encodeURIComponent(slug)}.${extension}`,
+        format,
+      );
+      const pageLastModified = page.lastModified?.[locale];
 
-      return { slug, title: page.title[locale], ...document };
+      return {
+        slug,
+        title: page.title[locale],
+        ...document,
+        format,
+        ...(document.lastModified === undefined &&
+        pageLastModified !== undefined
+          ? { lastModified: pageLastModified }
+          : {}),
+      };
     },
     loadOverview(locale) {
-      return loadMarkdown(`${base}data/manual/${locale}/index.md`);
+      return loadDocument(`${manualBaseURL}${locale}/index.md`);
     },
   };
 }

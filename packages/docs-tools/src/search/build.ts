@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { convert } from 'html-to-text';
 import {
   indexReflections,
   getAPISymbolRouteSegment,
@@ -12,42 +13,18 @@ import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
 import { readJSON } from '../api/read-json';
 import { readAPISnapshot } from '../api/snapshot-reference';
-import { readPackageReadme } from '../package-readmes/read';
+import { isManualNavigation } from '../manual/navigation';
+import type { ManualNavigationItem } from '../manual/navigation';
+import { isSafePathSegment } from '../path-validation';
+import { hasPackageReadme, readPackageReadme } from '../package-readmes/read';
 
-interface ManualNavigationItem {
-  slug: string;
-  title: Record<string, string>;
-  group: Record<string, string>;
-}
-
-function isSafeSegment(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value !== '.' &&
-    value !== '..' &&
-    !/[\\/\0]/u.test(value)
-  );
-}
-
-function isLocalizedRecord(value: unknown): value is Record<string, string> {
-  return (
-    isRecord(value) &&
-    Object.values(value).every(item => typeof item === 'string')
-  );
-}
-
-function isManualNavigation(value: unknown): value is ManualNavigationItem[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      item =>
-        isRecord(item) &&
-        typeof item['slug'] === 'string' &&
-        isSafeSegment(item['slug']) &&
-        isLocalizedRecord(item['title']) &&
-        isLocalizedRecord(item['group']),
-    )
-  );
+function errorCode(error: unknown): string | undefined {
+  return error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
 }
 
 function typeKeywords(value: unknown): string[] {
@@ -107,7 +84,7 @@ async function buildAPIResults(
   const results: SearchResult[] = [];
 
   for (const pkg of manifest.packages) {
-    if (!isSafeSegment(pkg.key)) {
+    if (!isSafePathSegment(pkg.key)) {
       throw new Error(`Unsafe API package key in manifest: ${pkg.key}`);
     }
     const snapshotPath = pkg.current.json[locale];
@@ -117,11 +94,13 @@ async function buildAPIResults(
         `Missing current API snapshot path: ${pkg.key}/${locale}`,
       );
     }
-    const snapshot: unknown = (await readAPISnapshot(
-      path.resolve(dataRoot, snapshotPath),
-      dataRoot,
-      config.repositoryRoot,
-    )).value;
+    const snapshot: unknown = (
+      await readAPISnapshot(
+        path.resolve(dataRoot, snapshotPath),
+        dataRoot,
+        config.repositoryRoot,
+      )
+    ).value;
 
     if (!isRecord(snapshot) || snapshot['locale'] !== locale) {
       throw new Error(`Invalid current API snapshot: ${pkg.key}/${locale}`);
@@ -196,8 +175,11 @@ async function buildReadmeResults(
   const results: SearchResult[] = [];
 
   for (const pkg of manifest.packages) {
-    if (!isSafeSegment(pkg.key)) {
+    if (!isSafePathSegment(pkg.key)) {
       throw new Error(`Unsafe API package key in manifest: ${pkg.key}`);
+    }
+    if (!hasPackageReadme(config, pkg.key)) {
+      continue;
     }
     const { text: readme, sourceLocale } = await readPackageReadme(
       config,
@@ -228,25 +210,41 @@ async function buildManualResults(
   navigation: ManualNavigationItem[],
   locale: string,
 ): Promise<SearchResult[]> {
-  const dataRoot = path.dirname(config.apiDirectory);
-  const manualRoot = path.join(dataRoot, 'manual');
+  const manualRoot = config.manualDirectory;
   const results: SearchResult[] = [];
 
   for (const manual of navigation) {
-    const markdownPath = path.join(manualRoot, locale, `${manual.slug}.md`);
+    const format = manual.format?.[locale] ?? 'markdown';
+    const extension = format === 'html' ? 'html' : 'md';
+    const contentPath = path.join(
+      manualRoot,
+      locale,
+      `${manual.slug}.${extension}`,
+    );
 
-    await assertNoSymlinkPath(config.repositoryRoot, markdownPath);
-    const markdown = await readFile(markdownPath, 'utf8');
-    const title = /^# (.+)$/mu.exec(markdown)?.[1];
+    await assertNoSymlinkPath(config.repositoryRoot, contentPath);
+    const content = await readFile(contentPath, 'utf8');
+    const searchableText =
+      format === 'html'
+        ? convert(content, { wordwrap: false })
+        : searchableMarkdown(content);
+    const title =
+      format === 'html'
+        ? manual.title[locale]
+        : /^# (.+)$/mu.exec(content)?.[1];
 
-    if (title === undefined || markdown.trim().length < 150) {
+    if (
+      title === undefined ||
+      title.trim() === '' ||
+      searchableText.trim() === ''
+    ) {
       throw new Error(`Missing manual content: ${locale}/${manual.slug}`);
     }
     results.push({
       category: 'manual',
       name: title,
-      summary: searchableMarkdown(markdown).slice(0, 250),
-      keywords: markdown,
+      summary: searchableText.slice(0, 250),
+      keywords: searchableText,
       sourceLocale: locale,
       url: `/${locale}/manual/${manual.slug}/`,
     });
@@ -258,14 +256,29 @@ async function buildManualResults(
 export async function buildSearchIndexes(
   config: DocsSiteConfig,
 ): Promise<Record<string, number>> {
-  const dataRoot = path.dirname(config.apiDirectory);
+  const dataRoot = path.dirname(
+    config.apiConfigured === false
+      ? config.manualDirectory
+      : config.apiDirectory,
+  );
   const manifestPath = path.join(config.apiDirectory, 'manifest.json');
-  const navigationPath = path.join(dataRoot, 'manual/navigation.json');
+  const navigationPath = path.join(config.manualDirectory, 'navigation.json');
 
-  await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
   await assertNoSymlinkPath(config.repositoryRoot, navigationPath);
-  const manifest = parseAPIManifest(await readJSON(manifestPath));
-  const navigationValue: unknown = await readJSON(navigationPath);
+  let manifest: APIManifest | undefined;
+
+  if (config.apiConfigured !== false) {
+    await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
+    try {
+      manifest = parseAPIManifest(await readJSON(manifestPath));
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT' || config.apiPackages !== undefined) {
+        throw error;
+      }
+    }
+  }
+  const navigationValue: unknown =
+    config.manualConfigured === false ? [] : await readJSON(navigationPath);
 
   if (!isManualNavigation(navigationValue)) {
     throw new Error('Invalid manual navigation');
@@ -277,9 +290,15 @@ export async function buildSearchIndexes(
   await mkdir(outputDirectory, { recursive: true });
   for (const locale of config.locales) {
     const results = [
-      ...(await buildAPIResults(config, manifest, locale)),
-      ...(await buildReadmeResults(config, manifest, locale)),
-      ...(await buildManualResults(config, navigationValue, locale)),
+      ...(manifest === undefined
+        ? []
+        : await buildAPIResults(config, manifest, locale)),
+      ...(manifest === undefined
+        ? []
+        : await buildReadmeResults(config, manifest, locale)),
+      ...(config.manualConfigured === false
+        ? []
+        : await buildManualResults(config, navigationValue, locale)),
     ];
 
     await writeFile(

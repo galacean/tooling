@@ -176,14 +176,16 @@ export function APIPackageReadme<TLocale extends string>({
           {unknownHashLabel}: {location.hash}
         </div>
       )}
-      <MarkdownContent
-        text={content.text}
-        copyLabel={copyLabel}
-        copied={copiedLabel}
-        copyFailed={copyFailedLabel}
-        resolveLink={resolveLink}
-        resolveImage={resolveImage}
-      />
+      <div className="docs-reading-content">
+        <MarkdownContent
+          text={content.text}
+          copyLabel={copyLabel}
+          copied={copiedLabel}
+          copyFailed={copyFailedLabel}
+          resolveLink={resolveLink}
+          resolveImage={resolveImage}
+        />
+      </div>
     </article>
   );
 }

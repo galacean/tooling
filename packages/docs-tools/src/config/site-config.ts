@@ -2,6 +2,8 @@ import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readJSON } from '../api/read-json';
+import { validateAPIConfig } from './api-config-validation';
+import { validateManualCollections } from './manual-config-validation';
 
 export interface DocsSiteConfig {
   repositoryRoot: string;
@@ -9,11 +11,13 @@ export interface DocsSiteConfig {
   sourceLocale: string;
   locales: string[];
   apiDirectory: string;
+  apiConfigured?: boolean;
+  manualDirectory: string;
+  manualConfigured?: boolean;
   translationWorkDirectory: string;
   siteName?: string;
-  packageReadmes?: Record<string, Record<string, string>>;
-  packageReadmeSourceLocales?: Record<string, string>;
   apiPackages?: APIPackageConfig[];
+  manuals?: ManualCollectionConfig[];
   typedocOptions?: Record<string, unknown>;
   sourceLinkTemplate?: string;
 }
@@ -24,27 +28,70 @@ export interface APIEntryConfig {
   types: string;
 }
 
+export interface APIReadmeConfig {
+  sourceLocale?: string;
+  files: Record<string, string>;
+}
+
 export interface APIPackageConfig {
   key: string;
   name: string;
   directory: string;
   tsconfig: string;
   entries: APIEntryConfig[];
+  readme?: APIReadmeConfig;
+}
+
+export interface ManualDocumentConfig {
+  namespace: string;
+  slug: string;
+  routeSlug: string;
+  group?: string;
+  docId?: string;
+}
+
+export interface ManualCollectionConfig {
+  key: string;
+  routePrefix?: string;
+  source:
+    | { type: 'local'; directory: string; locale: string }
+    | {
+        type: 'yuque';
+        mode: 'repo';
+        baseURL: string;
+        namespace: string;
+        tokenEnv: string;
+        locale: string;
+      }
+    | {
+        type: 'yuque';
+        mode: 'documents';
+        baseURL: string;
+        tokenEnv: string;
+        locale: string;
+        documents: ManualDocumentConfig[];
+      };
+  ignore?: {
+    docIds?: string[];
+    slugs?: string[];
+    documentRefs?: { namespace: string; slug: string }[];
+    titleContains?: string[];
+  };
+  translations?: Record<string, string>;
 }
 
 interface SiteConfigInput {
-  api: {
+  api?: {
     dataDirectory: string;
     packages?: APIPackageConfig[];
     typedocOptions?: Record<string, unknown>;
     sourceLinkTemplate?: string;
   };
+  manual?: { dataDirectory: string; collections?: unknown[] };
   sourceLocale: string;
   locales: string[];
   translationWorkDirectory?: string;
   siteName?: string;
-  packageReadmes?: Record<string, Record<string, string>>;
-  packageReadmeSourceLocales?: Record<string, string>;
 }
 
 function isWithin(parent: string, child: string): boolean {
@@ -70,15 +117,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isSafeRelativePath(value: string): boolean {
-  return (
-    value.length > 0 &&
-    !path.isAbsolute(value) &&
-    !value.includes('\\') &&
-    value
-      .split('/')
-      .every(segment => segment !== '' && segment !== '.' && segment !== '..')
-  );
+function isLocaleTag(value: string): boolean {
+  return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u.test(value);
 }
 
 export async function assertNoSymlinkPath(
@@ -152,88 +192,42 @@ export async function loadSiteConfig(
     issues.push('expected an object export');
   } else {
     const api = config['api'];
+    const manual = config['manual'];
     const locales = config['locales'];
     const sourceLocale = config['sourceLocale'];
 
-    if (!isRecord(api) || typeof api['dataDirectory'] !== 'string') {
-      issues.push('api.dataDirectory must be a string');
-    } else {
-      const packages = api['packages'];
-
-      if (
-        packages !== undefined &&
-        (!Array.isArray(packages) || packages.length === 0)
-      ) {
-        issues.push('api.packages must be a non-empty array');
-      } else if (Array.isArray(packages)) {
-        const keys = new Set<string>();
-
-        for (const [index, packageConfig] of packages.entries()) {
-          if (
-            !isRecord(packageConfig) ||
-            typeof packageConfig['key'] !== 'string' ||
-            !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(packageConfig['key']) ||
-            keys.has(packageConfig['key']) ||
-            typeof packageConfig['name'] !== 'string' ||
-            packageConfig['name'].length === 0 ||
-            typeof packageConfig['directory'] !== 'string' ||
-            !isSafeRelativePath(packageConfig['directory']) ||
-            typeof packageConfig['tsconfig'] !== 'string' ||
-            !isSafeRelativePath(packageConfig['tsconfig']) ||
-            !Array.isArray(packageConfig['entries']) ||
-            packageConfig['entries'].length === 0
-          ) {
-            issues.push(
-              `api.packages[${index}] must declare unique key, name, directory, tsconfig, and entries`,
-            );
-            continue;
-          }
-          keys.add(packageConfig['key']);
-          const entryKeys = new Set<string>();
-
-          for (const [entryIndex, entry] of packageConfig[
-            'entries'
-          ].entries()) {
-            if (
-              !isRecord(entry) ||
-              typeof entry['key'] !== 'string' ||
-              entry['key'].length === 0 ||
-              entryKeys.has(entry['key']) ||
-              typeof entry['source'] !== 'string' ||
-              !isSafeRelativePath(entry['source']) ||
-              typeof entry['types'] !== 'string' ||
-              !isSafeRelativePath(entry['types'])
-            ) {
-              issues.push(
-                `api.packages[${index}].entries[${entryIndex}] must declare a unique key, source, and types path`,
-              );
-              continue;
-            }
-            entryKeys.add(entry['key']);
-          }
-        }
-      }
-      if (
-        api['typedocOptions'] !== undefined &&
-        !isRecord(api['typedocOptions'])
-      ) {
-        issues.push('api.typedocOptions must be an object');
-      }
-      if (
-        api['sourceLinkTemplate'] !== undefined &&
-        typeof api['sourceLinkTemplate'] !== 'string'
-      ) {
-        issues.push('api.sourceLinkTemplate must be a string');
-      }
+    if (config['packageReadmes'] !== undefined) {
+      issues.push(
+        'packageReadmes must be configured under api.packages[].readme.files',
+      );
     }
-    if (typeof sourceLocale !== 'string') {
-      issues.push('sourceLocale must be a string');
+    if (config['packageReadmeSourceLocales'] !== undefined) {
+      issues.push(
+        'packageReadmeSourceLocales must be configured as api.packages[].readme.sourceLocale',
+      );
+    }
+    if (config['manuals'] !== undefined) {
+      issues.push(
+        'manual collections must be configured under manual.collections',
+      );
+    }
+
+    issues.push(...validateAPIConfig(api, locales, sourceLocale));
+
+    if (
+      manual !== undefined &&
+      (!isRecord(manual) || typeof manual['dataDirectory'] !== 'string')
+    ) {
+      issues.push('manual.dataDirectory must be a string');
+    }
+    if (typeof sourceLocale !== 'string' || !isLocaleTag(sourceLocale)) {
+      issues.push('sourceLocale must be a valid locale tag');
     }
     if (
       !Array.isArray(locales) ||
-      locales.some(locale => typeof locale !== 'string')
+      locales.some(locale => typeof locale !== 'string' || !isLocaleTag(locale))
     ) {
-      issues.push('locales must be an array of strings');
+      issues.push('locales must be an array of valid locale tags');
     } else {
       if (typeof sourceLocale === 'string' && !locales.includes(sourceLocale)) {
         issues.push('locales must include sourceLocale');
@@ -255,69 +249,11 @@ export async function loadSiteConfig(
     ) {
       issues.push('siteName must be a non-empty string');
     }
-    if (
-      config['packageReadmes'] !== undefined &&
-      !isRecord(config['packageReadmes'])
-    ) {
-      issues.push('packageReadmes must map package keys to locale paths');
-    } else if (isRecord(config['packageReadmes'])) {
-      const configuredLocales = Array.isArray(locales)
-        ? locales.filter(
-            (locale): locale is string => typeof locale === 'string',
-          )
-        : [];
+    const manualCollections = isRecord(manual)
+      ? manual['collections']
+      : undefined;
 
-      for (const [packageKey, localePaths] of Object.entries(
-        config['packageReadmes'],
-      )) {
-        const configuredSourceLocale = isRecord(config['packageReadmeSourceLocales'])
-          ? config['packageReadmeSourceLocales'][packageKey]
-          : undefined;
-        const packageSourceLocale =
-          typeof configuredSourceLocale === 'string'
-            ? configuredSourceLocale
-            : sourceLocale;
-
-        if (
-          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(packageKey) ||
-          !isRecord(localePaths) ||
-          typeof packageSourceLocale !== 'string' ||
-          !configuredLocales.includes(packageSourceLocale) ||
-          typeof localePaths[packageSourceLocale] !== 'string' ||
-          Object.entries(localePaths).some(
-            ([locale, filename]) =>
-              !configuredLocales.includes(locale) ||
-              typeof filename !== 'string' ||
-              !isSafeRelativePath(filename),
-          )
-        ) {
-          issues.push(
-            `packageReadmes.${packageKey} must declare safe paths for configured locales`,
-          );
-        }
-      }
-    }
-    if (config['packageReadmeSourceLocales'] !== undefined) {
-      if (!isRecord(config['packageReadmeSourceLocales'])) {
-        issues.push('packageReadmeSourceLocales must map package keys to locales');
-      } else {
-        for (const [packageKey, locale] of Object.entries(
-          config['packageReadmeSourceLocales'],
-        )) {
-          if (
-            !isRecord(config['packageReadmes']) ||
-            !(packageKey in config['packageReadmes']) ||
-            typeof locale !== 'string' ||
-            !Array.isArray(locales) ||
-            !locales.includes(locale)
-          ) {
-            issues.push(
-              `packageReadmeSourceLocales.${packageKey} must reference a configured README package and locale`,
-            );
-          }
-        }
-      }
-    }
+    issues.push(...validateManualCollections(manualCollections, locales));
   }
   if (issues.length > 0) {
     const exportKeys = isRecord(config) ? Object.keys(config).join(', ') : '';
@@ -328,25 +264,49 @@ export async function loadSiteConfig(
   }
 
   const input = config as SiteConfigInput;
-  const apiDirectory = path.resolve(root, input.api.dataDirectory);
+  const manualCollectionsInput = input.manual?.collections;
+  const dataDirectory = path.resolve(
+    root,
+    input.api !== undefined
+      ? path.dirname(input.api.dataDirectory)
+      : input.manual !== undefined
+        ? path.dirname(input.manual.dataDirectory)
+        : 'site/public/data',
+  );
+  const apiDirectory =
+    input.api === undefined
+      ? path.join(dataDirectory, 'api')
+      : path.resolve(root, input.api.dataDirectory);
+  const manualDirectory =
+    input.manual === undefined
+      ? path.join(dataDirectory, 'manual')
+      : path.resolve(root, input.manual.dataDirectory);
   const translationWorkDirectory = path.resolve(
     root,
     input.translationWorkDirectory ?? 'tmp/docs-tools/api-translation',
   );
 
   if (
-    !isWithin(root, apiDirectory) ||
+    !isWithin(root, dataDirectory) ||
+    (input.api !== undefined && !isWithin(root, apiDirectory)) ||
+    ((input.manual !== undefined || manualCollectionsInput !== undefined) &&
+      !isWithin(root, manualDirectory)) ||
     !isWithin(root, translationWorkDirectory)
   ) {
     throw new Error(
       `Configured data and work directories must stay inside the repository: ${filename}`,
     );
   }
-  await assertNoSymlinkPath(root, apiDirectory);
+  if (input.api !== undefined) {
+    await assertNoSymlinkPath(root, apiDirectory);
+  }
+  if (input.manual !== undefined || manualCollectionsInput !== undefined) {
+    await assertNoSymlinkPath(root, manualDirectory);
+  }
   await assertNoSymlinkPath(root, translationWorkDirectory);
   let apiPackages: APIPackageConfig[] | undefined;
 
-  if (input.api.packages !== undefined) {
+  if (input.api?.packages !== undefined) {
     apiPackages = [];
     for (const packageConfig of input.api.packages) {
       const packageDirectory = path.resolve(root, packageConfig.directory);
@@ -377,6 +337,26 @@ export async function loadSiteConfig(
           await assertNoSymlinkPath(root, absolutePath);
         }
       }
+      let readme: APIReadmeConfig | undefined;
+
+      if (packageConfig.readme !== undefined) {
+        const files: Record<string, string> = {};
+
+        for (const [locale, filename] of Object.entries(
+          packageConfig.readme.files,
+        )) {
+          const absolutePath = path.resolve(packageDirectory, filename);
+
+          if (!isWithin(packageDirectory, absolutePath)) {
+            throw new Error(
+              `API package README path must stay inside its package: ${packageConfig.key}/${filename}`,
+            );
+          }
+          await assertNoSymlinkPath(root, absolutePath);
+          files[locale] = absolutePath;
+        }
+        readme = { ...packageConfig.readme, files };
+      }
       apiPackages.push({
         ...packageConfig,
         directory: packageDirectory,
@@ -386,28 +366,51 @@ export async function loadSiteConfig(
           source: path.resolve(packageDirectory, entry.source),
           types: path.resolve(packageDirectory, entry.types),
         })),
+        ...(readme === undefined ? {} : { readme }),
       });
     }
   }
-  let packageReadmes: Record<string, Record<string, string>> | undefined;
+  let manuals: ManualCollectionConfig[] | undefined;
 
-  if (input.packageReadmes !== undefined) {
-    packageReadmes = {};
-    for (const [packageKey, localePaths] of Object.entries(
-      input.packageReadmes,
-    )) {
-      packageReadmes[packageKey] = {};
-      for (const [locale, filename] of Object.entries(localePaths)) {
-        const absolutePath = path.resolve(root, filename);
+  if (manualCollectionsInput !== undefined) {
+    manuals = [];
+    for (const collection of manualCollectionsInput as ManualCollectionConfig[]) {
+      let source = collection.source;
 
-        if (!isWithin(root, absolutePath)) {
+      if (source.type === 'local') {
+        const directory = path.resolve(root, source.directory);
+
+        if (!isWithin(root, directory)) {
           throw new Error(
-            `Package README path must stay inside the repository: ${filename}`,
+            `Manual source directory must stay inside the repository: ${source.directory}`,
           );
         }
-        await assertNoSymlinkPath(root, absolutePath);
-        packageReadmes[packageKey][locale] = absolutePath;
+        await assertNoSymlinkPath(root, directory);
+        source = { ...source, directory };
       }
+      let translations: Record<string, string> | undefined;
+
+      if (collection.translations !== undefined) {
+        translations = {};
+        for (const [locale, filename] of Object.entries(
+          collection.translations,
+        )) {
+          const absolutePath = path.resolve(root, filename);
+
+          if (!isWithin(root, absolutePath)) {
+            throw new Error(
+              `Manual translation path must stay inside the repository: ${filename}`,
+            );
+          }
+          await assertNoSymlinkPath(root, absolutePath);
+          translations[locale] = absolutePath;
+        }
+      }
+      manuals.push({
+        ...collection,
+        source,
+        ...(translations === undefined ? {} : { translations }),
+      });
     }
   }
 
@@ -417,17 +420,18 @@ export async function loadSiteConfig(
     sourceLocale: input.sourceLocale,
     locales: [...input.locales],
     apiDirectory,
+    apiConfigured: input.api !== undefined,
+    manualDirectory,
+    manualConfigured:
+      input.manual !== undefined || manualCollectionsInput !== undefined,
     translationWorkDirectory,
     ...(input.siteName === undefined ? {} : { siteName: input.siteName }),
-    ...(packageReadmes === undefined ? {} : { packageReadmes }),
-    ...(input.packageReadmeSourceLocales === undefined
-      ? {}
-      : { packageReadmeSourceLocales: input.packageReadmeSourceLocales }),
     ...(apiPackages === undefined ? {} : { apiPackages }),
-    ...(input.api.typedocOptions === undefined
+    ...(manuals === undefined ? {} : { manuals }),
+    ...(input.api?.typedocOptions === undefined
       ? {}
       : { typedocOptions: input.api.typedocOptions }),
-    ...(input.api.sourceLinkTemplate === undefined
+    ...(input.api?.sourceLinkTemplate === undefined
       ? {}
       : { sourceLinkTemplate: input.api.sourceLinkTemplate }),
   };

@@ -1,14 +1,7 @@
 import type { JSONOutput } from 'typedoc';
 import type { Key, ReactNode } from 'react';
 import {
-  childrenOf,
-  formatSignature,
-  formatType,
-  getAPICommentContent,
-  isExternalInherited,
-  resolveAPICommentLink,
-  resolveAPIMarkdownLink,
-  signaturesOf,
+  childrenOf, formatSignature, formatType, getAPICommentContent, isExternalInherited, resolveAPICommentLink, resolveAPIMarkdownLink, signaturesOf,
 } from '../../data';
 import type { APICommentContext, TypeToken } from '../../data';
 import { APIComment, APISourceLinks } from './api-reflection-content';
@@ -28,12 +21,11 @@ export interface APITypeDocContext<
 }
 
 export interface APITypeDocDetailMessages
-  extends
-    APIReflectionDetailMessages,
-    Pick<
-      APICommentProps['messages'],
-      'noDescription' | 'original' | 'copy' | 'copied' | 'copyFailed'
-    > {
+  extends APIReflectionDetailMessages,
+  Pick<
+    APICommentProps['messages'],
+    'noDescription' | 'original' | 'copy' | 'copied' | 'copyFailed'
+  > {
   definition: string;
   sourceType: string;
   source: string;
@@ -58,7 +50,7 @@ export function APITypeDocDetail<
   TProject extends object,
   TReflection extends object,
   TLocale extends string,
->({
+> ({
   reflection,
   context,
   showInherited,
@@ -89,7 +81,7 @@ export function APITypeDocDetail<
     <APIKindLabel kind={kind} label={getGroupLabel(kind)} compact={compact} />
   );
 
-  function renderSource(sourceReflection: TReflection): ReactNode {
+  function renderSource (sourceReflection: TReflection): ReactNode {
     const sourceValue =
       sourceReflection as unknown as JSONOutput.SomeReflection;
     const sources = 'sources' in sourceValue ? (sourceValue.sources ?? []) : [];
@@ -97,7 +89,7 @@ export function APITypeDocDetail<
     return <APISourceLinks sources={sources} label={t.source} />;
   }
 
-  function renderComment(
+  function renderComment (
     target: TReflection,
     options?: { field?: string; empty?: boolean },
   ): ReactNode {
@@ -130,7 +122,7 @@ export function APITypeDocDetail<
     );
   }
 
-  function renderTypeReference(
+  function renderTypeReference (
     reference: JSONOutput.ReferenceType,
     text: string,
     key: Key,
@@ -146,7 +138,8 @@ export function APITypeDocDetail<
     }
     const target = context.index.resolve(reference.target);
     const targetValue = target as unknown as
-      JSONOutput.SomeReflection | undefined;
+      | JSONOutput.SomeReflection
+      | undefined;
     const url =
       targetValue === undefined
         ? undefined
@@ -160,9 +153,8 @@ export function APITypeDocDetail<
           {...(reference.externalUrl === undefined
             ? {}
             : { externalUrl: reference.externalUrl })}
-          unresolvedTitle={`${t.sourceType}: ${reference.package ?? ''} ${
-            reference.qualifiedName ?? reference.name
-          }`}
+          unresolvedTitle={`${t.sourceType}: ${reference.package ?? ''} ${reference.qualifiedName ?? reference.name
+            }`}
         />
       );
     }
@@ -177,10 +169,10 @@ export function APITypeDocDetail<
       (signatures[0] === undefined
         ? undefined
         : getAPICommentContent<TLocale, JSONOutput.CommentDisplayPart>(
-            signatures[0],
-            'summary',
-            isLocale,
-          ));
+          signatures[0],
+          'summary',
+          isLocale,
+        ));
 
     return (
       <APITypeReference
@@ -216,7 +208,7 @@ export function APITypeDocDetail<
     );
   }
 
-  function renderTokens(tokens: TypeToken[]): ReactNode {
+  function renderTokens (tokens: TypeToken[]): ReactNode {
     return (
       <APITokens
         tokens={tokens}
@@ -227,7 +219,7 @@ export function APITypeDocDetail<
     );
   }
 
-  function renderType(type: unknown): ReactNode {
+  function renderType (type: unknown): ReactNode {
     return renderTokens(formatType(type));
   }
 
@@ -236,7 +228,6 @@ export function APITypeDocDetail<
       reflection={reflection}
       showInherited={showInherited}
       messages={{
-        contents: t.contents,
         overview: t.overview,
         signature: t.signature,
         description: t.description,
@@ -253,7 +244,9 @@ export function APITypeDocDetail<
       renderComment={renderComment}
       renderType={renderType}
       renderTokens={renderTokens}
-      isExternalInherited={member => isExternalInherited(member, context.index)}
+      isExternalInherited={member =>
+        isExternalInherited(member, context.index)
+      }
     />
   );
 }

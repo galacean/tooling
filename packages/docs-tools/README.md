@@ -14,49 +14,124 @@ Install it as a development dependency in the repository that owns the documenta
 pnpm add -D @galacean/docs-tools
 ```
 
-Run commands from the consumer repository root. Every command requires a site config passed with `--config`; the config path is resolved relative to the current working directory:
+Run commands from the consumer repository root. Site data commands require a site config passed with `--config`; the config path is resolved relative to the current working directory. `skills sync` operates on the current repository and does not require a site config:
 
 ```sh
 pnpm exec galacean-docs api generate --config site/site.config.ts
+pnpm exec galacean-docs manual sync --config site/site.config.ts
 pnpm exec galacean-docs package-readmes build --config site/site.config.ts
 pnpm exec galacean-docs search build --config site/site.config.ts
 pnpm exec galacean-docs routes build --config site/site.config.ts
-pnpm exec galacean-docs skills sync --config site/site.config.ts
+pnpm exec galacean-docs skills sync
 ```
 
-The config can be JSON or a JavaScript/TypeScript module. At minimum, declare the source locale, supported locales, and API data directory:
+The config can be JSON or a JavaScript/TypeScript module. The source locale and supported locales are required; `api` and `manual` are independent optional sections. If one section is omitted, its data directory defaults beside the configured section. If both are omitted, the default directories are `site/public/data/api` and `site/public/data/manual`. Search and route builds include only configured API/manual content. API generation requires `api.packages`.
+Directories outside the site's default public data paths must be exposed by the consuming site's static hosting configuration. For `@galacean/docs-site`, set `site.manualDataURL` to the published manual directory and use `getSearchDataURL` when search indexes are published at a non-default URL.
 
 ```ts
 export default {
-	siteName: 'Example Docs',
-	sourceLocale: 'en',
-	locales: ['en', 'zh-CN'],
-	api: {
-		dataDirectory: 'site/public/data/api',
-		packages: [
-			{
-				key: 'engine',
-				name: '@example/engine',
-				directory: 'packages/engine',
-				tsconfig: 'tsconfig.json',
-				entries: [
-					{ key: 'root', source: 'src/index.ts', types: 'dist/index.d.ts' },
-				],
-			},
-		],
-	},
-	packageReadmes: {
-		engine: {
-			en: 'packages/engine/README.md',
-			'zh-CN': 'packages/engine/README.zh-CN.md',
-		},
-	},
+  siteName: 'Example Docs',
+  sourceLocale: 'en',
+  locales: ['en', 'zh-CN'],
+  manual: {
+    dataDirectory: 'site/public/data/manual',
+  },
+  api: {
+    dataDirectory: 'site/public/data/api',
+    packages: [
+      {
+        key: 'engine',
+        name: '@example/engine',
+        directory: 'packages/engine',
+        tsconfig: 'tsconfig.json',
+        entries: [
+          { key: 'root', source: 'src/index.ts', types: 'dist/index.d.ts' },
+        ],
+        readme: {
+          files: {
+            en: 'README.md',
+            'zh-CN': 'README.zh-CN.md',
+          },
+        },
+      },
+    ],
+  },
 };
 ```
 
 `api.packages` configures API generation. `key` is a stable identifier in the documentation data, `name` must match the package's `package.json`, `directory` points to the package directory, and `tsconfig` points to its TypeScript config. Each `entries` item configures a public entry point: `types` is used to determine the exported declarations, and `source` links them to source code. The optional `api.typedocOptions` and `api.sourceLinkTemplate` configure TypeDoc and source links, respectively.
 
-`packageReadmes` maps API package keys to README paths by locale. If a locale path is not configured or its file is missing, the source-locale README is used. `packageReadmeSourceLocales` can override `sourceLocale` for individual packages. `translationWorkDirectory` defaults to `tmp/docs-tools/api-translation`. Configured data directories, package directories, and file paths must stay inside the repository.
+Each API package can declare its own `readme.files` map, with paths relative to that package's `directory`. `readme.sourceLocale` optionally overrides the site-wide `sourceLocale` for that package. If a localized README is not configured or its file is missing, the source README is used. `translationWorkDirectory` defaults to `tmp/docs-tools/api-translation`. Configured data directories, package directories, and file paths must stay inside the repository.
+
+### Manual Collections
+
+`manual.collections` is optional, so existing sites can continue to provide `manual/navigation.json` and Markdown directly. When configured, `manual sync` assembles all collections into that same static data contract. Collection keys and generated route slugs must be unique.
+
+```ts
+manual: {
+  dataDirectory: 'site/public/data/manual',
+  collections: [
+  {
+    key: 'product-guide',
+    routePrefix: 'product',
+    source: {
+      type: 'yuque',
+      mode: 'repo',
+      baseURL: 'https://www.yuque.com/api/v2',
+      namespace: 'team/product-guide',
+      tokenEnv: 'YUQUE_TOKEN',
+      locale: 'zh-CN',
+    },
+    ignore: {
+      docIds: [],
+      slugs: ['draft'],
+      titleContains: ['[private]'],
+    },
+    translations: { en: 'site/manual-translations/product-guide/en' },
+  },
+  {
+    key: 'selected-articles',
+    source: {
+      type: 'yuque',
+      mode: 'documents',
+      baseURL: 'https://www.yuque.com/api/v2',
+      tokenEnv: 'YUQUE_TOKEN',
+      locale: 'zh-CN',
+      documents: [
+        {
+          namespace: 'team/one',
+          slug: 'getting-started',
+          routeSlug: 'getting-started',
+          group: 'Guides',
+        },
+        {
+          namespace: 'team/two',
+          slug: 'migration',
+          routeSlug: 'migration',
+          group: 'Migration',
+        },
+      ],
+    },
+  },
+  {
+    key: 'local-notes',
+    source: {
+      type: 'local',
+      directory: 'site/manual-local/notes',
+      locale: 'en',
+    },
+  },
+  ],
+}
+```
+
+Only the grouped fields are supported: API README mappings belong under each `api.packages[].readme`, and manual collections belong under `manual.collections`. Former top-level README maps and API-level README maps are rejected.
+
+`repo` reads the ordered TOC and applies `ignore` before fetching document bodies; ignored `TITLE` nodes exclude their descendants. `documents` requests only the ordered allowlist and never reads a TOC. A document may specify `docId` so `ignore.docIds` can skip it before the request. `documentRefs` matches exact `namespace`/`slug` pairs. `slugs` and `titleContains` are for repo mode. A local collection directory contains `navigation.json` plus `<locale>/<slug>.md` files.
+
+Yuque `baseURL` must be an HTTP(S) API base, such as the public or an approved internal endpoint. `tokenEnv` names an environment variable; the token value must not be stored in site config. The source locale must be one of the configured site locales. `routePrefix` prefixes generated route slugs. Translation directories contain `<route-slug>.md`; optional `navigation.json` maps route slugs to translated `title` and `group` values. Missing translations fall back to source Markdown.
+
+A local collection can share the generated `manual/` output directory. Mark authored local items in `navigation.json` with `source: { type: 'local' }`; sync reads only those entries from the shared directory, while Yuque-generated entries are marked `source.type: 'yuque'` and are not re-imported. Their Markdown files remain under `<locale>/<slug>.md`.
 
 ## Commands
 
@@ -91,12 +166,12 @@ Applies translation results to their API snapshots. Each translation file must c
 
 ```json
 {
-	"locale": "zh-CN",
-	"version": "1.2.3",
-	"sourceHash": "<sourceHash from the task>",
-	"translations": {
-		"<field-key>": "Translated text"
-	}
+  "locale": "zh-CN",
+  "version": "1.2.3",
+  "sourceHash": "<sourceHash from the task>",
+  "translations": {
+    "<field-key>": "Translated text"
+  }
 }
 ```
 
@@ -126,6 +201,14 @@ pnpm exec galacean-docs search build --config site/site.config.ts
 
 Builds `search/<locale>.json` for each locale. Sources include public symbols and members in the current API snapshots, package READMEs, and manual pages listed in `manual/navigation.json`. Each index contains names, summaries, keywords, and site URLs. Untranslated READMEs fall back to their source locale. This command requires a valid API manifest and snapshots, README mappings, and manual content for each locale.
 
+### `manual sync`
+
+```sh
+pnpm exec galacean-docs manual sync --config site/site.config.ts
+```
+
+Synchronizes configured local and Yuque collections into `navigation.json` and `<locale>/<route-slug>.md` or `.html` under `manual.dataDirectory`. It reports per-collection file counts, Yuque group counts, and per-file sync status. Yuque requests use the configured `tokenEnv`, a 15-second timeout, and bounded retries for rate limits and server errors. Raw Markdown and Yuque Lake HTML are supported; translation files remain Markdown. The command stages and validates output before replacing the generated manual data. Run it before search and frontend builds. No `manuals` config is required for sites that continue managing static manual data themselves.
+
 ### `routes build`
 
 ```sh
@@ -141,21 +224,22 @@ After the site frontend has been built into `site/dist`, generates static HTML r
 ### `skills sync`
 
 ```sh
-pnpm exec galacean-docs skills sync --config site/site.config.ts
-pnpm exec galacean-docs skills sync --config site/site.config.ts --check
+pnpm exec galacean-docs skills sync
+pnpm exec galacean-docs skills sync --check
 ```
 
-Synchronizes the `api-documentation-translation` skill shipped with this package to `.agents/skills/api-documentation-translation` in the consumer repository. A managed manifest records the package version and file hashes. The command refuses to overwrite a target directory it does not manage or managed files that have been edited manually. `--check` verifies that the installed copy matches the current package version without writing files; it exits with an error when the copy is missing or out of date.
+Synchronizes the `api-documentation-translation` and `manual-documentation-translation` skills shipped with this package to matching directories under `.agents/skills`. It uses the current working directory as the consumer repository root and does not load a site config. Each managed manifest records the package version and file hashes. The command refuses to overwrite a target directory it does not manage or managed files that have been edited manually. `--check` verifies both copies without writing files; it exits with an error when either copy is missing or out of date.
 
 ## Recommended Workflow
 
 For an initial build or an update to site data, use this order:
 
 1. Run `api generate` to create API snapshots and the manifest.
-2. To update API comment translations, run `api extract`, complete the translations, and then run `api apply`.
-3. Run `package-readmes build` and `search build` to generate README data and search indexes.
-4. Build the site with its own build command to produce `site/dist`, then run `routes build`.
-5. If the repository uses the translation skill, run `skills sync`; CI can use `--check` to verify that it is up to date.
+2. If `manuals` is configured, run `manual sync` with the Yuque token environment variable available to the process.
+3. To update API comment translations, run `api extract`, complete the translations, and then run `api apply`.
+4. Run `package-readmes build` and `search build` to generate README data and search indexes.
+5. Build the site with its own build command to produce `site/dist`, then run `routes build`.
+6. Run `skills sync`; CI can use `--check` to verify both managed skills.
 
 To see command syntax, run:
 

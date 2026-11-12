@@ -3,10 +3,7 @@ import type { APIManifest, APIReadmeData, ReflectionIndex } from '../../data';
 import { apiPackagePath, apiSymbolPath, localePath } from '../../i18n';
 import type { APIReferencePageMessages } from './api-reference-page';
 import { APIReferencePage } from './api-reference-page';
-import type {
-  APITypeDocContext,
-  APITypeDocDetailMessages,
-} from './api-typedoc-detail';
+import type { APITypeDocContext, APITypeDocDetailMessages } from './api-typedoc-detail';
 import { APITypeDocDetail } from './api-typedoc-detail';
 import { APIKindLabel, apiKindGroup } from './api-kind-label';
 import { APIPackageReadme } from './api-package-readme';
@@ -56,7 +53,7 @@ export function APIReferenceRoute<
   TProject extends object,
   TReflection extends object,
   TData extends { project: TProject; index: ReflectionIndex<TReflection> },
->({
+> ({
   locale,
   messages: t,
   isLocale,
@@ -73,7 +70,7 @@ export function APIReferenceRoute<
   resolveReadmeImage,
   getRepositoryFileURL,
 }: APIReferenceRouteProps<TLocale, TProject, TReflection, TData>) {
-  function parseLocale(value: string): TLocale {
+  function parseLocale (value: string): TLocale {
     if (!isLocale(value)) {
       throw new Error(`Unknown API locale: ${value}`);
     }

@@ -4,11 +4,13 @@ import {
   Link,
   Navigate,
   useLocation,
+  useOutletContext,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
 import { getAPISymbolRouteSegment } from '../../data';
 import type { APIManifest, APIVersion } from '../../data';
+import type { SiteShellOutletContext } from '../site/site-shell';
 import { APINavigationToolbar, APISymbolMenu } from './api-navigation';
 import type { APINavigationToolbarProps } from './api-navigation';
 import { APIReferenceLayout } from './api-reference-layout';
@@ -79,7 +81,6 @@ export function APIReferencePage<
   getSymbolHref,
   getGroupLabel,
   renderKind,
-  symbolCountLabel,
   renderPackageReadme,
   renderReflection,
 }: APIReferencePageProps<TReflection, TData>) {
@@ -89,6 +90,8 @@ export function APIReferencePage<
     symbol: symbolSegment,
   } = useParams();
   const location = useLocation();
+  const shellContext = useOutletContext<SiteShellOutletContext | null>();
+  const setAPIDocumentTitle = shellContext?.setAPIDocumentTitle;
   const [query] = useSearchParams();
   const [apiManifest, setAPIManifest] = useState<APIManifest>();
   const [data, setData] = useState<TData>();
@@ -97,6 +100,10 @@ export function APIReferencePage<
   const [drawer, setDrawer] = useState(false);
   const [showInherited, setShowInherited] = useState(false);
   const [hashError, setHashError] = useState(false);
+
+  useEffect(() => {
+    shellContext?.setAPISidebarCollapsed(collapsed);
+  }, [collapsed, shellContext]);
   const scrollContainer = useRef<HTMLDivElement>(null);
   const pkg = apiManifest?.packages.find(item => item.key === packageKey);
   const requestedPackageKey = query.get('package');
@@ -132,6 +139,16 @@ export function APIReferencePage<
       displayedVersion !== undefined &&
       entry !== undefined &&
       (packageHome || (symbol !== undefined && versionInfo !== undefined)));
+  const apiDocumentTitle =
+    pkg === undefined
+      ? (symbolSegment ?? packageKey ?? t.api)
+      : packageHome
+        ? pkg.name
+        : (symbolName ?? t.notFound);
+
+  useEffect(() => {
+    setAPIDocumentTitle?.(apiDocumentTitle);
+  }, [apiDocumentTitle, setAPIDocumentTitle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -304,7 +321,15 @@ export function APIReferencePage<
 
   return (
     <APIReferenceLayout
-      messages={t}
+      messages={{
+        ...t,
+        collapseSidebar:
+          t.collapseSidebar ??
+          (locale.startsWith('zh') ? '收起侧栏' : 'Collapse sidebar'),
+        expandSidebar:
+          t.expandSidebar ??
+          (locale.startsWith('zh') ? '展开侧栏' : 'Expand sidebar'),
+      }}
       collapsed={collapsed}
       onToggleCollapsed={() => setCollapsed(value => !value)}
       drawerOpen={drawer}
@@ -312,22 +337,6 @@ export function APIReferencePage<
       navigationKey={`${location.pathname}${location.search}`}
       scrollRef={scrollContainer}
       renderNavigation={renderMenu}
-      sidebarHeading={
-        <>
-          <div className="api-sidebar-meta">
-            <span>API REFERENCE</span>
-            <span>{locale.toUpperCase()}</span>
-          </div>
-          <Link
-            className="api-package-home-link"
-            to={getPackageHref(locale, pkg.key)}
-            aria-current={packageHome ? 'page' : undefined}
-          >
-            {pkg.name}
-          </Link>
-          <small>{symbolCountLabel(entry.symbols.length, locale)}</small>
-        </>
-      }
       toolbar={
         <APINavigationToolbar
           pkg={pkg}
@@ -343,7 +352,6 @@ export function APIReferencePage<
           showInherited={showInherited}
           onShowInheritedChange={setShowInherited}
           messages={t}
-          apiHref={getAPIHref(locale)}
           getPackageHref={key => getPackageHref(locale, key)}
           getSymbolHref={target => {
             const targetVersion =
@@ -351,8 +359,9 @@ export function APIReferencePage<
                 ? pkg.current
                 : pkg.versions.find(item => item.version === target.version);
             const targetSymbols =
-              targetVersion?.entries.find(entry => entry.key === target.entryKey)
-                ?.symbols ?? [];
+              targetVersion?.entries.find(
+                entry => entry.key === target.entryKey,
+              )?.symbols ?? [];
 
             return getSymbolHref(
               locale,

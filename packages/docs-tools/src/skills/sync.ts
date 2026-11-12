@@ -10,13 +10,13 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 
-const skillName = 'api-documentation-translation';
 const manifestName = '.managed.json';
 
 export interface SyncManagedSkillOptions {
   repositoryRoot: string;
   sourceDirectory: string;
   packageVersion: string;
+  skillName?: string;
   check?: boolean;
 }
 
@@ -83,8 +83,12 @@ export async function syncManagedSkill({
   repositoryRoot,
   sourceDirectory,
   packageVersion,
+  skillName = 'api-documentation-translation',
   check = false,
 }: SyncManagedSkillOptions): Promise<SyncManagedSkillResult> {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(skillName)) {
+    throw new Error(`Invalid managed Skill name: ${skillName}`);
+  }
   const root = path.resolve(repositoryRoot);
   const parentDirectory = path.join(root, '.agents', 'skills');
   const targetDirectory = path.join(parentDirectory, skillName);
@@ -138,7 +142,9 @@ export async function syncManagedSkill({
     }
     existingManifest = parsed as unknown as ManagedManifest;
     const managedFiles = Object.keys(existingManifest.files);
-    const actualFiles = managedEntries.filter(entry => entry !== manifestName);
+    const actualFiles = managedEntries.filter(
+      entry => entry !== manifestName,
+    );
 
     if (
       managedFiles.length !== actualFiles.length ||

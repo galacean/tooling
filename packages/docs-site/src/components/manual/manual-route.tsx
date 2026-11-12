@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useOutletContext, useParams } from 'react-router-dom';
 import { isSupportedLocale, localePath } from '../../i18n';
 import { createManualContentClient } from '../../manual';
 import type { ManualContentClient } from '../../manual';
@@ -9,9 +9,11 @@ import type {
   ManualNavigationPage,
   ManualDocument,
 } from './manual-page';
+import type { SiteShellOutletContext } from '../site/site-shell';
 
 export interface ManualRouteProps<TLocale extends string> {
   baseURL: string;
+  manualDataURL?: string;
   locales: readonly TLocale[];
   locale: TLocale;
   sectionLabel: string;
@@ -26,14 +28,21 @@ interface ManualRouteLoaders {
 
 export function ManualRoute<TLocale extends string>({
   baseURL,
+  manualDataURL,
   locales,
   locale,
   sectionLabel,
   messages,
 }: ManualRouteProps<TLocale>) {
   const { slug } = useParams();
+  const { setManualPageTitle, setManualSidebarCollapsed } =
+    useOutletContext<SiteShellOutletContext>();
   const [client] = useState(() =>
-    createManualContentClient({ baseURL, locales }),
+    createManualContentClient({
+      baseURL,
+      ...(manualDataURL === undefined ? {} : { manualDataURL }),
+      locales,
+    }),
   );
   const [loaders] = useState(() => createRouteLoaders(client, locales));
 
@@ -42,6 +51,8 @@ export function ManualRoute<TLocale extends string>({
       locale={locale}
       slug={slug}
       messages={messages}
+      onTitleChange={setManualPageTitle}
+      onSidebarCollapsed={setManualSidebarCollapsed}
       sectionLabel={sectionLabel}
       homeHref={localePath(locale)}
       getPageHref={value =>

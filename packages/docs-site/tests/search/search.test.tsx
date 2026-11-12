@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseSearch, searchResults } from '@galacean/docs-site';
 import type { SearchResult } from '@galacean/docs-site';
 import { SearchPanel } from '../../src/components/search/search-panel';
-import type { SearchPanelMessages } from '../../src/components/search/search-panel';
+import type {
+  SearchPanelMessages,
+  SearchPanelProps,
+} from '../../src/components/search/search-panel';
 import { SiteShell } from '../../src/components/site/site-shell';
 import type { SiteShellProps } from '../../src/components/site/site-shell';
 import { ThemeProvider } from '../../src/providers/theme';
@@ -14,6 +17,7 @@ const messages: SearchPanelMessages = {
   search: 'Search',
   close: 'Close',
   searchPlaceholder: 'Search docs',
+  manualSearchPlaceholder: 'Search manuals',
   storageError: 'Storage error',
   loading: 'Loading',
   loadError: 'Unable to load',
@@ -76,21 +80,17 @@ describe('shared search query', () => {
 
 describe('shared SearchPanel', () => {
   it('renders consumer-provided copy, brand, and empty history state', () => {
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(SearchPanel, {
-          locale: 'en',
-          brandLabel: 'Example Docs',
-          brandMarkUrl: '/brand.svg',
-          historyKeyPrefix: 'example:site:search',
-          messages,
-          loadItems: async () => items,
-          close: () => undefined,
-        }),
-      ),
-    );
+    const props: SearchPanelProps = {
+      locale: 'en',
+      brandLabel: 'Example Docs',
+      brandMarkUrl: '/brand.svg',
+      historyKeyPrefix: 'example:site:search',
+      messages,
+      loadItems: async () => items,
+      navigate: () => undefined,
+      close: () => undefined,
+    };
+    const markup = renderToStaticMarkup(createElement(SearchPanel, props));
 
     expect(markup).toContain('aria-labelledby="site-search-title"');
     expect(markup).toContain('src="/brand.svg"');

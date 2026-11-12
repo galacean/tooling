@@ -61,15 +61,48 @@ async function fixture(t: TestContext) {
     `export default ${JSON.stringify({
       sourceLocale: 'zh-CN',
       locales: ['en', 'zh-CN'],
-      api: { dataDirectory: 'site/public/data/api' },
-      packageReadmeSourceLocales: { beta: 'en' },
-      packageReadmes: {
-        alpha: {
-          en: 'packages/alpha/README.md',
-          'zh-CN': 'packages/alpha/README-zh_CN.md',
-        },
-        beta: { en: 'packages/beta/README.md' },
+      api: {
+        dataDirectory: 'site/public/data/api',
+        packages: [
+          {
+            key: 'alpha',
+            name: '@example/alpha',
+            directory: 'packages/alpha',
+            tsconfig: 'tsconfig.json',
+            entries: [
+              {
+                key: 'root',
+                source: 'src/index.ts',
+                types: 'dist/index.d.ts',
+              },
+            ],
+            readme: {
+              files: {
+                en: 'README.md',
+                'zh-CN': 'README-zh_CN.md',
+              },
+            },
+          },
+          {
+            key: 'beta',
+            name: '@example/beta',
+            directory: 'packages/beta',
+            tsconfig: 'tsconfig.json',
+            entries: [
+              {
+                key: 'root',
+                source: 'src/index.ts',
+                types: 'dist/index.d.ts',
+              },
+            ],
+            readme: {
+              sourceLocale: 'en',
+              files: { en: 'README.md' },
+            },
+          },
+        ],
       },
+      manual: { dataDirectory: 'site/public/data/manual' },
     })} as const;\n`,
   );
   t.onTestFinished(() => rm(repositoryRoot, { recursive: true, force: true }));
@@ -86,15 +119,34 @@ async function fixture(t: TestContext) {
       sourceLocale: 'zh-CN',
       locales: ['en', 'zh-CN'],
       apiDirectory,
+      manualDirectory: path.join(repositoryRoot, 'site/public/data/manual'),
       translationWorkDirectory: path.join(
         repositoryRoot,
         'tmp/docs-tools/api-translation',
       ),
-      packageReadmes: {
-        alpha: { en: alphaEnglish, 'zh-CN': alphaChinese },
-        beta: { en: betaEnglish },
-      },
-      packageReadmeSourceLocales: { beta: 'en' },
+      apiPackages: [
+        {
+          key: 'alpha',
+          name: '@example/alpha',
+          directory: alphaDirectory,
+          tsconfig: path.join(alphaDirectory, 'tsconfig.json'),
+          entries: [],
+          readme: {
+            files: { en: alphaEnglish, 'zh-CN': alphaChinese },
+          },
+        },
+        {
+          key: 'beta',
+          name: '@example/beta',
+          directory: betaDirectory,
+          tsconfig: path.join(betaDirectory, 'tsconfig.json'),
+          entries: [],
+          readme: {
+            sourceLocale: 'en',
+            files: { en: betaEnglish },
+          },
+        },
+      ],
     },
   };
 }

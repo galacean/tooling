@@ -82,19 +82,24 @@ dialog.site-search .site-search-header {
 }
 .site-search-heading {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: 14px;
   min-width: 0;
 }
 .site-search-heading > img {
-  width: 25px;
-  height: 28px;
+  width: auto;
+  height: auto;
+  max-width: 48px;
+  max-height: 28px;
   flex: 0 0 auto;
+  object-fit: contain;
 }
 .site-search-eyebrow {
   display: block;
   margin-bottom: 6px;
   color: var(--site-muted);
+  white-space: nowrap;
   font:
     9px/1.4 'IBM Plex Mono',
     monospace;
@@ -105,15 +110,12 @@ dialog.site-search .site-search-header h2 {
   font-size: 18px;
   font-weight: 600;
   line-height: 1.4;
+  white-space: nowrap;
 }
 dialog.site-search .site-search-header button {
   flex: 0 0 32px;
   border: 1px solid var(--site-border);
   border-radius: 4px;
-}
-dialog.site-search .site-search-header button:hover {
-  background: var(--site-wash);
-  color: var(--site-ink);
 }
 dialog.site-search .site-search-input {
   display: flex;

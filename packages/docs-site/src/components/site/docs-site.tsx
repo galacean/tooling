@@ -1,4 +1,4 @@
-import { lazy, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   BrowserRouter,
@@ -20,20 +20,19 @@ import {
 } from '../../i18n';
 import { ThemeProvider } from '../../providers';
 import { DocumentError } from '../shared';
+import { lazyComponent } from '../shared/lazy-component';
 import { SiteShell } from './site-shell';
 import type { ManualPageMessages } from '../manual';
 import type { CommonSiteMessages } from '../../i18n';
 
-const ManualRoute = lazy(async () => {
-  const module = await import('../manual/manual-route.js');
-
-  return { default: module.ManualRoute };
-});
-const ConfiguredAPIPage = lazy(async () => {
-  const module = await import('../api/configured-api-page.js');
-
-  return { default: module.ConfiguredAPIPage };
-});
+const ManualRoute = lazyComponent(() =>
+  import('../manual/manual-route.js').then(module => module.ManualRoute),
+);
+const ConfiguredAPIPage = lazyComponent(() =>
+  import('../api/configured-api-page.js').then(
+    module => module.ConfiguredAPIPage,
+  ),
+);
 
 export type DocsSiteMessages = CommonSiteMessages &
   Pick<ManualPageMessages, 'manualIntro'>;
@@ -41,18 +40,21 @@ export type DocsSiteMessages = CommonSiteMessages &
 export interface DocsSiteConfiguration<TLocale extends string> {
   brandLabel: string;
   brandMarkUrls: Readonly<{ light: string; dark: string }>;
+  docsBrandMarkUrls?: Readonly<{ light: string; dark: string }>;
   githubHref?: string;
   historyKeyPrefix: string;
   localeLabels: Readonly<Record<TLocale, string>>;
   messages: (locale: TLocale) => DocsSiteMessages;
   manualSectionLabel: string;
-  api: import('../api/configured-api-page').DocsSiteAPIConfiguration;
+  manualDataURL?: string;
+  api?: import('../api/configured-api-page').DocsSiteAPIConfiguration;
   siteOrigin?: string;
   getSearchDataURL?: (locale: TLocale) => string;
 }
 
 export interface DocsSiteProps<TLocale extends string> {
   baseURL: string;
+  dataBaseURL?: string;
   locales: readonly TLocale[];
   defaultLocale: TLocale;
   preferenceNamespace: string;
@@ -88,11 +90,13 @@ function NotFound({
 
 function ConfiguredSiteShell<TLocale extends string>({
   baseURL,
+  dataBaseURL,
   locales,
   locale,
   site,
 }: {
   baseURL: string;
+  dataBaseURL: string;
   locales: readonly TLocale[];
   locale: TLocale;
   site: DocsSiteConfiguration<TLocale>;
@@ -115,10 +119,15 @@ function ConfiguredSiteShell<TLocale extends string>({
     }
     const url =
       site.getSearchDataURL?.(searchLocale) ??
-      `${baseURL}data/search/${searchLocale}.json`;
+      `${dataBaseURL}data/search/${searchLocale}.json`;
 
     return parseSearch(await loadJSON(url), locales);
   };
+  const api = site.api;
+  const navigationPages =
+    api === undefined
+      ? (['home', 'manual'] as const)
+      : (['home', 'manual', 'api'] as const);
 
   return (
     <SiteShell
@@ -127,8 +136,11 @@ function ConfiguredSiteShell<TLocale extends string>({
       messages={messages}
       brandLabel={site.brandLabel}
       brandMarkUrls={site.brandMarkUrls}
+      {...(site.docsBrandMarkUrls === undefined
+        ? {}
+        : { docsBrandMarkUrls: site.docsBrandMarkUrls })}
       homeHref={localePath(locale)}
-      navigation={(['home', 'manual', 'api'] as const).map(page => ({
+      navigation={navigationPages.map(page => ({
         key: page,
         label: messages[page],
         to: localePath(locale, page === 'home' ? [] : [page]),
@@ -179,6 +191,7 @@ function ConfiguredSiteShell<TLocale extends string>({
 
 export function DocsSite<TLocale extends string>({
   baseURL,
+  dataBaseURL = baseURL,
   locales,
   defaultLocale,
   preferenceNamespace,
@@ -189,6 +202,7 @@ export function DocsSite<TLocale extends string>({
     createBrowserLocalePreference(locales, defaultLocale, preferenceNamespace),
   );
   const basename = normalizeBase(baseURL).replace(/\/$/u, '') || '/';
+  const api = site.api;
 
   return (
     <ThemeProvider namespace={preferenceNamespace}>
@@ -205,6 +219,7 @@ export function DocsSite<TLocale extends string>({
               element={
                 <ConfiguredSiteShell
                   baseURL={baseURL}
+                  dataBaseURL={dataBaseURL}
                   locales={locales}
                   locale={locale}
                   site={site}
@@ -212,57 +227,43 @@ export function DocsSite<TLocale extends string>({
               }
             >
               <Route index element={renderHome(locale)} />
-              <Route
-                path="api"
-                element={
-                  <ConfiguredAPIPage
-                    baseURL={baseURL}
-                    locales={locales}
-                    locale={locale}
-                    messages={site.messages(locale)}
-                    localeLabels={site.localeLabels}
-                    api={site.api}
-                  />
-                }
-              />
-              <Route
-                path="api/:pkg"
-                element={
-                  <ConfiguredAPIPage
-                    baseURL={baseURL}
-                    locales={locales}
-                    locale={locale}
-                    messages={site.messages(locale)}
-                    localeLabels={site.localeLabels}
-                    api={site.api}
-                  />
-                }
-              />
-              <Route
-                path="api/:pkg/:version/:symbol"
-                element={
-                  <ConfiguredAPIPage
-                    baseURL={baseURL}
-                    locales={locales}
-                    locale={locale}
-                    messages={site.messages(locale)}
-                    localeLabels={site.localeLabels}
-                    api={site.api}
-                  />
-                }
-              />
-              <Route
-                path="manual/:slug?"
-                element={
-                  <ManualRoute
-                    baseURL={baseURL}
-                    locales={locales}
-                    locale={locale}
-                    sectionLabel={site.manualSectionLabel}
-                    messages={site.messages(locale)}
-                  />
-                }
-              />
+              {api !== undefined &&
+                (['api', 'api/:pkg', 'api/:pkg/:version/:symbol'] as const).map(
+                  path => (
+                    <Route
+                      key={path}
+                      path={path}
+                      element={
+                        <ConfiguredAPIPage
+                          baseURL={dataBaseURL}
+                          locales={locales}
+                          locale={locale}
+                          messages={site.messages(locale)}
+                          localeLabels={site.localeLabels}
+                          api={api}
+                        />
+                      }
+                    />
+                  ),
+                )}
+              {(['manual', 'manual/:slug'] as const).map(path => (
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    <ManualRoute
+                      baseURL={dataBaseURL}
+                      {...(site.manualDataURL === undefined
+                        ? {}
+                        : { manualDataURL: site.manualDataURL })}
+                      locales={locales}
+                      locale={locale}
+                      sectionLabel={site.manualSectionLabel}
+                      messages={site.messages(locale)}
+                    />
+                  }
+                />
+              ))}
               <Route
                 path="*"
                 element={

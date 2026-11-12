@@ -5,6 +5,7 @@
   "manual": "用户手册",
   "search": "搜索文档",
   "searchPlaceholder": "搜索 API 与手册（至少两个字符）",
+  "manualSearchPlaceholder": "搜索手册（至少两个字符）",
   "close": "关闭",
   "menu": "菜单",
   "theme": "主题",

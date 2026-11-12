@@ -27,15 +27,24 @@ async function fixture(t: TestContext) {
   const orphanName = `${createHash('sha256')
     .update(orphanContents)
     .digest('hex')}.api.json`;
-  const invalidHashPath = path.join(snapshotsDirectory, `${'a'.repeat(64)}.api.json`);
+  const invalidHashPath = path.join(
+    snapshotsDirectory,
+    `${'a'.repeat(64)}.api.json`,
+  );
   const manifestPath = path.join(apiDirectory, 'manifest.json');
   const configPath = path.join(repositoryRoot, 'site/site.config.ts');
 
   await mkdir(versionDirectory, { recursive: true });
   await mkdir(snapshotsDirectory, { recursive: true });
-  await writeFile(path.join(snapshotsDirectory, referencedName), sourceContents);
+  await writeFile(
+    path.join(snapshotsDirectory, referencedName),
+    sourceContents,
+  );
   await writeFile(path.join(snapshotsDirectory, orphanName), orphanContents);
-  await writeFile(invalidHashPath, `${JSON.stringify({ locale: 'invalid' })}\n`);
+  await writeFile(
+    invalidHashPath,
+    `${JSON.stringify({ locale: 'invalid' })}\n`,
+  );
   await writeFile(
     path.join(versionDirectory, 'en.api.json'),
     `${JSON.stringify({ $ref: `api/snapshots/${referencedName}` })}\n`,
@@ -70,6 +79,7 @@ async function fixture(t: TestContext) {
       sourceLocale: 'en',
       locales: ['en'],
       api: { dataDirectory: 'site/public/data/api' },
+      manual: { dataDirectory: 'site/public/data/manual' },
     })} as const;\n`,
   );
   t.onTestFinished(() => rm(repositoryRoot, { recursive: true, force: true }));
@@ -105,14 +115,7 @@ void test('CLI deletes confirmed orphan snapshots by default', async t => {
   const cliPath = path.resolve(import.meta.dirname, '../bin/galacean-docs.mjs');
   const result = await execFileAsync(
     process.execPath,
-    [
-      cliPath,
-      'api',
-      'snapshots',
-      'clean',
-      '--config',
-      'site/site.config.ts',
-    ],
+    [cliPath, 'api', 'snapshots', 'clean', '--config', 'site/site.config.ts'],
     { cwd: values.repositoryRoot },
   );
 

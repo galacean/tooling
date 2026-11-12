@@ -9,10 +9,8 @@
   margin: 0 0 5px;
   padding: 0 10px 7px;
   color: var(--site-muted);
-  font:
-    10px 'IBM Plex Mono',
-    monospace;
-  text-transform: uppercase;
+  font-size: var(--site-doc-nav-size);
+  font-weight: 600;
 }
 .api-menu-group ul {
   margin: 0;
@@ -29,8 +27,8 @@
   overflow: hidden;
   border-left: 2px solid transparent;
   color: var(--site-ink);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: var(--site-doc-nav-size);
+  line-height: 1.5;
   transition:
     color 0.15s,
     background-color 0.15s,
@@ -43,14 +41,14 @@
   white-space: nowrap;
 }
 .api-menu-item:hover {
-  color: var(--site-accent);
-  background: var(--site-background);
+  color: var(--site-ink);
+  background: var(--site-wash);
 }
 .api-menu-item.selected {
-  border-left-color: var(--site-accent);
-  color: var(--site-accent);
-  background: color-mix(in srgb, var(--site-accent) 7%, var(--site-surface));
-  font-weight: 650;
+  border-left-color: transparent;
+  color: var(--site-ink);
+  background: var(--site-wash);
+  font-weight: 600;
 }
 .api-breadcrumb {
   display: flex;
@@ -61,42 +59,43 @@
 }
 .api-breadcrumb .site-select {
   flex: 0 1 auto;
-  min-width: 82px;
+  width: max-content;
+  min-width: 0;
   max-width: 220px;
 }
-.api-breadcrumb .site-select-trigger {
+.api-breadcrumb
+  :is(.api-version-select, .api-package-select)
+  .site-select-trigger {
+  width: max-content;
+  max-width: 100%;
   min-height: 36px;
   padding: 7px 9px;
   border-color: transparent;
   border-radius: 3px;
   background: transparent;
   color: var(--site-ink);
-  font-size: 13px;
+  font-size: 12px;
 }
 .api-breadcrumb .site-select-trigger:hover,
 .api-breadcrumb .site-select-trigger[aria-expanded='true'] {
-  border-color: var(--site-border);
-  background: var(--site-surface);
+  background: var(--icon-action-hover-background);
+  color: var(--icon-action-hover-color);
 }
-.api-breadcrumb .api-package-select {
-  width: max-content;
-  min-width: 0;
-  max-width: 220px;
+.api-breadcrumb
+  :is(.api-version-select, .api-package-select)
+  .site-select-trigger:not(.icon-only):is(:hover, [aria-expanded='true']) {
+  border-color: transparent;
 }
-.api-breadcrumb .api-package-select .site-select-trigger {
-  width: max-content;
-  max-width: 100%;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-}
-.api-breadcrumb .api-package-select .site-select-value {
+.api-breadcrumb
+  :is(.api-version-select, .api-package-select)
+  .site-select-value {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.api-breadcrumb > span {
-  color: var(--site-muted);
+.api-breadcrumb-separator {
+  color: color-mix(in srgb, var(--site-muted) 55%, transparent);
 }
 .api-breadcrumb > a {
   color: var(--site-muted);
@@ -168,18 +167,11 @@
     font-size: 12px;
   }
   .api-breadcrumb .site-select {
-    min-width: 70px;
-    max-width: 120px;
+    min-width: 0;
+    max-width: 112px;
   }
   .api-breadcrumb .site-select-trigger {
     padding-inline: 5px;
-    font-size: 11px;
-  }
-  .api-breadcrumb .api-package-select {
-    min-width: 0;
-    max-width: 112px;
-    width: max-content;
-    font-size: 10px;
   }
 }
 

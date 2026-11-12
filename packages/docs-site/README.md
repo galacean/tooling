@@ -14,9 +14,8 @@ pnpm add @galacean/docs-site react react-dom react-markdown react-router-dom rem
 
 ## Public API
 
-The package root is the single supported React entry. Import `DocsSite`, its configuration types, common messages,
-and the site data utilities from `@galacean/docs-site`; load `@galacean/docs-site/index.css` once. Provide the peer
-dependencies listed in `package.json`.
+Import `DocsSite`, its configuration types, common messages, and site data utilities from `@galacean/docs-site`;
+load `@galacean/docs-site/index.css` once. Provide the peer dependencies listed in `package.json`.
 
 `DocsSite` owns locale redirects, the shared shell, API/manual routes, lazy search, canonical/hreflang links, and 404
 state. Consumers provide `baseURL`, `locales`, `defaultLocale`, `preferenceNamespace`, brand/runtime configuration,
@@ -24,10 +23,17 @@ localized product messages, and `renderHome`. Product typography and homepage st
 
 Mount `DocsSite` in the application root; it creates its own `BrowserRouter` and should not be nested in another router.
 Its `site` configuration supplies the brand, locale labels and messages, API data configuration, and optional search
-and canonical-origin settings.
+and canonical-origin settings. `manualDataURL` points to the published directory containing `navigation.json` and
+locale subdirectories; it defaults to `${dataBaseURL}data/manual/`. When docs-tools writes manual output outside the
+default public directory, configure this URL to match the server's published mapping. Search output can be mapped
+with `getSearchDataURL`.
 
-The root exports `CopyButton`, `Icon`, and `useTheme` for product homepages. Lower-level API/manual/search page and
-layout components remain internal. This keeps the public API compact while preserving lazy page chunks.
+The root exports `CopyButton`, `Icon`, `SearchPanel`, and `useTheme` for product pages. `SearchPanel` is a lazily
+loaded standalone overlay; provide its localized messages, `loadItems`, and `navigate(url)` callback. It owns a
+Suspense fallback and does not require a router context, so consumers can connect results to their own routing
+system. The package root also exports the API, manual, search, shared UI, and site component barrels for advanced
+composition. Route and shell components require a React Router context; `DocsSite` remains the recommended
+integration for a complete site. All components can be imported from `@galacean/docs-site`.
 
 `createMessageCatalog` merges common English and Simplified Chinese UI copy with product-specific messages. API
 utilities include manifest/snapshot validation, reflection indexing and loading; `createManualContentClient` handles

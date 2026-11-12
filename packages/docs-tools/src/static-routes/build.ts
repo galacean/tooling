@@ -118,15 +118,24 @@ export async function buildStaticRoutes(
   }
   const base = normalizeBase(baseValue);
   const dist = path.join(config.repositoryRoot, 'site/dist');
-  const dataRoot = path.dirname(config.apiDirectory);
+  const dataRoot = path.dirname(
+    config.apiConfigured === false
+      ? config.manualDirectory
+      : config.apiDirectory,
+  );
   const manifestPath = path.join(config.apiDirectory, 'manifest.json');
-  const navigationPath = path.join(dataRoot, 'manual/navigation.json');
+  const navigationPath = path.join(config.manualDirectory, 'navigation.json');
 
   await assertNoSymlinkPath(config.repositoryRoot, dist);
-  await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
   await assertNoSymlinkPath(config.repositoryRoot, navigationPath);
-  const manifest = parseAPIManifest(await readJSON(manifestPath));
-  const navigationValue: unknown = await readJSON(navigationPath);
+  let apiPackages: ReturnType<typeof parseAPIManifest>['packages'] = [];
+
+  if (config.apiConfigured !== false) {
+    await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
+    apiPackages = parseAPIManifest(await readJSON(manifestPath)).packages;
+  }
+  const navigationValue: unknown =
+    config.manualConfigured === false ? [] : await readJSON(navigationPath);
 
   if (!isManualNavigation(navigationValue)) {
     throw new Error('Invalid manual navigation');
@@ -152,13 +161,16 @@ export async function buildStaticRoutes(
 
   for (const locale of config.locales) {
     add(locale);
-    for (const section of ['api', 'manual']) {
-      add(locale, [section]);
+    if (config.apiConfigured !== false) {
+      add(locale, ['api']);
     }
-    for (const manual of navigationValue) {
-      add(locale, ['manual', manual.slug]);
+    if (config.manualConfigured !== false) {
+      add(locale, ['manual']);
+      for (const manual of navigationValue) {
+        add(locale, ['manual', manual.slug]);
+      }
     }
-    for (const pkg of manifest.packages) {
+    for (const pkg of apiPackages) {
       add(locale, ['api', pkg.key]);
       for (const version of [pkg.current, ...pkg.versions]) {
         for (const entry of version.entries) {
@@ -239,17 +251,18 @@ export async function buildStaticRoutes(
       const format = manual.format?.[locale] ?? 'markdown';
       const extension = format === 'html' ? 'html' : 'md';
       const contentPath = path.join(
-        dataRoot,
-        'manual',
+        config.manualDirectory,
         locale,
         `${manual.slug}.${extension}`,
       );
       const content = await readFile(contentPath, 'utf8');
       const targets =
         format === 'html'
-          ? [...content.matchAll(/(?:href|src)\s*=\s*["']([^"']+)["']/giu)].map(
-              match => match[1],
-            )
+          ? [
+              ...content.matchAll(
+                /(?:^|[\s<])(?:href|src)\s*=\s*["']([^"']+)["']/giu,
+              ),
+            ].map(match => match[1])
           : [...content.matchAll(/!?(?:\[[^\]]*\])\(([^)]+)\)/gu)].map(
               match => match[1],
             );
@@ -286,15 +299,14 @@ export async function buildStaticRoutes(
           .split('/')
           .map(decodeURIComponent);
         const assetPath = path.resolve(
-          dataRoot,
-          'manual',
+          config.manualDirectory,
           locale,
           ...assetSegments,
         );
 
         if (
           assetSegments.some(segment => !isSafePathSegment(segment)) ||
-          !isWithin(path.join(dataRoot, 'manual', locale), assetPath)
+          !isWithin(path.join(config.manualDirectory, locale), assetPath)
         ) {
           throw new Error(
             `Unsafe manual asset link: ${locale}/${manual.slug} -> ${target}`,

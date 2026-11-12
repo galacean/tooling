@@ -74,7 +74,6 @@
   border-radius: 3px;
   background: transparent;
   color: var(--site-ink);
-  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
 }
 .api-breadcrumb .site-select-trigger:hover,
@@ -95,8 +94,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.api-breadcrumb > span {
-  color: var(--site-muted);
+.api-breadcrumb-separator {
+  color: color-mix(in srgb, var(--site-muted) 55%, transparent);
 }
 .api-breadcrumb > a {
   color: var(--site-muted);

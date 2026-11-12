@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 
-import { createElement } from 'react';
+import { createElement, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildManualNavigationGroups,
@@ -27,7 +33,157 @@ describe('shared MarkdownContent', () => {
     );
 
     expect(markup).toContain(html);
-    expect(markup).toContain('class="markdown-content"');
+    expect(markup).toContain('class="markdown-content lake-content"');
+  });
+
+  it('keeps Lake table markup intact for CSS-driven scrolling', async () => {
+    const { container } = render(
+      createElement(HTMLDocumentContent, {
+        html: '<table class="ne-table"><tbody><tr><td>Cell</td></tr></tbody></table>',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('.lake-content > table.ne-table'),
+      ).not.toBeNull();
+      expect(container.querySelector('.lake-table-scroll')).toBeNull();
+      expect(
+        container
+          .querySelector('.lake-content > table.ne-table td')
+          ?.getAttribute('width'),
+      ).toBeNull();
+    });
+  });
+
+  it('keeps native Markdown and Lake quote markers while sharing their content', async () => {
+    const { container } = render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(
+          'div',
+          null,
+          createElement(MarkdownContent, {
+            text: '> Markdown quote\n>\n> - First item\n> - Second item',
+          }),
+          createElement(HTMLDocumentContent, {
+            html: '<div class="ne-quote"><p class="ne-p">Lake quote</p><ul><li>First item</li><li>Second item</li></ul></div>',
+          }),
+        ),
+      ),
+    );
+
+    await waitFor(() => {
+      const markdownQuotes = container.querySelectorAll(
+        '.markdown-content blockquote',
+      );
+      const lakeQuotes = container.querySelectorAll(
+        '.markdown-content .ne-quote',
+      );
+
+      expect(markdownQuotes).toHaveLength(1);
+      expect(lakeQuotes).toHaveLength(1);
+      expect(markdownQuotes[0]?.textContent).toContain('Markdown quote');
+      expect(markdownQuotes[0]?.querySelector('ul')).not.toBeNull();
+      expect(lakeQuotes[0]?.textContent).toContain('Lake quote');
+      expect(lakeQuotes[0]?.querySelector('ul')).not.toBeNull();
+    });
+  });
+
+  it('preserves Lake table width attributes and spans', async () => {
+    const { container } = render(
+      createElement(HTMLDocumentContent, {
+        html: [
+          '<table class="ne-table" style="width: 677px">',
+          '<tbody>',
+          '<tr><td width="299" colspan="2">Merged</td><td width="127">A</td><td width="125">B</td><td width="126">C</td></tr>',
+          '<tr><td width="210">Left</td><td width="89">Right</td><td width="127">A</td><td width="125">B</td><td width="126">C</td></tr>',
+          '</tbody></table>',
+        ].join(''),
+      }),
+    );
+
+    await waitFor(() => {
+      const table = container.querySelector<HTMLTableElement>(
+        '.lake-content > table.ne-table',
+      );
+      const mergedCell =
+        table?.querySelector<HTMLTableCellElement>('td[colspan="2"]');
+
+      expect(table?.getAttribute('style')).toBe('width: 677px');
+      expect(table?.querySelector(':scope > colgroup')).toBeNull();
+      expect(mergedCell?.getAttribute('width')).toBe('299');
+      expect(mergedCell?.textContent).toBe('Merged');
+      expect(table?.querySelector('td > .table-cell-content')).toBeNull();
+    });
+  });
+
+  it('leaves non-pixel Lake table widths to native table layout', async () => {
+    const { container } = render(
+      createElement(HTMLDocumentContent, {
+        html: '<table class="ne-table" style="width: 100%"><tbody><tr><td width="50%">Left</td><td width="50%">Right</td></tr></tbody></table>',
+      }),
+    );
+
+    await waitFor(() => {
+      const table = container.querySelector<HTMLTableElement>(
+        '.lake-content > table.ne-table',
+      );
+
+      expect(table?.querySelector(':scope > colgroup')).toBeNull();
+      expect(table?.querySelector('td[width="50%"]')).not.toBeNull();
+    });
+  });
+
+  it('renders Yuque video placeholders as native video controls', async () => {
+    const { container } = render(
+      createElement(HTMLDocumentContent, {
+        html: [
+          '<div class="ne-video" data-video-src="assets/stored-video.mp4">Video card</div>',
+          '<p><a href="https://media.example.com/video.mp4">[**video**]</a></p>',
+          '<div class="ne-video" data-video-src="assets/other-video.mp4">Other card</div>',
+          '<p><a href="https://media.example.com/other.mp4">Open video link</a></p>',
+        ].join(''),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('video')).toHaveLength(1);
+    });
+
+    const video = container.querySelector('video');
+
+    expect(video?.getAttribute('src')).toBe(
+      'https://media.example.com/video.mp4',
+    );
+    expect(video?.controls).toBe(true);
+    expect(
+      container.querySelector('[data-video-src="assets/stored-video.mp4"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-video-src="assets/other-video.mp4"]'),
+    ).not.toBeNull();
+  });
+
+  it('preserves video elements when unchanged HTML content rerenders', async () => {
+    const html = [
+      '<div class="ne-video" data-video-src="assets/stored-video.mp4">Video card</div>',
+      '<p><a href="https://media.example.com/video.mp4">[**video**]</a></p>',
+    ].join('');
+    const { container, rerender } = render(
+      createElement(HTMLDocumentContent, { html }),
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('video')).not.toBeNull();
+    });
+
+    const video = container.querySelector('video');
+
+    rerender(createElement(HTMLDocumentContent, { html }));
+
+    expect(container.querySelector('video')).toBe(video);
   });
 
   it('renders shared icon glyphs with decorative and accessible semantics', () => {
@@ -59,6 +215,63 @@ describe('shared MarkdownContent', () => {
       '<h2 id="extractlottiefromzipzipdata"><code>extractLottieFromZip(zipData)</code></h2>',
     );
     expect(html).toContain('<a href="/#extractlottiefromzipzipdata">Jump</a>');
+  });
+
+  it('wraps Markdown tables in a horizontal overflow container', () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(MarkdownContent, {
+          text: '| Name | Value |\n| --- | --- |\n| item | 1 |',
+        }),
+      ),
+    );
+
+    expect(markup).toContain('class="markdown-table-scroll"><table><thead>');
+  });
+
+  it('rehighlights fenced code blocks after a parent rerender', async () => {
+    function RerenderableMarkdown() {
+      const [revision, setRevision] = useState(0);
+
+      return createElement(
+        MemoryRouter,
+        null,
+        createElement(
+          'div',
+          null,
+          createElement(
+            'button',
+            { onClick: () => setRevision(value => value + 1) },
+            'Rerender',
+          ),
+          createElement('span', null, revision),
+          createElement(MarkdownContent, {
+            text: '```ts\nconst answer = 42;\n```',
+          }),
+        ),
+      );
+    }
+
+    const { container } = render(createElement(RerenderableMarkdown));
+    const findHighlightedCode = () => container.querySelector('pre code');
+
+    await waitFor(() => {
+      expect(
+        findHighlightedCode()?.querySelector('.hljs-keyword'),
+      ).not.toBeNull();
+    });
+    const previousCode = findHighlightedCode();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rerender' }));
+
+    await waitFor(() => {
+      const code = findHighlightedCode();
+
+      expect(code).not.toBe(previousCode);
+      expect(code?.querySelector('.hljs-keyword')).not.toBeNull();
+    });
   });
 
   it('resolves internal links and inserts consumer content after the first heading', () => {
@@ -117,11 +330,7 @@ describe('shared ManualPage', () => {
       { title: 'Basics', pages: [pages[0], pages[2]] },
       { title: 'Advanced', pages: [pages[1]] },
     ]);
-    expect(pages.map(page => page.slug)).toEqual([
-      'first',
-      'second',
-      'third',
-    ]);
+    expect(pages.map(page => page.slug)).toEqual(['first', 'second', 'third']);
     expect(groupManualPages([])).toEqual([]);
   });
 

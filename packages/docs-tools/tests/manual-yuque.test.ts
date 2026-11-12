@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { test, vi } from 'vitest';
 import { loadSiteConfig, syncManuals } from '@galacean/docs-tools';
+
+const execFileAsync = promisify(execFile);
 
 async function fixture(t: {
   onTestFinished: (callback: () => void | Promise<void>) => void;
@@ -15,7 +19,11 @@ async function fixture(t: {
   return root;
 }
 
-async function loadConfig(root: string, manuals: unknown[]) {
+async function loadConfig(
+  root: string,
+  collections: unknown[],
+  manualDataDirectory = 'site/public/data/manual',
+) {
   const filename = path.join(root, 'site.config.json');
 
   await writeFile(
@@ -24,7 +32,7 @@ async function loadConfig(root: string, manuals: unknown[]) {
       sourceLocale: 'zh-CN',
       locales: ['zh-CN', 'en'],
       api: { dataDirectory: 'site/public/data/api' },
-      manuals,
+      manual: { dataDirectory: manualDataDirectory, collections },
     }),
   );
 
@@ -70,21 +78,25 @@ test('repo sync filters ignored TOC subtrees and documents before fetching bodie
       process.env['YUQUE_TEST_TOKEN'] = tokenBefore;
     }
   });
-  const config = await loadConfig(root, [
-    {
-      key: 'guide',
-      routePrefix: 'product',
-      source: {
-        type: 'yuque',
-        mode: 'repo',
-        baseURL: 'https://yuque.internal/api/v2',
-        namespace: 'team/book',
-        tokenEnv: 'YUQUE_TEST_TOKEN',
-        locale: 'zh-CN',
+  const config = await loadConfig(
+    root,
+    [
+      {
+        key: 'guide',
+        routePrefix: 'product',
+        source: {
+          type: 'yuque',
+          mode: 'repo',
+          baseURL: 'https://yuque.internal/api/v2',
+          namespace: 'team/book',
+          tokenEnv: 'YUQUE_TEST_TOKEN',
+          locale: 'zh-CN',
+        },
+        ignore: { titleContains: ['[private]'], docIds: ['2'] },
       },
-      ignore: { titleContains: ['[private]'], docIds: ['2'] },
-    },
-  ]);
+    ],
+    'site/manual-output',
+  );
   const fetcher = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
@@ -119,11 +131,16 @@ test('repo sync filters ignored TOC subtrees and documents before fetching bodie
       return yuqueDocument('start', 'Start');
     },
   );
+  const progress: unknown[] = [];
 
-  const result = await syncManuals(config, fetcher);
-  const dataRoot = path.dirname(config.apiDirectory);
+  const result = await syncManuals(config, fetcher, event =>
+    progress.push(event),
+  );
   const navigation = JSON.parse(
-    await readFile(path.join(dataRoot, 'manual/navigation.json'), 'utf8'),
+    await readFile(
+      path.join(config.manualDirectory, 'navigation.json'),
+      'utf8',
+    ),
   ) as {
     slug: string;
     title: Record<string, string>;
@@ -131,6 +148,36 @@ test('repo sync filters ignored TOC subtrees and documents before fetching bodie
   }[];
 
   assert.deepEqual(result, { collections: 1, documents: 1 });
+  assert.deepEqual(progress, [
+    {
+      type: 'collection-ready',
+      collectionKey: 'guide',
+      sourceType: 'yuque',
+      total: 1,
+      groups: [{ name: 'Guide', files: 1 }],
+    },
+    {
+      type: 'document',
+      status: 'syncing',
+      collectionKey: 'guide',
+      sourceType: 'yuque',
+      index: 1,
+      total: 1,
+      group: 'Guide',
+      slug: 'start',
+    },
+    {
+      type: 'document',
+      status: 'prepared',
+      collectionKey: 'guide',
+      sourceType: 'yuque',
+      index: 1,
+      total: 1,
+      group: 'Guide',
+      slug: 'start',
+      title: 'Start',
+    },
+  ]);
   assert.deepEqual(
     fetcher.mock.calls.map(([input]) => new URL(String(input)).pathname),
     ['/api/v2/repos/team/book/toc', '/api/v2/repos/team/book/docs/start'],
@@ -155,14 +202,17 @@ test('repo sync filters ignored TOC subtrees and documents before fetching bodie
   ]);
   assert.equal(
     await readFile(
-      path.join(dataRoot, 'manual/zh-CN/product-start.md'),
+      path.join(config.manualDirectory, 'zh-CN/product-start.md'),
       'utf8',
     ),
     '# Start\n\nMarkdown body for start.\n',
   );
   assert.equal(
     (
-      await readFile(path.join(dataRoot, 'manual/navigation.json'), 'utf8')
+      await readFile(
+        path.join(config.manualDirectory, 'navigation.json'),
+        'utf8',
+      )
     ).includes('test-secret-token'),
     false,
   );
@@ -218,7 +268,7 @@ test('flat TOC depth assigns groups and excludes marked sections before fetching
 
   const navigation = JSON.parse(
     await readFile(
-      path.join(path.dirname(config.apiDirectory), 'manual/navigation.json'),
+      path.join(config.manualDirectory, 'navigation.json'),
       'utf8',
     ),
   ) as { slug: string; group: Record<string, string> }[];
@@ -298,7 +348,7 @@ test('documents mode requests only allowed references in configured order', asyn
   const result = await syncManuals(config, fetcher);
   const navigation = JSON.parse(
     await readFile(
-      path.join(path.dirname(config.apiDirectory), 'manual/navigation.json'),
+      path.join(config.manualDirectory, 'navigation.json'),
       'utf8',
     ),
   ) as { slug: string; group: Record<string, string> }[];
@@ -395,10 +445,7 @@ test('preserves Yuque Lake HTML in an HTML artifact', async t => {
   await syncManuals(config, fetcher);
 
   const html = await readFile(
-    path.join(
-      path.dirname(config.apiDirectory),
-      'manual/zh-CN/lake-guide.html',
-    ),
+    path.join(config.manualDirectory, 'zh-CN/lake-guide.html'),
     'utf8',
   );
 
@@ -433,10 +480,7 @@ test('failed remote sync leaves existing manual data untouched', async t => {
       },
     },
   ]);
-  const manualDirectory = path.join(
-    path.dirname(config.apiDirectory),
-    'manual',
-  );
+  const manualDirectory = path.join(config.manualDirectory);
 
   await mkdir(manualDirectory, { recursive: true });
   await writeFile(
@@ -472,10 +516,10 @@ test('local collections retain translations, localized navigation, and overview 
 
   await mkdir(path.join(localDirectory, 'zh-CN'), { recursive: true });
   await mkdir(translationDirectory, { recursive: true });
-  await mkdir(path.join(path.dirname(config.apiDirectory), 'manual/zh-CN'), {
+  await mkdir(path.join(config.manualDirectory, 'zh-CN'), {
     recursive: true,
   });
-  await mkdir(path.join(path.dirname(config.apiDirectory), 'manual/en'), {
+  await mkdir(path.join(config.manualDirectory, 'en'), {
     recursive: true,
   });
   await writeFile(
@@ -504,16 +548,16 @@ test('local collections retain translations, localized navigation, and overview 
     }),
   );
   await writeFile(
-    path.join(path.dirname(config.apiDirectory), 'manual/zh-CN/index.md'),
+    path.join(config.manualDirectory, 'zh-CN/index.md'),
     '# 中文手册\n',
   );
   await writeFile(
-    path.join(path.dirname(config.apiDirectory), 'manual/en/index.md'),
+    path.join(config.manualDirectory, 'en/index.md'),
     '# English manuals\n',
   );
 
   const result = await syncManuals(config);
-  const output = path.join(path.dirname(config.apiDirectory), 'manual');
+  const output = config.manualDirectory;
   const navigation = JSON.parse(
     await readFile(path.join(output, 'navigation.json'), 'utf8'),
   ) as {
@@ -552,10 +596,7 @@ test('shared manual output directory imports only entries marked as local', asyn
       },
     },
   ]);
-  const manualDirectory = path.join(
-    path.dirname(config.apiDirectory),
-    'manual',
-  );
+  const manualDirectory = path.join(config.manualDirectory);
 
   await mkdir(path.join(manualDirectory, 'zh-CN'), { recursive: true });
   await writeFile(
@@ -599,4 +640,68 @@ test('shared manual output directory imports only entries marked as local', asyn
       source: { type: 'local' },
     },
   ]);
+});
+
+test('manual sync CLI prints file totals, group counts, and per-file states', async t => {
+  const root = await fixture(t);
+  const config = await loadConfig(root, [
+    {
+      key: 'local-guides',
+      source: {
+        type: 'local',
+        directory: 'site/manual-local',
+        locale: 'zh-CN',
+      },
+    },
+  ]);
+  const localDirectory = path.join(root, 'site/manual-local');
+  const cliPath = path.resolve(import.meta.dirname, '../bin/galacean-docs.mjs');
+
+  await mkdir(path.join(localDirectory, 'zh-CN'), { recursive: true });
+  await mkdir(path.join(localDirectory, 'en'), { recursive: true });
+  await writeFile(
+    path.join(localDirectory, 'navigation.json'),
+    JSON.stringify([
+      {
+        slug: 'getting-started',
+        title: { 'zh-CN': '开始使用', en: 'Getting started' },
+        group: { 'zh-CN': '指南', en: 'Guides' },
+      },
+    ]),
+  );
+  await writeFile(
+    path.join(localDirectory, 'zh-CN/getting-started.md'),
+    '# 开始使用\n\n本地手册。\n',
+  );
+  await writeFile(
+    path.join(localDirectory, 'en/getting-started.md'),
+    '# Getting started\n\nLocal manual.\n',
+  );
+
+  const result = await execFileAsync(
+    process.execPath,
+    [cliPath, 'manual', 'sync', '--config', path.basename(config.configPath)],
+    { cwd: root, env: { ...process.env, NO_COLOR: '1' } },
+  );
+
+  assert.match(
+    result.stdout,
+    /\[docs-tools\]\[manual sync\]\[INFO\] Collection local-guides \(local\): 1 files queued/u,
+  );
+  assert.match(
+    result.stdout,
+    /\[docs-tools\]\[manual sync\]\[INFO\] Group 指南: 1 files/u,
+  );
+  assert.match(
+    result.stdout,
+    /\[docs-tools\]\[manual sync\]\[INFO\] \[1\/1\] Syncing: 指南 \/ getting-started/u,
+  );
+  assert.match(
+    result.stdout,
+    /\[docs-tools\]\[manual sync\]\[SUCCESS\] \[1\/1\] Prepared: 指南 \/ 开始使用/u,
+  );
+  assert.match(
+    result.stdout,
+    /\[docs-tools\]\[manual sync\]\[SUCCESS\] Complete: 1 files across 1 collections/u,
+  );
 });

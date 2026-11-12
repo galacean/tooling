@@ -52,6 +52,7 @@
   overflow: hidden;
   font-size: var(--site-doc-body-size);
   line-height: var(--site-doc-body-leading);
+  font-family: var(--site-doc-font-family);
 }
 .api-sidebar {
   display: flex;

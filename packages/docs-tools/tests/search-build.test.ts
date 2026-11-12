@@ -33,7 +33,7 @@ async function fixture(t: TestContext) {
   );
   const dataDirectory = path.join(repositoryRoot, 'site/public/data');
   const apiDirectory = path.join(dataDirectory, 'api');
-  const manualDirectory = path.join(dataDirectory, 'manual');
+  const manualDirectory = path.join(repositoryRoot, 'site/manual-content');
   const entries = packages.map((pkg, index) => ({
     key: 'root',
     source: 'src/index.ts',
@@ -149,14 +149,45 @@ async function fixture(t: TestContext) {
     `export default ${JSON.stringify({
       sourceLocale: 'en',
       locales,
-      api: { dataDirectory: 'site/public/data/api' },
-      packageReadmes: {
-        alpha: {
-          en: 'packages/alpha/README.md',
-          'zh-CN': 'packages/alpha/README-zh_CN.md',
-        },
-        beta: { en: 'packages/beta/README.md' },
+      api: {
+        dataDirectory: 'site/public/data/api',
+        packages: [
+          {
+            key: 'alpha',
+            name: '@example/alpha',
+            directory: 'packages/alpha',
+            tsconfig: 'tsconfig.json',
+            entries: [
+              {
+                key: 'root',
+                source: 'src/index.ts',
+                types: 'dist/index.d.ts',
+              },
+            ],
+            readme: {
+              files: {
+                en: 'README.md',
+                'zh-CN': 'README-zh_CN.md',
+              },
+            },
+          },
+          {
+            key: 'beta',
+            name: '@example/beta',
+            directory: 'packages/beta',
+            tsconfig: 'tsconfig.json',
+            entries: [
+              {
+                key: 'root',
+                source: 'src/index.ts',
+                types: 'dist/index.d.ts',
+              },
+            ],
+            readme: { files: { en: 'README.md' } },
+          },
+        ],
       },
+      manual: { dataDirectory: 'site/manual-content' },
       translationWorkDirectory: 'tmp/docs-tools/api-translation',
     })} as const;\n`,
   );
@@ -183,6 +214,7 @@ async function fixture(t: TestContext) {
   return {
     repositoryRoot,
     apiDirectory,
+    manualDirectory,
     outputDirectory: path.join(dataDirectory, 'search'),
     config: {
       repositoryRoot,
@@ -190,17 +222,41 @@ async function fixture(t: TestContext) {
       sourceLocale: 'en',
       locales,
       apiDirectory,
+      manualDirectory,
       translationWorkDirectory: path.join(
         repositoryRoot,
         'tmp/docs-tools/api-translation',
       ),
-      packageReadmes: {
-        alpha: {
-          en: path.join(repositoryRoot, 'packages/alpha/README.md'),
-          'zh-CN': path.join(repositoryRoot, 'packages/alpha/README-zh_CN.md'),
+      apiPackages: [
+        {
+          key: 'alpha',
+          name: '@example/alpha',
+          directory: path.join(repositoryRoot, 'packages/alpha'),
+          tsconfig: path.join(repositoryRoot, 'packages/alpha/tsconfig.json'),
+          entries: [],
+          readme: {
+            files: {
+              en: path.join(repositoryRoot, 'packages/alpha/README.md'),
+              'zh-CN': path.join(
+                repositoryRoot,
+                'packages/alpha/README-zh_CN.md',
+              ),
+            },
+          },
         },
-        beta: { en: path.join(repositoryRoot, 'packages/beta/README.md') },
-      },
+        {
+          key: 'beta',
+          name: '@example/beta',
+          directory: path.join(repositoryRoot, 'packages/beta'),
+          tsconfig: path.join(repositoryRoot, 'packages/beta/tsconfig.json'),
+          entries: [],
+          readme: {
+            files: {
+              en: path.join(repositoryRoot, 'packages/beta/README.md'),
+            },
+          },
+        },
+      ],
     },
   };
 }
@@ -260,25 +316,29 @@ void test('builds search indexes from each package current path and localized co
 
 void test('builds manual-only indexes without an API manifest and accepts short pages', async t => {
   const values = await fixture(t);
-  const manualOnlyConfig = { ...values.config };
+  const manualOnlyConfig = { ...values.config, apiConfigured: false };
+  const outputDirectory = path.join(
+    path.dirname(values.manualDirectory),
+    'search',
+  );
 
-  Reflect.deleteProperty(manualOnlyConfig, 'packageReadmes');
+  Reflect.deleteProperty(manualOnlyConfig, 'apiPackages');
   await rm(path.join(values.apiDirectory, 'manifest.json'));
   await writeFile(
-    path.join(values.repositoryRoot, 'site/public/data/manual/en/intro.md'),
+    path.join(values.manualDirectory, 'en/intro.md'),
     '# Introduction\n\nA short manual page.\n',
   );
   await writeFile(
-    path.join(values.repositoryRoot, 'site/public/data/manual/zh-CN/intro.md'),
+    path.join(values.manualDirectory, 'zh-CN/intro.md'),
     '# 介绍\n\n简短手册内容。\n',
   );
 
   const counts = await buildSearchIndexes(manualOnlyConfig);
   const english = JSON.parse(
-    await readFile(path.join(values.outputDirectory, 'en.json'), 'utf8'),
+    await readFile(path.join(outputDirectory, 'en.json'), 'utf8'),
   ) as { category: string; name: string; url: string }[];
   const chinese = JSON.parse(
-    await readFile(path.join(values.outputDirectory, 'zh-CN.json'), 'utf8'),
+    await readFile(path.join(outputDirectory, 'zh-CN.json'), 'utf8'),
   ) as { category: string; name: string; url: string }[];
 
   assert.deepEqual(counts, { en: 1, 'zh-CN': 1 });
@@ -300,10 +360,10 @@ void test('indexes text from HTML manuals without changing their display format'
   const values = await fixture(t);
   const manualOnlyConfig = { ...values.config };
 
-  Reflect.deleteProperty(manualOnlyConfig, 'packageReadmes');
+  Reflect.deleteProperty(manualOnlyConfig, 'apiPackages');
   await rm(path.join(values.apiDirectory, 'manifest.json'));
   await writeFile(
-    path.join(values.repositoryRoot, 'site/public/data/manual/navigation.json'),
+    path.join(values.manualDirectory, 'navigation.json'),
     JSON.stringify([
       {
         slug: 'intro',
@@ -314,7 +374,7 @@ void test('indexes text from HTML manuals without changing their display format'
     ]),
   );
   await writeFile(
-    path.join(values.repositoryRoot, 'site/public/data/manual/en/intro.html'),
+    path.join(values.manualDirectory, 'en/intro.html'),
     '<article><h1>Introduction</h1><p>HTML body is searchable.</p></article>',
   );
 

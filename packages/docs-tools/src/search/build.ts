@@ -2,7 +2,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { convert } from 'html-to-text';
 import {
-  indexReflections, getAPISymbolRouteSegment, isRecord, parseAPIManifest, parseProject,
+  indexReflections,
+  getAPISymbolRouteSegment,
+  isRecord,
+  parseAPIManifest,
+  parseProject,
 } from '@galacean/docs-site';
 import type { APIManifest, SearchResult } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
@@ -12,9 +16,9 @@ import { readAPISnapshot } from '../api/snapshot-reference';
 import { isManualNavigation } from '../manual/navigation';
 import type { ManualNavigationItem } from '../manual/navigation';
 import { isSafePathSegment } from '../path-validation';
-import { readPackageReadme } from '../package-readmes/read';
+import { hasPackageReadme, readPackageReadme } from '../package-readmes/read';
 
-function errorCode (error: unknown): string | undefined {
+function errorCode(error: unknown): string | undefined {
   return error !== null &&
     typeof error === 'object' &&
     'code' in error &&
@@ -23,7 +27,7 @@ function errorCode (error: unknown): string | undefined {
     : undefined;
 }
 
-function typeKeywords (value: unknown): string[] {
+function typeKeywords(value: unknown): string[] {
   if (value === null || typeof value !== 'object') {
     return typeof value === 'string' ? [value] : [];
   }
@@ -31,7 +35,7 @@ function typeKeywords (value: unknown): string[] {
   return Object.values(value).flatMap(typeKeywords);
 }
 
-function searchableMarkdown (markdown: string): string {
+function searchableMarkdown(markdown: string): string {
   return markdown
     .replace(/```[\s\S]*?```/gu, ' ')
     .replace(/!?\[([^\]]*)\]\([^)]+\)/gu, '$1')
@@ -40,7 +44,7 @@ function searchableMarkdown (markdown: string): string {
     .trim();
 }
 
-function commentText (
+function commentText(
   reflection: Record<string, unknown>,
   sourceLocale: string,
 ) {
@@ -57,9 +61,9 @@ function commentText (
   const summary =
     isRecord(comment) && Array.isArray(comment['summary'])
       ? comment['summary']
-        .filter(isRecord)
-        .map(part => (typeof part['text'] === 'string' ? part['text'] : ''))
-        .join('')
+          .filter(isRecord)
+          .map(part => (typeof part['text'] === 'string' ? part['text'] : ''))
+          .join('')
       : '';
 
   return {
@@ -71,7 +75,7 @@ function commentText (
   };
 }
 
-async function buildAPIResults (
+async function buildAPIResults(
   config: DocsSiteConfig,
   manifest: APIManifest,
   locale: string,
@@ -163,7 +167,7 @@ async function buildAPIResults (
   return results;
 }
 
-async function buildReadmeResults (
+async function buildReadmeResults(
   config: DocsSiteConfig,
   manifest: APIManifest,
   locale: string,
@@ -173,6 +177,9 @@ async function buildReadmeResults (
   for (const pkg of manifest.packages) {
     if (!isSafePathSegment(pkg.key)) {
       throw new Error(`Unsafe API package key in manifest: ${pkg.key}`);
+    }
+    if (!hasPackageReadme(config, pkg.key)) {
+      continue;
     }
     const { text: readme, sourceLocale } = await readPackageReadme(
       config,
@@ -198,13 +205,12 @@ async function buildReadmeResults (
   return results;
 }
 
-async function buildManualResults (
+async function buildManualResults(
   config: DocsSiteConfig,
   navigation: ManualNavigationItem[],
   locale: string,
 ): Promise<SearchResult[]> {
-  const dataRoot = path.dirname(config.apiDirectory);
-  const manualRoot = path.join(dataRoot, 'manual');
+  const manualRoot = config.manualDirectory;
   const results: SearchResult[] = [];
 
   for (const manual of navigation) {
@@ -247,29 +253,32 @@ async function buildManualResults (
   return results;
 }
 
-export async function buildSearchIndexes (
+export async function buildSearchIndexes(
   config: DocsSiteConfig,
 ): Promise<Record<string, number>> {
-  const dataRoot = path.dirname(config.apiDirectory);
+  const dataRoot = path.dirname(
+    config.apiConfigured === false
+      ? config.manualDirectory
+      : config.apiDirectory,
+  );
   const manifestPath = path.join(config.apiDirectory, 'manifest.json');
-  const navigationPath = path.join(dataRoot, 'manual/navigation.json');
+  const navigationPath = path.join(config.manualDirectory, 'navigation.json');
 
-  await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
   await assertNoSymlinkPath(config.repositoryRoot, navigationPath);
   let manifest: APIManifest | undefined;
 
-  try {
-    manifest = parseAPIManifest(await readJSON(manifestPath));
-  } catch (error) {
-    if (
-      errorCode(error) !== 'ENOENT' ||
-      config.apiPackages !== undefined ||
-      config.packageReadmes !== undefined
-    ) {
-      throw error;
+  if (config.apiConfigured !== false) {
+    await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
+    try {
+      manifest = parseAPIManifest(await readJSON(manifestPath));
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT' || config.apiPackages !== undefined) {
+        throw error;
+      }
     }
   }
-  const navigationValue: unknown = await readJSON(navigationPath);
+  const navigationValue: unknown =
+    config.manualConfigured === false ? [] : await readJSON(navigationPath);
 
   if (!isManualNavigation(navigationValue)) {
     throw new Error('Invalid manual navigation');
@@ -287,7 +296,9 @@ export async function buildSearchIndexes (
       ...(manifest === undefined
         ? []
         : await buildReadmeResults(config, manifest, locale)),
-      ...(await buildManualResults(config, navigationValue, locale)),
+      ...(config.manualConfigured === false
+        ? []
+        : await buildManualResults(config, navigationValue, locale)),
     ];
 
     await writeFile(

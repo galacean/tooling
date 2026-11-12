@@ -14,7 +14,12 @@ function SiteProbe() {
   );
 }
 
-function renderSite(baseURL = '/', dataBaseURL = baseURL) {
+function renderSite(
+  baseURL = '/',
+  dataBaseURL = baseURL,
+  includeAPI = true,
+  manualDataURL?: string,
+) {
   return render(
     <DocsSite
       baseURL={baseURL}
@@ -32,16 +37,21 @@ function renderSite(baseURL = '/', dataBaseURL = baseURL) {
           manualIntro: 'Manual introduction',
         }),
         manualSectionLabel: 'Documentation',
-        api: {
-          sourceLinkTemplate:
-            'https://example.test/blob/{commit}/{path}#L{line}',
-          rawAssetURLTemplate: 'https://example.test/raw/{path}{search}',
-          symbolCountLabelTemplates: {
-            en: '{count} symbols',
-            'zh-CN': '{count} symbols',
-          },
-          packageReadmes: {},
-        },
+        ...(manualDataURL === undefined ? {} : { manualDataURL }),
+        ...(includeAPI
+          ? {
+              api: {
+                sourceLinkTemplate:
+                  'https://example.test/blob/{commit}/{path}#L{line}',
+                rawAssetURLTemplate: 'https://example.test/raw/{path}{search}',
+                symbolCountLabelTemplates: {
+                  en: '{count} symbols',
+                  'zh-CN': '{count} symbols',
+                },
+                packageReadmes: {},
+              },
+            }
+          : {}),
       }}
       renderHome={locale => (
         <>
@@ -72,6 +82,14 @@ afterEach(() => {
 });
 
 describe('DocsSite routing', () => {
+  it('omits API navigation when API is not configured', async () => {
+    window.history.replaceState({}, '', '/en/');
+    renderSite('/', '/', false);
+
+    expect(await screen.findByText('home:en')).toBeDefined();
+    expect(screen.queryByRole('link', { name: 'API' })).toBeNull();
+  });
+
   it('loads manual data from a base separate from the route basename', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -90,6 +108,28 @@ describe('DocsSite routing', () => {
     ).toBeDefined();
     expect(fetcher).toHaveBeenCalledWith('/pub/data/manual/navigation.json');
     expect(fetcher).toHaveBeenCalledWith('/pub/data/manual/en/index.md');
+  });
+
+  it('loads manual data from the configured published URL', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      return url.endsWith('navigation.json')
+        ? Response.json([])
+        : new Response('# Manual introduction', { status: 200 });
+    });
+
+    vi.stubGlobal('fetch', fetcher);
+    window.history.replaceState({}, '', '/pub/docs/en/manual');
+    renderSite('/pub/docs/', '/pub/', true, '/assets/manual-content/');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Manual introduction' }),
+    ).toBeDefined();
+    expect(fetcher).toHaveBeenCalledWith(
+      '/assets/manual-content/navigation.json',
+    );
+    expect(fetcher).toHaveBeenCalledWith('/assets/manual-content/en/index.md');
   });
 
   it('redirects the locale root while preserving query and hash', async () => {

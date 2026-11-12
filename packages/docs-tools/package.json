@@ -1,6 +1,6 @@
 {
   "name": "@galacean/docs-tools",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Documentation generation tools for Galacean repositories",
   "type": "module",
   "files": [

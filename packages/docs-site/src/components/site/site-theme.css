@@ -4,6 +4,12 @@
   --site-surface: #fcfcfa;
   --site-ink: #202320;
   --site-muted: #71766f;
+  --site-quote-text: #262626;
+  --site-quote-rule: color-mix(
+    in srgb,
+    var(--site-muted) 27%,
+    var(--site-surface)
+  );
   --site-border: rgba(0, 0, 0, 0.04);
   --site-wash: #f1f3ef;
   --site-code-background: #f1f3ef;
@@ -23,6 +29,7 @@
   --site-surface: #1f1f1f;
   --site-ink: #deded8;
   --site-muted: #848484;
+  --site-quote-text: var(--site-ink);
   --site-border: rgba(255, 255, 255, 0.08);
   --site-wash: #333;
   --site-code-background: #1f1f1f;

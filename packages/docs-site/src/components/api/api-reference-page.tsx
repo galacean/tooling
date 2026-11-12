@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  Link, Navigate, useLocation, useOutletContext, useParams, useSearchParams,
+  Link,
+  Navigate,
+  useLocation,
+  useOutletContext,
+  useParams,
+  useSearchParams,
 } from 'react-router-dom';
 import { getAPISymbolRouteSegment } from '../../data';
 import type { APIManifest, APIVersion } from '../../data';
@@ -66,7 +71,7 @@ export function APIReferencePage<
   TData extends {
     index: { byId: Map<number, TReflection> };
   },
-> ({
+>({
   locale,
   messages: t,
   loadManifest,
@@ -86,6 +91,7 @@ export function APIReferencePage<
   } = useParams();
   const location = useLocation();
   const shellContext = useOutletContext<SiteShellOutletContext | null>();
+  const setAPIDocumentTitle = shellContext?.setAPIDocumentTitle;
   const [query] = useSearchParams();
   const [apiManifest, setAPIManifest] = useState<APIManifest>();
   const [data, setData] = useState<TData>();
@@ -116,10 +122,10 @@ export function APIReferencePage<
     symbolSegment === undefined
       ? undefined
       : entry?.symbols.find(
-        item =>
-          getAPISymbolRouteSegment(entry.symbols, item.name) ===
-          symbolSegment,
-      )?.name;
+          item =>
+            getAPISymbolRouteSegment(entry.symbols, item.name) ===
+            symbolSegment,
+        )?.name;
   const symbol =
     symbolName === undefined
       ? undefined
@@ -133,6 +139,16 @@ export function APIReferencePage<
       displayedVersion !== undefined &&
       entry !== undefined &&
       (packageHome || (symbol !== undefined && versionInfo !== undefined)));
+  const apiDocumentTitle =
+    pkg === undefined
+      ? (symbolSegment ?? packageKey ?? t.api)
+      : packageHome
+        ? pkg.name
+        : (symbolName ?? t.notFound);
+
+  useEffect(() => {
+    setAPIDocumentTitle?.(apiDocumentTitle);
+  }, [apiDocumentTitle, setAPIDocumentTitle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -388,7 +404,7 @@ export function APIReferencePage<
   );
 }
 
-function NotFoundPage ({
+function NotFoundPage({
   title,
   path,
   href,

@@ -13,6 +13,10 @@ export function buildManualTocTree(
   const parents: ManualTocNode[] = [];
 
   headings.forEach((heading, index) => {
+    if (heading.title.trim() === '') {
+      return;
+    }
+
     const node: ManualTocNode = {
       ...heading,
       key: `${keyPrefix}:${index}`,
@@ -39,8 +43,5 @@ export function buildManualTocTree(
 }
 
 export function flattenManualTocNodes(items: ManualTocNode[]): ManualTocNode[] {
-  return items.flatMap(item => [
-    item,
-    ...flattenManualTocNodes(item.children),
-  ]);
+  return items.flatMap(item => [item, ...flattenManualTocNodes(item.children)]);
 }

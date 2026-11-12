@@ -71,6 +71,7 @@ async function fixture() {
     sourceLocale: 'en',
     locales: ['en', 'zh-CN'],
     apiDirectory,
+    manualDirectory: path.join(repositoryRoot, 'site/public/data/manual'),
     translationWorkDirectory: path.join(
       repositoryRoot,
       'tmp/docs-tools/api-translation',
@@ -167,66 +168,96 @@ void test('externalizes dependency trees while preserving public external export
       },
     },
     files: { entries: {}, reflections: {} },
-    children: [{
-      id: 2,
-      name: '@example/widget',
-      kind: ReflectionKind.Module,
-      variant: 'declaration',
-      flags: {},
-      children: [
-        {
-          id: 11,
-          name: 'Box2',
-          kind: ReflectionKind.Class,
-          variant: 'declaration',
-          flags: { isExternal: true },
-          children: [{ id: 12, name: 'min', kind: ReflectionKind.Property, variant: 'declaration', flags: { isExternal: true } }],
-        },
-        {
-          id: 13,
-          name: 'Vector2',
-          kind: ReflectionKind.Class,
-          variant: 'declaration',
-          flags: { isExternal: true },
-        },
-        {
-          id: 14,
-          name: 'makeBox',
-          kind: ReflectionKind.Function,
-          variant: 'declaration',
-          flags: {},
-          signatures: [{
-            id: 15,
+    children: [
+      {
+        id: 2,
+        name: '@example/widget',
+        kind: ReflectionKind.Module,
+        variant: 'declaration',
+        flags: {},
+        children: [
+          {
+            id: 11,
+            name: 'Box2',
+            kind: ReflectionKind.Class,
+            variant: 'declaration',
+            flags: { isExternal: true },
+            children: [
+              {
+                id: 12,
+                name: 'min',
+                kind: ReflectionKind.Property,
+                variant: 'declaration',
+                flags: { isExternal: true },
+              },
+            ],
+          },
+          {
+            id: 13,
+            name: 'Vector2',
+            kind: ReflectionKind.Class,
+            variant: 'declaration',
+            flags: { isExternal: true },
+          },
+          {
+            id: 14,
             name: 'makeBox',
-            kind: ReflectionKind.CallSignature,
-            variant: 'signature',
+            kind: ReflectionKind.Function,
+            variant: 'declaration',
             flags: {},
-            type: { type: 'reference', name: 'Vector2', target: 13, package: '@galacean/effects-math' },
-          }],
+            signatures: [
+              {
+                id: 15,
+                name: 'makeBox',
+                kind: ReflectionKind.CallSignature,
+                variant: 'signature',
+                flags: {},
+                type: {
+                  type: 'reference',
+                  name: 'Vector2',
+                  target: 13,
+                  package: '@galacean/effects-math',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  } as unknown as import('typedoc').JSONOutput.ProjectReflection;
+  const packages = [
+    {
+      key: 'widget',
+      name: '@example/widget',
+      version: '1.0.0',
+      entries: [
+        {
+          key: 'root',
+          source: 'src/index.ts',
+          types: 'dist/index.d.ts',
+          id: 2,
+          symbols: [{ name: 'Box2', id: 11, kind: ReflectionKind.Class }],
         },
       ],
-    }],
-  } as unknown as import('typedoc').JSONOutput.ProjectReflection;
-  const packages = [{
-    key: 'widget',
-    name: '@example/widget',
-    version: '1.0.0',
-    entries: [{
-      key: 'root',
-      source: 'src/index.ts',
-      types: 'dist/index.d.ts',
-      id: 2,
-      symbols: [{ name: 'Box2', id: 11, kind: ReflectionKind.Class }],
-    }],
-  }] satisfies APIDocumentationPackage[];
+    },
+  ] satisfies APIDocumentationPackage[];
 
-  const externalized = externalizeTypeDocDependencies(project, packages, 'zh-CN');
+  const externalized = externalizeTypeDocDependencies(
+    project,
+    packages,
+    'zh-CN',
+  );
   const module = externalized.children?.[0];
   const box = module?.children?.find(child => child.name === 'Box2');
   const makeBox = module?.children?.find(child => child.name === 'makeBox');
-  const vectorType = (makeBox?.signatures?.[0] as { type?: { externalUrl?: string } } | undefined)?.type;
+  const vectorType = (
+    makeBox?.signatures?.[0] as { type?: { externalUrl?: string } } | undefined
+  )?.type;
 
-  assert.deepEqual(module?.children?.map(child => child.name), ['Box2', 'makeBox']);
+  assert.deepEqual(
+    module?.children?.map(child => child.name),
+    ['Box2', 'makeBox'],
+  );
   assert.deepEqual(box, {
     id: 11,
     name: 'Box2',
@@ -234,14 +265,19 @@ void test('externalizes dependency trees while preserving public external export
     variant: 'declaration',
     flags: { isExternal: true },
     comment: {
-      summary: [{
-        kind: 'text',
-        text: '外部依赖包： [Box2](https://www.npmjs.com/package/@galacean/effects-math)。',
-      }],
+      summary: [
+        {
+          kind: 'text',
+          text: '外部依赖包： [Box2](https://www.npmjs.com/package/@galacean/effects-math)。',
+        },
+      ],
     },
     externalUrl: 'https://www.npmjs.com/package/@galacean/effects-math',
   });
-  assert.equal(vectorType?.externalUrl, 'https://www.npmjs.com/package/@galacean/effects-math');
+  assert.equal(
+    vectorType?.externalUrl,
+    'https://www.npmjs.com/package/@galacean/effects-math',
+  );
   assert.equal(Object.keys(externalized.symbolIdMap).includes('11'), false);
   assert.equal(Object.keys(externalized.symbolIdMap).includes('13'), false);
 });
@@ -352,6 +388,7 @@ void test('runs api generate through the mjs CLI with an isolated TypeDoc packag
     `export default ${JSON.stringify({
       sourceLocale: 'en',
       locales: ['en', 'zh-CN'],
+      manual: { dataDirectory: 'site/public/data/manual' },
       api: {
         dataDirectory: 'site/public/data/api',
         sourceLinkTemplate: 'https://example.test/blob/{commit}/{path}#L{line}',
@@ -413,7 +450,10 @@ void test('runs api generate through the mjs CLI with an isolated TypeDoc packag
     }[];
   };
 
-  assert.match(result.stdout, /API: 2 packages; 2 exports/u);
+  assert.match(
+    result.stdout,
+    /\[docs-tools\]\[api generate\]\[SUCCESS\] API: 2 packages; 2 exports/u,
+  );
   assert.equal(manifest.packages[0]?.key, 'widget-dir');
   assert.equal(manifest.packages[0]?.name, '@example/real-widget');
   assert.equal(

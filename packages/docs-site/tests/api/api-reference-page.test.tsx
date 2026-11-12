@@ -1,8 +1,23 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import {
+  MemoryRouter,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 import type { APIManifest } from '@galacean/docs-site';
+import { APISymbolMenu } from '../../src/components/api/api-navigation';
 import { APIReferencePage } from '../../src/components/api/api-reference-page';
 
 const entry = {
@@ -48,46 +63,55 @@ const messages = {
   unknownHash: 'Unknown anchor',
 };
 
-function renderPage(loadManifest = vi.fn(async () => manifest)) {
-  const loadAPI = vi.fn(async () => ({ index: { byId: new Map() } }));
+function renderPage(
+  loadManifest = vi.fn(async () => manifest),
+  initialEntry = '/en/api/example',
+) {
+  const loadAPI = vi.fn(async () => ({
+    index: { byId: new Map<number, object>([[10, {}]]) },
+  }));
+  const setAPIDocumentTitle = vi.fn();
+  const shellContext = {
+    setAPIDocumentTitle,
+    setAPISidebarCollapsed: vi.fn(),
+  };
+  const apiPage = (
+    <APIReferencePage
+      locale="en"
+      messages={messages}
+      loadManifest={loadManifest}
+      loadAPI={loadAPI}
+      getAPIHref={locale => `/${locale}/api`}
+      getPackageHref={(locale, key) => `/${locale}/api/${key}`}
+      getSymbolHref={(locale, key, selectedVersion, symbol, entryKey) =>
+        `/${locale}/api/${key}/${selectedVersion}/${symbol}?entry=${entryKey}`
+      }
+      getGroupLabel={() => 'Interfaces'}
+      renderKind={() => <span>Interface</span>}
+      symbolCountLabel={count => `${count} symbols`}
+      renderPackageReadme={(key, _keys, locale) => (
+        <p>
+          README:{key}:{locale}
+        </p>
+      )}
+      renderReflection={() => <p>Reflection</p>}
+    />
+  );
 
   return {
     loadManifest,
     loadAPI,
+    setAPIDocumentTitle,
     ...render(
-      <MemoryRouter initialEntries={['/en/api/example']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route
             path="/:locale/api/:pkg"
-            element={
-              <APIReferencePage
-                locale="en"
-                messages={messages}
-                loadManifest={loadManifest}
-                loadAPI={loadAPI}
-                getAPIHref={locale => `/${locale}/api`}
-                getPackageHref={(locale, key) => `/${locale}/api/${key}`}
-                getSymbolHref={(
-                  locale,
-                  key,
-                  selectedVersion,
-                  symbol,
-                  entryKey,
-                ) =>
-                  `/${locale}/api/${key}/${selectedVersion}/${symbol}?entry=${entryKey}`
-                }
-                getGroupLabel={() => 'Interfaces'}
-                renderKind={() => <span>Interface</span>}
-                symbolCountLabel={count => `${count} symbols`}
-                renderPackageReadme={(key, _keys, locale) => (
-                  <p>
-                    README:{key}:{locale}
-                  </p>
-                )}
-                renderReflection={() => <p>Reflection</p>}
-              />
-            }
-          />
+            element={<Outlet context={shellContext} />}
+          >
+            <Route index element={apiPage} />
+            <Route path=":version/:symbol" element={apiPage} />
+          </Route>
         </Routes>
       </MemoryRouter>,
     ),
@@ -99,12 +123,17 @@ beforeEach(() => {
     configurable: true,
     value: vi.fn(),
   });
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    configurable: true,
+    value: vi.fn(),
+  });
 });
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
 });
 
 describe('APIReferencePage', () => {
@@ -118,12 +147,80 @@ describe('APIReferencePage', () => {
   });
 
   it('loads the manifest and renders a package landing page without loading a snapshot', async () => {
-    const { loadAPI, loadManifest } = renderPage();
+    const { loadAPI, loadManifest, setAPIDocumentTitle } = renderPage();
 
     expect(await screen.findByText('README:example:en')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Package' })).toBeDefined();
     expect(screen.getByText('@scope/example')).toBeDefined();
     expect(loadAPI).not.toHaveBeenCalled();
     expect(loadManifest).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(setAPIDocumentTitle).toHaveBeenLastCalledWith('@scope/example'),
+    );
+  });
+
+  it('reports the reflection name for the browser tab', async () => {
+    const { setAPIDocumentTitle } = renderPage(
+      vi.fn(async () => manifest),
+      '/en/api/example/current/Example',
+    );
+
+    expect(await screen.findByText('Reflection')).toBeDefined();
+    await waitFor(() =>
+      expect(setAPIDocumentTitle).toHaveBeenLastCalledWith('Example'),
+    );
+  });
+});
+
+describe('APISymbolMenu', () => {
+  it('keeps visited API symbols in browser history', async () => {
+    let navigateBack: (() => void | Promise<void>) | undefined;
+
+    function HistoryTestPage() {
+      const location = useLocation();
+      const navigate = useNavigate();
+
+      navigateBack = () => navigate(-1);
+
+      return (
+        <>
+          <APISymbolMenu
+            symbols={[
+              { name: 'First', id: 1, kind: 256 },
+              { name: 'Second', id: 2, kind: 256 },
+            ]}
+            selectedName="First"
+            ariaLabel="API symbols"
+            getGroupLabel={() => 'Interfaces'}
+            getSymbolHref={name => `/api/${name}`}
+            renderKind={() => <span>Interface</span>}
+            onSelect={vi.fn()}
+          />
+          <output aria-label="Current location">{location.pathname}</output>
+        </>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/api/First']}>
+        <HistoryTestPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('link', { name: /Second/u }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Current location').textContent).toBe(
+        '/api/Second',
+      ),
+    );
+
+    await act(async () => {
+      await navigateBack?.();
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('Current location').textContent).toBe(
+        '/api/First',
+      ),
+    );
   });
 });

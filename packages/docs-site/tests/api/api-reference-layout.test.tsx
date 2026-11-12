@@ -197,52 +197,50 @@ describe('shared API navigation', () => {
     expect(markup).toContain('data-kind="256"');
   });
 
-  it.each([false, true])(
-    'renders toolbar with packageHome=%s',
-    packageHome => {
-      const markup = renderToStaticMarkup(
-        <MemoryRouter>
-          <APINavigationToolbar
-            pkg={pkg}
-            packages={[pkg]}
-            version="current"
-            entryKey="sub"
-            symbol={{ name: 'keep', kind: 256 }}
-            packageHome={packageHome}
-            showInherited={true}
-            onShowInheritedChange={() => undefined}
-            messages={{
-              api: 'Reference',
-              version: 'Release',
-              apiPackage: 'Library',
-              showInherited: 'Inherited members',
-            }}
-            getPackageHref={key => `/fr/reference/${key}/`}
-            getSymbolHref={target =>
-              `/fr/reference/${target.version}/${target.symbolName}/`
-            }
-            renderKind={kind => <span data-kind={kind}>Badge</span>}
-          />
-        </MemoryRouter>,
-      );
+  it.each([false, true])('renders toolbar with packageHome=%s', packageHome => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <APINavigationToolbar
+          pkg={pkg}
+          packages={[pkg]}
+          version="current"
+          entryKey="sub"
+          symbol={{ name: 'keep', kind: 256 }}
+          packageHome={packageHome}
+          showInherited={true}
+          onShowInheritedChange={() => undefined}
+          messages={{
+            api: 'Reference',
+            version: 'Release',
+            apiPackage: 'Library',
+            showInherited: 'Inherited members',
+          }}
+          getPackageHref={key => `/fr/reference/${key}/`}
+          getSymbolHref={target =>
+            `/fr/reference/${target.version}/${target.symbolName}/`
+          }
+          renderKind={kind => <span data-kind={kind}>Badge</span>}
+        />
+      </MemoryRouter>,
+    );
 
-      expect(markup).not.toContain('>Reference</a><span>/</span>');
-      expect(markup).toContain('aria-label="Library"');
-      if (packageHome) {
-        expect(markup).not.toContain('api-version-select');
-        expect(markup).not.toContain('api-inherited-toggle');
-        expect(markup).not.toContain('api-current-symbol');
-      } else {
-        expect(markup).toContain('current (1.0.0)');
-        expect(markup).toContain('aria-label="Release"');
-        expect(markup).toContain('aria-label="Inherited members" checked=""');
-        expect(markup).toContain('api-current-symbol');
-        expect(
-          markup.indexOf('class="site-select api-package-select"'),
-        ).toBeLessThan(
-          markup.indexOf('class="site-select api-version-select"'),
-        );
-      }
-    },
-  );
+    expect(markup).not.toContain('>Reference</a><span>/</span>');
+    expect(markup).toContain('aria-label="Library"');
+    if (packageHome) {
+      expect(markup).not.toContain('api-version-select');
+      expect(markup).not.toContain('api-inherited-toggle');
+      expect(markup).not.toContain('api-current-symbol');
+    } else {
+      expect(markup).toContain('current (1.0.0)');
+      expect(markup).toContain('aria-label="Release"');
+      expect(markup).toContain('aria-label="Inherited members" checked=""');
+      expect(markup).toContain('api-current-symbol');
+      expect(markup.match(/class="api-breadcrumb-separator"/gu)).toHaveLength(
+        2,
+      );
+      expect(
+        markup.indexOf('class="site-select api-package-select"'),
+      ).toBeLessThan(markup.indexOf('class="site-select api-version-select"'));
+    }
+  });
 });

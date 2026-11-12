@@ -14,6 +14,7 @@ export type ManualContentFormat = 'markdown' | 'html';
 export interface ManualHeading {
   title: string;
   level: number;
+  id?: string;
 }
 
 export interface ManualPageDocument {
@@ -51,6 +52,7 @@ export interface ManualContentClient<TLocale extends string> {
 
 interface ManualContentOptions<TLocale extends string> {
   baseURL: string;
+  manualDataURL?: string;
   locales: readonly TLocale[];
   fetcher?: typeof fetch;
 }
@@ -78,24 +80,34 @@ function extractHeadings(
   if (format === 'html') {
     if (typeof DOMParser === 'undefined') {
       return [
-        ...text.matchAll(/<h([2-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/giu),
+        ...text.matchAll(/<h([1-6])\b([^>]*)>([\s\S]*?)<\/h\1\s*>/giu),
       ].flatMap(match => {
-        const title = match[2]
+        const title = match[3]
           ?.replace(/<[^>]*>/gu, '')
           .replace(/&nbsp;/giu, ' ')
           .replace(/&amp;/giu, '&')
           .replace(/&lt;/giu, '<')
           .replace(/&gt;/giu, '>')
           .trim();
+        const idMatch = match[2]?.match(
+          /\bid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/iu,
+        );
+        const id = idMatch?.[1] ?? idMatch?.[2] ?? idMatch?.[3];
 
         return title === undefined || title.length === 0
           ? []
-          : [{ title, level: Number(match[1]) }];
+          : [
+              {
+                title,
+                level: Number(match[1]),
+                ...(id === undefined || id.length === 0 ? {} : { id }),
+              },
+            ];
       });
     }
     const document = new DOMParser().parseFromString(text, 'text/html');
 
-    return [...document.querySelectorAll('h2, h3, h4, h5, h6')].flatMap(
+    return [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].flatMap(
       heading =>
         heading.textContent === null
           ? []
@@ -103,12 +115,13 @@ function extractHeadings(
               {
                 title: heading.textContent.trim(),
                 level: Number(heading.tagName.slice(1)),
+                ...(heading.id === '' ? {} : { id: heading.id }),
               },
             ],
     );
   }
 
-  return [...text.matchAll(/^(#{2,6})\s+(.+?)\s*#*\s*$/gmu)].flatMap(match =>
+  return [...text.matchAll(/^(#{1,6})\s+(.+?)\s*#*\s*$/gmu)].flatMap(match =>
     match[2] === undefined
       ? []
       : [{ title: match[2], level: match[1]?.length ?? 2 }],
@@ -117,10 +130,17 @@ function extractHeadings(
 
 export function createManualContentClient<TLocale extends string>({
   baseURL,
+  manualDataURL,
   locales,
   fetcher: providedFetcher,
 }: ManualContentOptions<TLocale>): ManualContentClient<TLocale> {
   const base = baseURL.endsWith('/') ? baseURL : `${baseURL}/`;
+  const manualBaseURL =
+    manualDataURL === undefined
+      ? `${base}data/manual/`
+      : manualDataURL.endsWith('/')
+        ? manualDataURL
+        : `${manualDataURL}/`;
   const fetcher: typeof fetch =
     providedFetcher ?? ((...args) => globalThis.fetch(...args));
   let cachedNavigation: Promise<ManualNavigationItem<TLocale>[]> | undefined;
@@ -177,7 +197,7 @@ export function createManualContentClient<TLocale extends string>({
   return {
     loadNavigation() {
       if (cachedNavigation === undefined) {
-        const url = `${base}data/manual/navigation.json`;
+        const url = `${manualBaseURL}navigation.json`;
 
         cachedNavigation = loadJSON(url, fetcher)
           .then(raw => {
@@ -214,7 +234,7 @@ export function createManualContentClient<TLocale extends string>({
       const format = page.format?.[locale] ?? 'markdown';
       const extension = format === 'html' ? 'html' : 'md';
       const document = await loadDocument(
-        `${base}data/manual/${locale}/${encodeURIComponent(slug)}.${extension}`,
+        `${manualBaseURL}${locale}/${encodeURIComponent(slug)}.${extension}`,
         format,
       );
       const pageLastModified = page.lastModified?.[locale];
@@ -231,7 +251,7 @@ export function createManualContentClient<TLocale extends string>({
       };
     },
     loadOverview(locale) {
-      return loadDocument(`${base}data/manual/${locale}/index.md`);
+      return loadDocument(`${manualBaseURL}${locale}/index.md`);
     },
   };
 }

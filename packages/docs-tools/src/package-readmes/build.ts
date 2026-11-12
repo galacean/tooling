@@ -4,7 +4,7 @@ import { parseAPIManifest } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
 import { readJSON } from '../api/read-json';
-import { readPackageReadme } from './read';
+import { hasPackageReadme, readPackageReadme } from './read';
 
 export async function buildPackageReadmes(
   config: DocsSiteConfig,
@@ -22,6 +22,9 @@ export async function buildPackageReadmes(
   for (const pkg of manifest.packages) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(pkg.key)) {
       throw new Error(`Unsafe package key in API manifest: ${pkg.key}`);
+    }
+    if (!hasPackageReadme(config, pkg.key)) {
+      continue;
     }
     const packageOutput = path.join(outputDirectory, pkg.key);
 

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { test } from 'vitest';
 import type { TestContext } from 'vitest';
 import { syncManagedSkill } from '@galacean/docs-tools';
+
+const execFileAsync = promisify(execFile);
 
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'docs-tools-skill-'));
@@ -144,3 +148,42 @@ void test('synchronizes additional named skills with independent managed manifes
     check: true,
   });
 });
+
+void test('runs skills sync without a site config', async t => {
+  const repositoryRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'docs-tools-skill-cli-'),
+  );
+  const cliPath = path.resolve(import.meta.dirname, '../bin/galacean-docs.mjs');
+
+  t.onTestFinished(() => rm(repositoryRoot, { recursive: true, force: true }));
+
+  const syncResult = await execFileAsync(
+    process.execPath,
+    [cliPath, 'skills', 'sync'],
+    { cwd: repositoryRoot },
+  );
+
+  assert.match(
+    syncResult.stdout,
+    /\[docs-tools\]\[skills sync\]\[SUCCESS\] Synchronized: .+api-documentation-translation/u,
+  );
+  assert.match(
+    syncResult.stdout,
+    /\[docs-tools\]\[skills sync\]\[SUCCESS\] Synchronized: .+manual-documentation-translation/u,
+  );
+
+  const checkResult = await execFileAsync(
+    process.execPath,
+    [cliPath, 'skills', 'sync', '--check'],
+    { cwd: repositoryRoot },
+  );
+
+  assert.match(
+    checkResult.stdout,
+    /\[docs-tools\]\[skills sync\]\[SUCCESS\] Verified: .+api-documentation-translation/u,
+  );
+  assert.match(
+    checkResult.stdout,
+    /\[docs-tools\]\[skills sync\]\[SUCCESS\] Verified: .+manual-documentation-translation/u,
+  );
+}, 15_000);

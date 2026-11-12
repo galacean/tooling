@@ -52,6 +52,7 @@ describe('shared manual content client', () => {
       title: '开始使用',
       text: '# Intro\n\n## Install\n\n### Detail\n\n#### Deep\n\n## Next\n',
       headings: [
+        { title: 'Intro', level: 1 },
         { title: 'Install', level: 2 },
         { title: 'Detail', level: 3 },
         { title: 'Deep', level: 4 },
@@ -63,6 +64,7 @@ describe('shared manual content client', () => {
     expect(await client.loadOverview('en')).toEqual({
       text: '# Intro\n\n## Install\n\n### Detail\n\n#### Deep\n\n## Next\n',
       headings: [
+        { title: 'Intro', level: 1 },
         { title: 'Install', level: 2 },
         { title: 'Detail', level: 3 },
         { title: 'Deep', level: 4 },
@@ -131,7 +133,7 @@ describe('shared manual content client', () => {
       },
     ];
     const html =
-      '<article><h2 id="install">Install</h2><h3>Detail</h3><p>Body</p></article>';
+      '<article><h1>Overview</h1><h2 id="yuque-install-123">Install</h2><h3>Detail</h3><p>Body</p></article>';
     const requestedURLs: string[] = [];
     const fetcher: typeof fetch = vi.fn(async (input: RequestInfo | URL) => {
       requestedURLs.push(String(input));
@@ -151,7 +153,8 @@ describe('shared manual content client', () => {
     expect(page).toMatchObject({
       text: html,
       headings: [
-        { title: 'Install', level: 2 },
+        { title: 'Overview', level: 1 },
+        { title: 'Install', level: 2, id: 'yuque-install-123' },
         { title: 'Detail', level: 3 },
       ],
       format: 'html',
@@ -159,6 +162,33 @@ describe('shared manual content client', () => {
     expect(requestedURLs.at(-1)).toBe(
       '/site/data/manual/zh-CN/getting-started.html',
     );
+  });
+
+  it('loads navigation and documents from a configured manual data URL', async () => {
+    const requestedURLs: string[] = [];
+    const fetcher: typeof fetch = vi.fn(async (input: RequestInfo | URL) => {
+      requestedURLs.push(String(input));
+
+      return String(input).endsWith('navigation.json')
+        ? Response.json(navigation)
+        : new Response('# Intro');
+    });
+    const client = createManualContentClient({
+      baseURL: '/site/',
+      manualDataURL: '/published/manual-content',
+      locales,
+      fetcher,
+    });
+    const pages = await client.loadNavigation();
+
+    await client.loadPage('en', 'getting-started', pages);
+    await client.loadOverview('zh-CN');
+
+    expect(requestedURLs).toEqual([
+      '/published/manual-content/navigation.json',
+      '/published/manual-content/en/getting-started.md',
+      '/published/manual-content/zh-CN/index.md',
+    ]);
   });
 
   it('prefers the response Last-Modified header over navigation metadata', async () => {

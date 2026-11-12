@@ -2,7 +2,8 @@ import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readJSON } from '../api/read-json';
-import { isSafeSlug } from './validation';
+import { validateAPIConfig } from './api-config-validation';
+import { validateManualCollections } from './manual-config-validation';
 
 export interface DocsSiteConfig {
   repositoryRoot: string;
@@ -10,10 +11,11 @@ export interface DocsSiteConfig {
   sourceLocale: string;
   locales: string[];
   apiDirectory: string;
+  apiConfigured?: boolean;
+  manualDirectory: string;
+  manualConfigured?: boolean;
   translationWorkDirectory: string;
   siteName?: string;
-  packageReadmes?: Record<string, Record<string, string>>;
-  packageReadmeSourceLocales?: Record<string, string>;
   apiPackages?: APIPackageConfig[];
   manuals?: ManualCollectionConfig[];
   typedocOptions?: Record<string, unknown>;
@@ -26,12 +28,18 @@ export interface APIEntryConfig {
   types: string;
 }
 
+export interface APIReadmeConfig {
+  sourceLocale?: string;
+  files: Record<string, string>;
+}
+
 export interface APIPackageConfig {
   key: string;
   name: string;
   directory: string;
   tsconfig: string;
   entries: APIEntryConfig[];
+  readme?: APIReadmeConfig;
 }
 
 export interface ManualDocumentConfig {
@@ -73,19 +81,17 @@ export interface ManualCollectionConfig {
 }
 
 interface SiteConfigInput {
-  api: {
+  api?: {
     dataDirectory: string;
     packages?: APIPackageConfig[];
     typedocOptions?: Record<string, unknown>;
     sourceLinkTemplate?: string;
   };
+  manual?: { dataDirectory: string; collections?: unknown[] };
   sourceLocale: string;
   locales: string[];
   translationWorkDirectory?: string;
   siteName?: string;
-  packageReadmes?: Record<string, Record<string, string>>;
-  packageReadmeSourceLocales?: Record<string, string>;
-  manuals?: unknown[];
 }
 
 function isWithin(parent: string, child: string): boolean {
@@ -111,235 +117,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isSafeRelativePath(value: string): boolean {
-  return (
-    value.length > 0 &&
-    !path.isAbsolute(value) &&
-    !value.includes('\\') &&
-    value
-      .split('/')
-      .every(segment => segment !== '' && segment !== '.' && segment !== '..')
-  );
-}
-
 function isLocaleTag(value: string): boolean {
   return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u.test(value);
-}
-
-function isValidNamespace(value: string): boolean {
-  return (
-    value.split('/').length === 2 &&
-    value.split('/').every(part => /^[a-zA-Z0-9_-]+$/u.test(part))
-  );
-}
-
-function isValidBaseURL(value: string): boolean {
-  try {
-    const url = new URL(value);
-
-    return (
-      ['http:', 'https:'].includes(url.protocol) &&
-      url.username.length === 0 &&
-      url.password.length === 0 &&
-      url.search.length === 0 &&
-      url.hash.length === 0
-    );
-  } catch {
-    return false;
-  }
-}
-
-function validateManualCollections(value: unknown, locales: unknown): string[] {
-  if (value === undefined) {
-    return [];
-  }
-  if (!Array.isArray(value)) {
-    return ['manuals must be an array'];
-  }
-  const issues: string[] = [];
-  const supportedLocales = Array.isArray(locales)
-    ? locales.filter((locale): locale is string => typeof locale === 'string')
-    : [];
-  const keys = new Set<string>();
-
-  for (const [index, item] of value.entries()) {
-    const prefix = `manuals[${index}]`;
-
-    if (
-      !isRecord(item) ||
-      typeof item['key'] !== 'string' ||
-      !isSafeSlug(item['key']) ||
-      keys.has(item['key']) ||
-      !isRecord(item['source'])
-    ) {
-      issues.push(`${prefix} must declare a unique key and source`);
-      continue;
-    }
-    keys.add(item['key']);
-    if (
-      item['routePrefix'] !== undefined &&
-      (typeof item['routePrefix'] !== 'string' ||
-        !isSafeSlug(item['routePrefix']))
-    ) {
-      issues.push(`${prefix}.routePrefix must be a safe route slug`);
-    }
-
-    const source = item['source'];
-
-    if (
-      typeof source['locale'] !== 'string' ||
-      !supportedLocales.includes(source['locale'])
-    ) {
-      issues.push(`${prefix}.source.locale must be a configured locale`);
-    }
-    if (source['type'] === 'local') {
-      if (
-        typeof source['directory'] !== 'string' ||
-        !isSafeRelativePath(source['directory'])
-      ) {
-        issues.push(`${prefix}.source.directory must be a safe relative path`);
-      }
-    } else if (source['type'] === 'yuque') {
-      if (
-        typeof source['baseURL'] !== 'string' ||
-        !isValidBaseURL(source['baseURL'])
-      ) {
-        issues.push(`${prefix}.source.baseURL must be an HTTP(S) URL`);
-      }
-      if (
-        typeof source['tokenEnv'] !== 'string' ||
-        !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(source['tokenEnv'])
-      ) {
-        issues.push(
-          `${prefix}.source.tokenEnv must be an environment variable name`,
-        );
-      }
-      if (source['mode'] === 'repo') {
-        if (
-          typeof source['namespace'] !== 'string' ||
-          !isValidNamespace(source['namespace'])
-        ) {
-          issues.push(
-            `${prefix}.source.namespace must be a group/book namespace`,
-          );
-        }
-      } else if (source['mode'] === 'documents') {
-        if (
-          !Array.isArray(source['documents']) ||
-          source['documents'].length === 0
-        ) {
-          issues.push(`${prefix}.source.documents must be a non-empty array`);
-        } else {
-          for (const [documentIndex, document] of source[
-            'documents'
-          ].entries()) {
-            if (
-              !isRecord(document) ||
-              typeof document['namespace'] !== 'string' ||
-              !isValidNamespace(document['namespace']) ||
-              typeof document['slug'] !== 'string' ||
-              !isSafeSlug(document['slug']) ||
-              typeof document['routeSlug'] !== 'string' ||
-              !isSafeSlug(document['routeSlug']) ||
-              (document['group'] !== undefined &&
-                typeof document['group'] !== 'string') ||
-              (document['docId'] !== undefined &&
-                typeof document['docId'] !== 'string')
-            ) {
-              issues.push(
-                `${prefix}.source.documents[${documentIndex}] must declare namespace, slug, routeSlug, and optional group/docId`,
-              );
-            }
-          }
-        }
-      } else {
-        issues.push(`${prefix}.source.mode must be repo or documents`);
-      }
-    } else {
-      issues.push(`${prefix}.source.type must be local or yuque`);
-    }
-
-    if (item['ignore'] !== undefined) {
-      const ignore = item['ignore'];
-
-      if (!isRecord(ignore)) {
-        issues.push(`${prefix}.ignore must be an object`);
-      } else {
-        if (
-          (ignore['slugs'] !== undefined ||
-            ignore['titleContains'] !== undefined) &&
-          !(source['type'] === 'yuque' && source['mode'] === 'repo')
-        ) {
-          issues.push(
-            `${prefix}.ignore.slugs and titleContains require Yuque repo mode`,
-          );
-        }
-        if (
-          ignore['documentRefs'] !== undefined &&
-          !(source['type'] === 'yuque' && source['mode'] === 'documents')
-        ) {
-          issues.push(
-            `${prefix}.ignore.documentRefs require Yuque documents mode`,
-          );
-        }
-        if (source['type'] === 'local' && ignore['docIds'] !== undefined) {
-          issues.push(
-            `${prefix}.ignore.docIds are not supported for local sources`,
-          );
-        }
-        for (const selector of ['docIds', 'slugs', 'titleContains'] as const) {
-          const entries = ignore[selector];
-
-          if (
-            entries !== undefined &&
-            (!Array.isArray(entries) ||
-              entries.some(entry => typeof entry !== 'string'))
-          ) {
-            issues.push(`${prefix}.ignore.${selector} must be a string array`);
-          }
-        }
-        const refs = ignore['documentRefs'];
-
-        if (
-          refs !== undefined &&
-          (!Array.isArray(refs) ||
-            refs.some(
-              ref =>
-                !isRecord(ref) ||
-                typeof ref['namespace'] !== 'string' ||
-                !isValidNamespace(ref['namespace']) ||
-                typeof ref['slug'] !== 'string' ||
-                !isSafeSlug(ref['slug']),
-            ))
-        ) {
-          issues.push(
-            `${prefix}.ignore.documentRefs must contain namespace/slug references`,
-          );
-        }
-      }
-    }
-    if (item['translations'] !== undefined) {
-      const translations = item['translations'];
-
-      if (!isRecord(translations)) {
-        issues.push(`${prefix}.translations must map locales to safe paths`);
-      } else if (
-        Object.entries(translations).some(
-          ([locale, filename]) =>
-            !supportedLocales.includes(locale) ||
-            locale === source['locale'] ||
-            typeof filename !== 'string' ||
-            !isSafeRelativePath(filename),
-        )
-      ) {
-        issues.push(
-          `${prefix}.translations must map non-source locales to safe paths`,
-        );
-      }
-    }
-  }
-
-  return issues;
 }
 
 export async function assertNoSymlinkPath(
@@ -413,88 +192,40 @@ export async function loadSiteConfig(
     issues.push('expected an object export');
   } else {
     const api = config['api'];
+    const manual = config['manual'];
     const locales = config['locales'];
     const sourceLocale = config['sourceLocale'];
 
-    if (!isRecord(api) || typeof api['dataDirectory'] !== 'string') {
-      issues.push('api.dataDirectory must be a string');
-    } else {
-      const packages = api['packages'];
+    if (config['packageReadmes'] !== undefined) {
+      issues.push(
+        'packageReadmes must be configured under api.packages[].readme.files',
+      );
+    }
+    if (config['packageReadmeSourceLocales'] !== undefined) {
+      issues.push(
+        'packageReadmeSourceLocales must be configured as api.packages[].readme.sourceLocale',
+      );
+    }
+    if (config['manuals'] !== undefined) {
+      issues.push(
+        'manual collections must be configured under manual.collections',
+      );
+    }
 
-      if (
-        packages !== undefined &&
-        (!Array.isArray(packages) || packages.length === 0)
-      ) {
-        issues.push('api.packages must be a non-empty array');
-      } else if (Array.isArray(packages)) {
-        const keys = new Set<string>();
+    issues.push(...validateAPIConfig(api, locales, sourceLocale));
 
-        for (const [index, packageConfig] of packages.entries()) {
-          if (
-            !isRecord(packageConfig) ||
-            typeof packageConfig['key'] !== 'string' ||
-            !isSafeSlug(packageConfig['key']) ||
-            keys.has(packageConfig['key']) ||
-            typeof packageConfig['name'] !== 'string' ||
-            packageConfig['name'].length === 0 ||
-            typeof packageConfig['directory'] !== 'string' ||
-            !isSafeRelativePath(packageConfig['directory']) ||
-            typeof packageConfig['tsconfig'] !== 'string' ||
-            !isSafeRelativePath(packageConfig['tsconfig']) ||
-            !Array.isArray(packageConfig['entries']) ||
-            packageConfig['entries'].length === 0
-          ) {
-            issues.push(
-              `api.packages[${index}] must declare unique key, name, directory, tsconfig, and entries`,
-            );
-            continue;
-          }
-          keys.add(packageConfig['key']);
-          const entryKeys = new Set<string>();
-
-          for (const [entryIndex, entry] of packageConfig[
-            'entries'
-          ].entries()) {
-            if (
-              !isRecord(entry) ||
-              typeof entry['key'] !== 'string' ||
-              entry['key'].length === 0 ||
-              entryKeys.has(entry['key']) ||
-              typeof entry['source'] !== 'string' ||
-              !isSafeRelativePath(entry['source']) ||
-              typeof entry['types'] !== 'string' ||
-              !isSafeRelativePath(entry['types'])
-            ) {
-              issues.push(
-                `api.packages[${index}].entries[${entryIndex}] must declare a unique key, source, and types path`,
-              );
-              continue;
-            }
-            entryKeys.add(entry['key']);
-          }
-        }
-      }
-      if (
-        api['typedocOptions'] !== undefined &&
-        !isRecord(api['typedocOptions'])
-      ) {
-        issues.push('api.typedocOptions must be an object');
-      }
-      if (
-        api['sourceLinkTemplate'] !== undefined &&
-        typeof api['sourceLinkTemplate'] !== 'string'
-      ) {
-        issues.push('api.sourceLinkTemplate must be a string');
-      }
+    if (
+      manual !== undefined &&
+      (!isRecord(manual) || typeof manual['dataDirectory'] !== 'string')
+    ) {
+      issues.push('manual.dataDirectory must be a string');
     }
     if (typeof sourceLocale !== 'string' || !isLocaleTag(sourceLocale)) {
       issues.push('sourceLocale must be a valid locale tag');
     }
     if (
       !Array.isArray(locales) ||
-      locales.some(
-        locale => typeof locale !== 'string' || !isLocaleTag(locale),
-      )
+      locales.some(locale => typeof locale !== 'string' || !isLocaleTag(locale))
     ) {
       issues.push('locales must be an array of valid locale tags');
     } else {
@@ -518,74 +249,11 @@ export async function loadSiteConfig(
     ) {
       issues.push('siteName must be a non-empty string');
     }
-    if (
-      config['packageReadmes'] !== undefined &&
-      !isRecord(config['packageReadmes'])
-    ) {
-      issues.push('packageReadmes must map package keys to locale paths');
-    } else if (isRecord(config['packageReadmes'])) {
-      const configuredLocales = Array.isArray(locales)
-        ? locales.filter(
-            (locale): locale is string => typeof locale === 'string',
-          )
-        : [];
+    const manualCollections = isRecord(manual)
+      ? manual['collections']
+      : undefined;
 
-      for (const [packageKey, localePaths] of Object.entries(
-        config['packageReadmes'],
-      )) {
-        const configuredSourceLocale = isRecord(
-          config['packageReadmeSourceLocales'],
-        )
-          ? config['packageReadmeSourceLocales'][packageKey]
-          : undefined;
-        const packageSourceLocale =
-          typeof configuredSourceLocale === 'string'
-            ? configuredSourceLocale
-            : sourceLocale;
-
-        if (
-          !isSafeSlug(packageKey) ||
-          !isRecord(localePaths) ||
-          typeof packageSourceLocale !== 'string' ||
-          !configuredLocales.includes(packageSourceLocale) ||
-          typeof localePaths[packageSourceLocale] !== 'string' ||
-          Object.entries(localePaths).some(
-            ([locale, filename]) =>
-              !configuredLocales.includes(locale) ||
-              typeof filename !== 'string' ||
-              !isSafeRelativePath(filename),
-          )
-        ) {
-          issues.push(
-            `packageReadmes.${packageKey} must declare safe paths for configured locales`,
-          );
-        }
-      }
-    }
-    if (config['packageReadmeSourceLocales'] !== undefined) {
-      if (!isRecord(config['packageReadmeSourceLocales'])) {
-        issues.push(
-          'packageReadmeSourceLocales must map package keys to locales',
-        );
-      } else {
-        for (const [packageKey, locale] of Object.entries(
-          config['packageReadmeSourceLocales'],
-        )) {
-          if (
-            !isRecord(config['packageReadmes']) ||
-            !(packageKey in config['packageReadmes']) ||
-            typeof locale !== 'string' ||
-            !Array.isArray(locales) ||
-            !locales.includes(locale)
-          ) {
-            issues.push(
-              `packageReadmeSourceLocales.${packageKey} must reference a configured README package and locale`,
-            );
-          }
-        }
-      }
-    }
-    issues.push(...validateManualCollections(config['manuals'], locales));
+    issues.push(...validateManualCollections(manualCollections, locales));
   }
   if (issues.length > 0) {
     const exportKeys = isRecord(config) ? Object.keys(config).join(', ') : '';
@@ -596,25 +264,49 @@ export async function loadSiteConfig(
   }
 
   const input = config as SiteConfigInput;
-  const apiDirectory = path.resolve(root, input.api.dataDirectory);
+  const manualCollectionsInput = input.manual?.collections;
+  const dataDirectory = path.resolve(
+    root,
+    input.api !== undefined
+      ? path.dirname(input.api.dataDirectory)
+      : input.manual !== undefined
+        ? path.dirname(input.manual.dataDirectory)
+        : 'site/public/data',
+  );
+  const apiDirectory =
+    input.api === undefined
+      ? path.join(dataDirectory, 'api')
+      : path.resolve(root, input.api.dataDirectory);
+  const manualDirectory =
+    input.manual === undefined
+      ? path.join(dataDirectory, 'manual')
+      : path.resolve(root, input.manual.dataDirectory);
   const translationWorkDirectory = path.resolve(
     root,
     input.translationWorkDirectory ?? 'tmp/docs-tools/api-translation',
   );
 
   if (
-    !isWithin(root, apiDirectory) ||
+    !isWithin(root, dataDirectory) ||
+    (input.api !== undefined && !isWithin(root, apiDirectory)) ||
+    ((input.manual !== undefined || manualCollectionsInput !== undefined) &&
+      !isWithin(root, manualDirectory)) ||
     !isWithin(root, translationWorkDirectory)
   ) {
     throw new Error(
       `Configured data and work directories must stay inside the repository: ${filename}`,
     );
   }
-  await assertNoSymlinkPath(root, apiDirectory);
+  if (input.api !== undefined) {
+    await assertNoSymlinkPath(root, apiDirectory);
+  }
+  if (input.manual !== undefined || manualCollectionsInput !== undefined) {
+    await assertNoSymlinkPath(root, manualDirectory);
+  }
   await assertNoSymlinkPath(root, translationWorkDirectory);
   let apiPackages: APIPackageConfig[] | undefined;
 
-  if (input.api.packages !== undefined) {
+  if (input.api?.packages !== undefined) {
     apiPackages = [];
     for (const packageConfig of input.api.packages) {
       const packageDirectory = path.resolve(root, packageConfig.directory);
@@ -645,6 +337,26 @@ export async function loadSiteConfig(
           await assertNoSymlinkPath(root, absolutePath);
         }
       }
+      let readme: APIReadmeConfig | undefined;
+
+      if (packageConfig.readme !== undefined) {
+        const files: Record<string, string> = {};
+
+        for (const [locale, filename] of Object.entries(
+          packageConfig.readme.files,
+        )) {
+          const absolutePath = path.resolve(packageDirectory, filename);
+
+          if (!isWithin(packageDirectory, absolutePath)) {
+            throw new Error(
+              `API package README path must stay inside its package: ${packageConfig.key}/${filename}`,
+            );
+          }
+          await assertNoSymlinkPath(root, absolutePath);
+          files[locale] = absolutePath;
+        }
+        readme = { ...packageConfig.readme, files };
+      }
       apiPackages.push({
         ...packageConfig,
         directory: packageDirectory,
@@ -654,35 +366,15 @@ export async function loadSiteConfig(
           source: path.resolve(packageDirectory, entry.source),
           types: path.resolve(packageDirectory, entry.types),
         })),
+        ...(readme === undefined ? {} : { readme }),
       });
-    }
-  }
-  let packageReadmes: Record<string, Record<string, string>> | undefined;
-
-  if (input.packageReadmes !== undefined) {
-    packageReadmes = {};
-    for (const [packageKey, localePaths] of Object.entries(
-      input.packageReadmes,
-    )) {
-      packageReadmes[packageKey] = {};
-      for (const [locale, filename] of Object.entries(localePaths)) {
-        const absolutePath = path.resolve(root, filename);
-
-        if (!isWithin(root, absolutePath)) {
-          throw new Error(
-            `Package README path must stay inside the repository: ${filename}`,
-          );
-        }
-        await assertNoSymlinkPath(root, absolutePath);
-        packageReadmes[packageKey][locale] = absolutePath;
-      }
     }
   }
   let manuals: ManualCollectionConfig[] | undefined;
 
-  if (input.manuals !== undefined) {
+  if (manualCollectionsInput !== undefined) {
     manuals = [];
-    for (const collection of input.manuals as ManualCollectionConfig[]) {
+    for (const collection of manualCollectionsInput as ManualCollectionConfig[]) {
       let source = collection.source;
 
       if (source.type === 'local') {
@@ -728,18 +420,18 @@ export async function loadSiteConfig(
     sourceLocale: input.sourceLocale,
     locales: [...input.locales],
     apiDirectory,
+    apiConfigured: input.api !== undefined,
+    manualDirectory,
+    manualConfigured:
+      input.manual !== undefined || manualCollectionsInput !== undefined,
     translationWorkDirectory,
     ...(input.siteName === undefined ? {} : { siteName: input.siteName }),
-    ...(packageReadmes === undefined ? {} : { packageReadmes }),
-    ...(input.packageReadmeSourceLocales === undefined
-      ? {}
-      : { packageReadmeSourceLocales: input.packageReadmeSourceLocales }),
     ...(apiPackages === undefined ? {} : { apiPackages }),
     ...(manuals === undefined ? {} : { manuals }),
-    ...(input.api.typedocOptions === undefined
+    ...(input.api?.typedocOptions === undefined
       ? {}
       : { typedocOptions: input.api.typedocOptions }),
-    ...(input.api.sourceLinkTemplate === undefined
+    ...(input.api?.sourceLinkTemplate === undefined
       ? {}
       : { sourceLinkTemplate: input.api.sourceLinkTemplate }),
   };

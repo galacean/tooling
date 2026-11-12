@@ -56,6 +56,28 @@ interface YuqueDocument {
   updatedAt?: string;
 }
 
+export type ManualSyncProgress =
+  | {
+      type: 'collection-ready';
+      collectionKey: string;
+      sourceType: 'local' | 'yuque';
+      total: number;
+      groups: { name: string; files: number }[];
+    }
+  | {
+      type: 'document';
+      status: 'syncing' | 'prepared';
+      collectionKey: string;
+      sourceType: 'local' | 'yuque';
+      index: number;
+      total: number;
+      group: string;
+      slug: string;
+      title?: string;
+    };
+
+type ManualSyncProgressHandler = (progress: ManualSyncProgress) => void;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -303,6 +325,18 @@ function addPage(
   pages.push(page);
 }
 
+function countFilesByGroup(
+  groups: string[],
+): { name: string; files: number }[] {
+  const counts = new Map<string, number>();
+
+  for (const group of groups) {
+    counts.set(group, (counts.get(group) ?? 0) + 1);
+  }
+
+  return [...counts].map(([name, files]) => ({ name, files }));
+}
+
 async function loadTranslations(
   collection: ManualCollectionConfig,
   slug: string,
@@ -365,6 +399,7 @@ async function syncYuqueCollection(
   fetcher: typeof fetch,
   pages: ManualPage[],
   slugs: Set<string>,
+  onProgress?: ManualSyncProgressHandler,
 ): Promise<number> {
   if (collection.source.type !== 'yuque') {
     return 0;
@@ -500,7 +535,27 @@ async function syncYuqueCollection(
     }
   }
 
-  for (const sourceDoc of sourceDocs) {
+  onProgress?.({
+    type: 'collection-ready',
+    collectionKey: collection.key,
+    sourceType: 'yuque',
+    total: sourceDocs.length,
+    groups: countFilesByGroup(sourceDocs.map(sourceDoc => sourceDoc.group)),
+  });
+
+  for (const [index, sourceDoc] of sourceDocs.entries()) {
+    const documentIndex = index + 1;
+
+    onProgress?.({
+      type: 'document',
+      status: 'syncing',
+      collectionKey: collection.key,
+      sourceType: 'yuque',
+      index: documentIndex,
+      total: sourceDocs.length,
+      group: sourceDoc.group,
+      slug: sourceDoc.slug,
+    });
     const document = await fetchDocument(
       source.baseURL,
       sourceDoc.namespace,
@@ -513,9 +568,7 @@ async function syncYuqueCollection(
     const updatedAt = document.updatedAt;
     const navigation: ManualNavigationItem = {
       slug: sourceDoc.routeSlug,
-      title: Object.fromEntries(
-        config.locales.map(locale => [locale, title]),
-      ),
+      title: Object.fromEntries(config.locales.map(locale => [locale, title])),
       group: Object.fromEntries(
         config.locales.map(locale => [locale, sourceDoc.group]),
       ),
@@ -573,6 +626,17 @@ async function syncYuqueCollection(
       format: document.format,
       translations,
     });
+    onProgress?.({
+      type: 'document',
+      status: 'prepared',
+      collectionKey: collection.key,
+      sourceType: 'yuque',
+      index: documentIndex,
+      total: sourceDocs.length,
+      group: sourceDoc.group,
+      slug: sourceDoc.slug,
+      title: document.title,
+    });
   }
 
   return sourceDocs.length;
@@ -583,6 +647,7 @@ async function syncLocalCollection(
   config: DocsSiteConfig,
   pages: ManualPage[],
   slugs: Set<string>,
+  onProgress?: ManualSyncProgressHandler,
 ): Promise<number> {
   if (collection.source.type !== 'local') {
     return 0;
@@ -601,10 +666,7 @@ async function syncLocalCollection(
   if (!Array.isArray(raw)) {
     throw new Error(`Invalid local manual navigation: ${navigationPath}`);
   }
-  const outputDirectory = path.join(
-    path.dirname(config.apiDirectory),
-    'manual',
-  );
+  const outputDirectory = config.manualDirectory;
   const readsOutputDirectory =
     path.resolve(collection.source.directory) === path.resolve(outputDirectory);
   const localItems = readsOutputDirectory
@@ -615,8 +677,23 @@ async function syncLocalCollection(
           item['source']['type'] === 'local',
       )
     : raw;
+  const localGroups = localItems.map(item => {
+    if (!isRecord(item) || !isRecord(item['group'])) {
+      return '';
+    }
 
-  for (const item of localItems) {
+    return String(item['group'][collection.source.locale] ?? '');
+  });
+
+  onProgress?.({
+    type: 'collection-ready',
+    collectionKey: collection.key,
+    sourceType: 'local',
+    total: localItems.length,
+    groups: countFilesByGroup(localGroups),
+  });
+
+  for (const [index, item] of localItems.entries()) {
     if (
       !isRecord(item) ||
       typeof item['slug'] !== 'string' ||
@@ -635,6 +712,19 @@ async function syncLocalCollection(
     if (!isSafeSlug(slug)) {
       throw new Error(`Unsafe local manual slug in ${navigationPath}`);
     }
+    const group = String(groups[collection.source.locale] ?? '');
+    const documentIndex = index + 1;
+
+    onProgress?.({
+      type: 'document',
+      status: 'syncing',
+      collectionKey: collection.key,
+      sourceType: 'local',
+      index: documentIndex,
+      total: localItems.length,
+      group,
+      slug,
+    });
     const sourceMarkdownPath = path.join(
       collection.source.directory,
       collection.source.locale,
@@ -725,6 +815,17 @@ async function syncLocalCollection(
       format: 'markdown',
       translations,
     });
+    onProgress?.({
+      type: 'document',
+      status: 'prepared',
+      collectionKey: collection.key,
+      sourceType: 'local',
+      index: documentIndex,
+      total: localItems.length,
+      group,
+      slug,
+      title: navigation.title[collection.source.locale] ?? slug,
+    });
   }
 
   return localItems.length;
@@ -734,10 +835,9 @@ async function writeManualData(
   config: DocsSiteConfig,
   pages: ManualPage[],
 ): Promise<void> {
-  const dataRoot = path.dirname(config.apiDirectory);
-  const targetDirectory = path.join(dataRoot, 'manual');
+  const targetDirectory = config.manualDirectory;
   const temporaryDirectory = path.join(
-    dataRoot,
+    path.dirname(targetDirectory),
     `.manual-sync-${process.pid}-${Math.random().toString(16).slice(2)}`,
   );
   const backupDirectory = `${temporaryDirectory}-backup`;
@@ -826,6 +926,7 @@ async function writeManualData(
 export async function syncManuals(
   config: DocsSiteConfig,
   fetcher: typeof fetch = globalThis.fetch,
+  onProgress?: ManualSyncProgressHandler,
 ): Promise<{ collections: number; documents: number }> {
   if (config.manuals === undefined || config.manuals.length === 0) {
     throw new Error('manuals must be configured to run manual sync');
@@ -836,8 +937,21 @@ export async function syncManuals(
 
   for (const collection of config.manuals) {
     documents +=
-      (await syncLocalCollection(collection, config, pages, slugs)) +
-      (await syncYuqueCollection(collection, config, fetcher, pages, slugs));
+      (await syncLocalCollection(
+        collection,
+        config,
+        pages,
+        slugs,
+        onProgress,
+      )) +
+      (await syncYuqueCollection(
+        collection,
+        config,
+        fetcher,
+        pages,
+        slugs,
+        onProgress,
+      ));
   }
   await writeManualData(config, pages);
 

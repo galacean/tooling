@@ -57,6 +57,7 @@ export interface SiteShellProps {
 export interface SiteShellOutletContext {
   setManualPageTitle: (title: string) => void;
   setManualSidebarCollapsed: (collapsed: boolean) => void;
+  setAPIDocumentTitle: (title: string) => void;
   setAPISidebarCollapsed: (collapsed: boolean) => void;
 }
 
@@ -120,6 +121,7 @@ export function SiteShell({
   const [drawer, setDrawer] = useState(false);
   const [manualPageTitle, setManualPageTitle] = useState('');
   const [manualSidebarCollapsed, setManualSidebarCollapsed] = useState(false);
+  const [apiDocumentTitle, setAPIDocumentTitle] = useState('');
   const [apiSidebarCollapsed, setAPISidebarCollapsed] = useState(false);
   const drawerRef = useRef<HTMLDialogElement>(null);
   const { mode, resolved, change, persist, storageError } = useTheme();
@@ -128,6 +130,11 @@ export function SiteShell({
   const apiPage = pageKind === 'api';
   const manualPage = pageKind === 'manual';
   const documentPage = manualPage || apiPage;
+  const activeDocumentTitle = manualPage
+    ? manualPageTitle || t.manual
+    : apiPage
+      ? apiDocumentTitle || pageTitle || t.api
+      : (pageTitle ?? '');
   const manualSearchLabel = locale.startsWith('zh') ? '搜索' : 'Search';
   const themeIcon =
     mode === 'dark' ? 'moon' : mode === 'light' ? 'sun' : 'system';
@@ -141,12 +148,15 @@ export function SiteShell({
   useEffect(() => {
     if (!apiPage) {
       setAPISidebarCollapsed(false);
+      setAPIDocumentTitle('');
     }
   }, [apiPage]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = `${pageTitle === undefined || pageTitle === '' ? '' : `${pageTitle} | `}${brandLabel}`;
+    document.title = documentPage
+      ? activeDocumentTitle
+      : `${activeDocumentTitle === '' ? '' : `${activeDocumentTitle} | `}${brandLabel}`;
     const head = document.head;
     const canonical =
       head.querySelector<HTMLLinkElement>('link[rel="canonical"]') ??
@@ -169,7 +179,15 @@ export function SiteShell({
       alternate.href = getAlternateHref(language.value);
       head.append(alternate);
     }
-  }, [brandLabel, canonicalHref, getAlternateHref, locale, locales, pageTitle]);
+  }, [
+    activeDocumentTitle,
+    brandLabel,
+    canonicalHref,
+    documentPage,
+    getAlternateHref,
+    locale,
+    locales,
+  ]);
   useEffect(() => {
     setDrawer(false);
     if (!apiPage && location.hash === '') {
@@ -214,16 +232,18 @@ export function SiteShell({
     navigation.find(item => item.key === 'manual')?.to ??
     `${sectionBaseHref}/manual`;
   const apiHref =
-    navigation.find(item => item.key === 'api')?.to ??
-    `${sectionBaseHref}/api`;
+    navigation.find(item => item.key === 'api')?.to ?? `${sectionBaseHref}/api`;
   const sectionHref = manualPage ? manualHref : apiHref;
   const homeLabel = locale.startsWith('zh') ? '首页' : 'Home';
+  const includeAPI = navigation.some(item => item.key === 'api');
   const pageSwitchLabel =
     t.switchPage ?? (locale.startsWith('zh') ? '切换页面' : 'Switch page');
   const pageSwitchItems: DocsPageSwitcherItem[] = [
     { key: 'home', label: homeLabel, href: homeHref, icon: 'home' },
     { key: 'manual', label: t.manual, href: manualPageHref, icon: 'book' },
-    { key: 'api', label: t.api, href: apiHref, icon: 'source' },
+    ...(includeAPI
+      ? [{ key: 'api', label: t.api, href: apiHref, icon: 'source' as const }]
+      : []),
   ];
   const searchButton = (
     <DocsSearchTrigger
@@ -384,6 +404,7 @@ export function SiteShell({
             context={{
               setManualPageTitle,
               setManualSidebarCollapsed,
+              setAPIDocumentTitle,
               setAPISidebarCollapsed,
             }}
           />
@@ -437,6 +458,7 @@ export function SiteShell({
               brandMarkUrl={docsBrandMarkUrl}
               historyKeyPrefix={historyKeyPrefix}
               messages={t}
+              includeAPI={includeAPI}
               loadItems={loadSearchItems}
               navigate={url => {
                 void navigate(url);

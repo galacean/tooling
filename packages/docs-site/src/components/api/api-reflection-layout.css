@@ -40,7 +40,7 @@
   font-weight: 650;
 }
 .api-overview summary::marker {
-  color: var(--site-accent);
+  color: currentColor;
 }
 .api-overview ul {
   list-style: none;

@@ -46,7 +46,8 @@ export interface DocsSiteConfiguration<TLocale extends string> {
   localeLabels: Readonly<Record<TLocale, string>>;
   messages: (locale: TLocale) => DocsSiteMessages;
   manualSectionLabel: string;
-  api: import('../api/configured-api-page').DocsSiteAPIConfiguration;
+  manualDataURL?: string;
+  api?: import('../api/configured-api-page').DocsSiteAPIConfiguration;
   siteOrigin?: string;
   getSearchDataURL?: (locale: TLocale) => string;
 }
@@ -122,6 +123,11 @@ function ConfiguredSiteShell<TLocale extends string>({
 
     return parseSearch(await loadJSON(url), locales);
   };
+  const api = site.api;
+  const navigationPages =
+    api === undefined
+      ? (['home', 'manual'] as const)
+      : (['home', 'manual', 'api'] as const);
 
   return (
     <SiteShell
@@ -134,7 +140,7 @@ function ConfiguredSiteShell<TLocale extends string>({
         ? {}
         : { docsBrandMarkUrls: site.docsBrandMarkUrls })}
       homeHref={localePath(locale)}
-      navigation={(['home', 'manual', 'api'] as const).map(page => ({
+      navigation={navigationPages.map(page => ({
         key: page,
         label: messages[page],
         to: localePath(locale, page === 'home' ? [] : [page]),
@@ -196,6 +202,7 @@ export function DocsSite<TLocale extends string>({
     createBrowserLocalePreference(locales, defaultLocale, preferenceNamespace),
   );
   const basename = normalizeBase(baseURL).replace(/\/$/u, '') || '/';
+  const api = site.api;
 
   return (
     <ThemeProvider namespace={preferenceNamespace}>
@@ -220,57 +227,43 @@ export function DocsSite<TLocale extends string>({
               }
             >
               <Route index element={renderHome(locale)} />
-              <Route
-                path="api"
-                element={
-                  <ConfiguredAPIPage
-                    baseURL={dataBaseURL}
-                    locales={locales}
-                    locale={locale}
-                    messages={site.messages(locale)}
-                    localeLabels={site.localeLabels}
-                    api={site.api}
-                  />
-                }
-              />
-              <Route
-                path="api/:pkg"
-                element={
-                  <ConfiguredAPIPage
-                    baseURL={dataBaseURL}
-                    locales={locales}
-                    locale={locale}
-                    messages={site.messages(locale)}
-                    localeLabels={site.localeLabels}
-                    api={site.api}
-                  />
-                }
-              />
-              <Route
-                path="api/:pkg/:version/:symbol"
-                element={
-                  <ConfiguredAPIPage
-                    baseURL={dataBaseURL}
-                    locales={locales}
-                    locale={locale}
-                    messages={site.messages(locale)}
-                    localeLabels={site.localeLabels}
-                    api={site.api}
-                  />
-                }
-              />
-              <Route
-                path="manual/:slug?"
-                element={
-                  <ManualRoute
-                    baseURL={dataBaseURL}
-                    locales={locales}
-                    locale={locale}
-                    sectionLabel={site.manualSectionLabel}
-                    messages={site.messages(locale)}
-                  />
-                }
-              />
+              {api !== undefined &&
+                (['api', 'api/:pkg', 'api/:pkg/:version/:symbol'] as const).map(
+                  path => (
+                    <Route
+                      key={path}
+                      path={path}
+                      element={
+                        <ConfiguredAPIPage
+                          baseURL={dataBaseURL}
+                          locales={locales}
+                          locale={locale}
+                          messages={site.messages(locale)}
+                          localeLabels={site.localeLabels}
+                          api={api}
+                        />
+                      }
+                    />
+                  ),
+                )}
+              {(['manual', 'manual/:slug'] as const).map(path => (
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    <ManualRoute
+                      baseURL={dataBaseURL}
+                      {...(site.manualDataURL === undefined
+                        ? {}
+                        : { manualDataURL: site.manualDataURL })}
+                      locales={locales}
+                      locale={locale}
+                      sectionLabel={site.manualSectionLabel}
+                      messages={site.messages(locale)}
+                    />
+                  }
+                />
+              ))}
               <Route
                 path="*"
                 element={

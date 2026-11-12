@@ -14,6 +14,7 @@ export interface ManualNavigationGroup {
   key: string;
   pages: ManualNavigationNode[];
   groups: ManualNavigationGroup[];
+  items: (ManualNavigationNode | ManualNavigationGroup)[];
 }
 
 export function groupManualPages(pages: ManualNavigationPage[]) {
@@ -79,7 +80,8 @@ export function buildManualNavigationGroups(pages: ManualNavigationPage[]) {
   const parentsBySlug = new Map(pages.map(page => [page.slug, page.parent]));
   const cyclicSlugs = findCyclicSlugs(nodesBySlug, parentsBySlug);
   const groups: ManualNavigationGroup[] = [];
-  const groupsByPath = new Map<string, ManualNavigationGroup>();
+  const rootItems: (ManualNavigationNode | ManualNavigationGroup)[] = [];
+  const groupOccurrences = new Map<string, number>();
 
   for (const node of nodes) {
     const parent =
@@ -91,28 +93,57 @@ export function buildManualNavigationGroups(pages: ManualNavigationPage[]) {
     }
     const segments = node.group.split(/\s*\/\s*/u).filter(Boolean);
     let siblings = groups;
-    const path: string[] = [];
+    let items = rootItems;
     let group: ManualNavigationGroup | undefined;
 
-    for (const segment of segments.length === 0 ? [''] : segments) {
+    if (segments.length === 0) {
+      group = {
+        title: '',
+        key: `ungrouped:${node.slug}`,
+        pages: [node],
+        groups: [],
+        items: [node],
+      };
+      siblings.push(group);
+      items.push(group);
+      continue;
+    }
+    const path: string[] = [];
+
+    for (const segment of segments) {
       path.push(segment);
       const pathKey = JSON.stringify(path);
+      const previous = items.at(-1);
 
-      group = groupsByPath.get(pathKey);
+      group =
+        previous !== undefined &&
+        !('slug' in previous) &&
+        previous.title === segment
+          ? previous
+          : undefined;
 
       if (group === undefined) {
+        const occurrence = groupOccurrences.get(pathKey) ?? 0;
+        const key = path.join(' / ');
+
         group = {
           title: segment,
-          key: path.join(' / '),
+          key: occurrence === 0 ? key : `${key}#${occurrence + 1}`,
           pages: [],
           groups: [],
+          items: [],
         };
-        groupsByPath.set(pathKey, group);
+        groupOccurrences.set(pathKey, occurrence + 1);
         siblings.push(group);
+        items.push(group);
       }
       siblings = group.groups;
+      items = group.items;
     }
-    group?.pages.push(node);
+    if (group !== undefined) {
+      group.pages.push(node);
+      group.items.push(node);
+    }
   }
 
   return groups;
@@ -121,10 +152,7 @@ export function buildManualNavigationGroups(pages: ManualNavigationPage[]) {
 export function flattenManualGroups(
   groups: ManualNavigationGroup[],
 ): ManualNavigationGroup[] {
-  return groups.flatMap(group => [
-    group,
-    ...flattenManualGroups(group.groups),
-  ]);
+  return groups.flatMap(group => [group, ...flattenManualGroups(group.groups)]);
 }
 
 function flattenManualPages(

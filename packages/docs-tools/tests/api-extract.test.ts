@@ -185,6 +185,7 @@ void test('runs api extract from the CLI with a TypeScript site config', async t
       sourceLocale: 'zh-CN',
       locales: ['zh-CN', 'en'],
       api: { dataDirectory: 'site/public/data/api' },
+      manual: { dataDirectory: 'site/public/data/manual' },
       translationWorkDirectory: 'tmp/docs-tools/api-translation',
     })} as const;\n`,
   );

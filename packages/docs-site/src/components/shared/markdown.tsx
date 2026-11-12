@@ -1,4 +1,4 @@
-import { Children, isValidElement, useEffect, useRef } from 'react';
+import { Children, isValidElement, memo, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -50,6 +50,18 @@ function CodeBlock({
 }) {
   const block = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const code = block.current?.querySelector<HTMLElement>('pre code');
+
+    if (
+      code !== null &&
+      code !== undefined &&
+      code.dataset['highlighted'] === undefined
+    ) {
+      hljs.highlightElement(code);
+    }
+  });
+
   return (
     <div className="code-block" ref={block}>
       <div className="code-head">
@@ -83,22 +95,11 @@ export function MarkdownContent({
   afterFirstHeading?: ReactNode;
   resolveImage?: (url: string) => string;
 }) {
-  const container = useRef<HTMLDivElement>(null);
   const location = useLocation();
   let headingInserted = false;
 
-  useEffect(() => {
-    container.current
-      ?.querySelectorAll<HTMLElement>('pre code')
-      .forEach(element => {
-        if (element.dataset['highlighted'] === undefined) {
-          hljs.highlightElement(element);
-        }
-      });
-  }, [text]);
-
   return (
-    <div ref={container} className="markdown-content">
+    <div className="markdown-content">
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -135,6 +136,21 @@ export function MarkdownContent({
             <h6 id={headingId(headingText(children))}>{children}</h6>
           ),
           p: ({ children }) => <p>{children}</p>,
+          table: ({ children }) => (
+            <div className="markdown-table-scroll">
+              <table>{children}</table>
+            </div>
+          ),
+          th: ({ children, style }) => (
+            <th style={style}>
+              <div className="table-cell-content">{children}</div>
+            </th>
+          ),
+          td: ({ children, style }) => (
+            <td style={style}>
+              <div className="table-cell-content">{children}</div>
+            </td>
+          ),
           pre: ({ children }) => (
             <CodeBlock
               copyLabel={copyLabel}
@@ -187,7 +203,38 @@ export function MarkdownContent({
   );
 }
 
-export function HTMLDocumentContent({ html }: { html: string }) {
+const yuqueVideoMarker = '[**video**]';
+
+function replaceYuqueVideoPlaceholders(root: HTMLElement) {
+  root
+    .querySelectorAll<HTMLDivElement>('div[data-video-src]')
+    .forEach(placeholder => {
+      const markerParagraph = placeholder.nextElementSibling;
+
+      if (!(markerParagraph instanceof HTMLElement)) {
+        return;
+      }
+
+      const anchor = markerParagraph.querySelector('a');
+
+      if (anchor?.textContent !== yuqueVideoMarker) {
+        return;
+      }
+
+      const video = document.createElement('video');
+
+      video.src = anchor.href;
+      video.controls = true;
+      placeholder.replaceWith(video);
+      markerParagraph.remove();
+    });
+}
+
+export const HTMLDocumentContent = memo(function HTMLDocumentContent({
+  html,
+}: {
+  html: string;
+}) {
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -212,9 +259,14 @@ export function HTMLDocumentContent({ html }: { html: string }) {
 
   return (
     <div
-      ref={container}
-      className="markdown-content"
+      ref={element => {
+        container.current = element;
+        if (element !== null) {
+          replaceYuqueVideoPlaceholders(element);
+        }
+      }}
+      className="markdown-content lake-content"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
-}
+});

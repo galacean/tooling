@@ -1,5 +1,9 @@
 :root {
   font-synthesis: none;
+  --site-doc-font-family:
+    'Chinese Quote', -apple-system, system-ui, 'Segoe UI', Roboto,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue',
+    Helvetica, Arial, sans-serif;
   --site-doc-body-size: 14px;
   --site-doc-body-leading: 1.57;
   --site-doc-code-size: 13px;
@@ -12,6 +16,8 @@
   --site-doc-sidebar-width: 260px;
   --site-doc-sidebar-compact-width: 240px;
   --site-doc-outline-width: 305px;
+  --site-doc-reading-width: 1120px;
+  --site-doc-reading-gutter: clamp(24px, 4vw, 64px);
   --docs-scrollbar-track: #fff;
   --docs-scrollbar-thumb: #585a5a;
   --docs-scrollbar-thumb-hover: #585a5a;
@@ -29,6 +35,13 @@
 }
 .docs-scroll-area {
   scrollbar-gutter: stable;
+}
+.docs-reading-content {
+  max-width: calc(
+    var(--site-doc-reading-width) - var(--site-doc-reading-gutter) -
+      var(--site-doc-reading-gutter)
+  );
+  margin-inline: auto;
 }
 *::-webkit-scrollbar {
   width: 10px;

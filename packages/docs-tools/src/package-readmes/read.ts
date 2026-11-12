@@ -7,18 +7,32 @@ export interface PackageReadmeContent {
   sourceLocale: string;
 }
 
+export function hasPackageReadme(
+  config: DocsSiteConfig,
+  packageKey: string,
+): boolean {
+  return (
+    config.apiPackages?.some(
+      packageConfig =>
+        packageConfig.key === packageKey && packageConfig.readme !== undefined,
+    ) ?? false
+  );
+}
+
 export async function readPackageReadme(
   config: DocsSiteConfig,
   packageKey: string,
   locale: string,
 ): Promise<PackageReadmeContent> {
-  const packagePaths = config.packageReadmes?.[packageKey];
+  const packageReadme = config.apiPackages?.find(
+    packageConfig => packageConfig.key === packageKey,
+  )?.readme;
 
-  if (packagePaths === undefined) {
+  if (packageReadme === undefined) {
     throw new Error(`Missing source README mapping for package: ${packageKey}`);
   }
-  const packageSourceLocale =
-    config.packageReadmeSourceLocales?.[packageKey] ?? config.sourceLocale;
+  const packagePaths = packageReadme.files;
+  const packageSourceLocale = packageReadme.sourceLocale ?? config.sourceLocale;
   const sourcePath = packagePaths[packageSourceLocale];
 
   if (sourcePath === undefined) {

@@ -11,7 +11,11 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { ManualPage } from '../../src/components/manual/manual-page';
-import type { ManualNavigationPage } from '../../src/components/manual/manual-page';
+import type {
+  ManualDocument,
+  ManualNavigationPage,
+} from '../../src/components/manual/manual-page';
+import { buildManualTocTree } from '../../src/components/manual/manual-toc';
 
 const messages = {
   home: 'Home',
@@ -49,7 +53,7 @@ function renderManualPage(
   pages: ManualNavigationPage[] = navigationPages,
   slugOverride?: string | null,
   onSidebarCollapsed?: (collapsed: boolean) => void,
-  documentOverride: typeof page = page,
+  documentOverride: ManualDocument = page,
 ) {
   const slug = slugOverride === null ? undefined : (slugOverride ?? 'intro');
 
@@ -79,6 +83,74 @@ afterEach(() => {
 });
 
 describe('ManualPage navigation', () => {
+  it('reserves the same disclosure slot for leaf and parent outline rows', async () => {
+    renderManualPage(undefined, navigationPages, undefined, undefined, {
+      text: '',
+      headings: [
+        { title: 'Section', level: 2 },
+        { title: 'Parent item', level: 3 },
+        { title: 'Nested item', level: 4 },
+        { title: 'Leaf item', level: 3 },
+      ],
+    });
+
+    await screen.findByRole('link', { name: 'Leaf item' });
+    const siblingRows = [
+      ...document.querySelectorAll<HTMLElement>(
+        '.manual-toc-row[data-depth="1"]',
+      ),
+    ];
+    const slots = siblingRows.map(row =>
+      row.querySelector<HTMLElement>(
+        ':scope > .manual-toc-toggle, :scope > .manual-toc-spacer',
+      ),
+    );
+
+    expect(siblingRows).toHaveLength(2);
+    expect(siblingRows[0]?.style.getPropertyValue('--manual-toc-depth')).toBe(
+      '17px',
+    );
+    expect(slots.every(slot => slot !== null)).toBe(true);
+    expect(slots.map(slot => slot?.className)).toEqual([
+      'manual-toc-toggle',
+      'manual-toc-spacer',
+    ]);
+    expect(
+      document
+        .querySelector<HTMLElement>('.manual-toc-row[data-depth="2"]')
+        ?.style.getPropertyValue('--manual-toc-depth'),
+    ).toBe('34px');
+  });
+
+  it('omits empty headings without losing following titled descendants', () => {
+    const tree = buildManualTocTree(
+      [
+        { title: 'Find inspiration', level: 3 },
+        { title: '  ', level: 4 },
+        { title: 'Reference image', level: 5 },
+        { title: 'Test and launch', level: 2 },
+        { title: 'Performance', level: 3 },
+        { title: '', level: 3 },
+        { title: 'Fix bugs', level: 3 },
+      ],
+      'manual',
+    );
+
+    expect(tree).toMatchObject([
+      {
+        title: 'Find inspiration',
+        children: [{ title: 'Reference image', children: [] }],
+      },
+      {
+        title: 'Test and launch',
+        children: [
+          { title: 'Performance', children: [] },
+          { title: 'Fix bugs', children: [] },
+        ],
+      },
+    ]);
+  });
+
   it('reports the selected page title to the manual shell', async () => {
     const onTitleChange = vi.fn();
 
@@ -105,6 +177,70 @@ describe('ManualPage navigation', () => {
     expect(
       within(toc!).getByRole('button', { name: 'Hide outline' }),
     ).not.toBeNull();
+  });
+
+  it('does not render the outline when there are no headings', async () => {
+    renderManualPage(undefined, navigationPages, undefined, undefined, {
+      text: '<article><p>Content without headings</p></article>',
+      headings: [],
+      format: 'html',
+    });
+
+    await screen.findByText('Content without headings');
+
+    expect(document.querySelector('.manual-toc')).toBeNull();
+  });
+
+  it.each([
+    [2, 3],
+    [3, 4],
+  ])(
+    'starts the outline at H%i when no shallower heading exists',
+    async (rootLevel, childLevel) => {
+      renderManualPage(undefined, navigationPages, undefined, undefined, {
+        text: '',
+        headings: [
+          { title: 'Section', level: rootLevel },
+          { title: 'Detail', level: childLevel },
+        ],
+      });
+
+      const rootLink = await screen.findByRole('link', { name: 'Section' });
+      const childLink = await screen.findByRole('link', { name: 'Detail' });
+
+      expect(
+        rootLink.closest<HTMLElement>('.manual-toc-row')?.dataset['depth'],
+      ).toBe('0');
+      expect(
+        childLink.closest<HTMLElement>('.manual-toc-row')?.dataset['depth'],
+      ).toBe('1');
+    },
+  );
+
+  it('uses the source HTML heading id for outline navigation', async () => {
+    renderManualPage(undefined, navigationPages, undefined, undefined, {
+      text: '<article><h1 id="yuque-install-123">Install</h1></article>',
+      headings: [{ title: 'Install', level: 1, id: 'yuque-install-123' }],
+      format: 'html',
+    });
+
+    const heading = await screen.findByRole('heading', { name: 'Install' });
+    const scrollIntoView = vi.fn();
+
+    Object.defineProperty(heading, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const tocLink = await screen.findByRole('link', { name: 'Install' });
+
+    expect(tocLink.getAttribute('href')).toBe(
+      '/en/manual/intro#yuque-install-123',
+    );
+    fireEvent.click(tocLink);
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+    });
   });
 
   it('collapses and expands the directory sidebar', async () => {
@@ -205,6 +341,46 @@ describe('ManualPage navigation', () => {
     ).not.toBeNull();
   });
 
+  it('keeps ungrouped pages and repeated groups in source order', async () => {
+    renderManualPage(
+      undefined,
+      [
+        { slug: 'overview', title: 'Overview', group: '' },
+        { slug: 'update-one', title: 'Update one', group: 'Updates' },
+        { slug: 'standalone', title: 'Standalone', group: '' },
+        { slug: 'basics', title: 'Basics', group: 'Basics' },
+        { slug: 'update-two', title: 'Update two', group: 'Updates' },
+      ],
+      'overview',
+    );
+
+    await screen.findAllByRole('link', { name: 'Update two' });
+    const sidebar = document.querySelector<HTMLElement>('.manual-sidebar');
+
+    expect(sidebar).not.toBeNull();
+    const overviewLink = within(sidebar!).getByRole('link', {
+      name: 'Overview',
+    });
+
+    expect(overviewLink.closest('.manual-nav-root-pages')).not.toBeNull();
+    expect(overviewLink.closest('.manual-nav-group')).toBeNull();
+
+    expect(
+      [...sidebar!.querySelectorAll('a, .manual-nav-group-heading')].map(item =>
+        item.textContent?.trim(),
+      ),
+    ).toEqual([
+      'Overview',
+      'Updates',
+      'Update one',
+      'Standalone',
+      'Basics',
+      'Basics',
+      'Updates',
+      'Update two',
+    ]);
+  });
+
   it('keeps the previous article visible while the next page loads', async () => {
     const transitionPages = [
       { slug: 'intro', title: 'Intro', group: 'Getting Started' },
@@ -241,9 +417,13 @@ describe('ManualPage navigation', () => {
     ).not.toBeNull();
     expect(onTitleChange).toHaveBeenLastCalledWith('Intro');
     onTitleChange.mockClear();
+    const article = document.querySelector<HTMLElement>('.manual-article');
     const sidebar = document.querySelector('.manual-sidebar');
 
+    expect(article).not.toBeNull();
+    article!.scrollTop = 640;
     view.rerender(renderAtSlug('details'));
+    expect(article!.scrollTop).toBe(0);
     await waitFor(() => {
       expect(loadPageForTransition).toHaveBeenLastCalledWith('en', 'details');
     });

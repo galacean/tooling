@@ -5,6 +5,7 @@
   "manual": "Manual",
   "search": "Search docs",
   "searchPlaceholder": "Search API and manuals (at least two characters)",
+  "manualSearchPlaceholder": "Search manuals (at least two characters)",
   "close": "Close",
   "menu": "Menu",
   "theme": "Theme",

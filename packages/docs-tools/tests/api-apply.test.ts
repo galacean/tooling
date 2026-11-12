@@ -139,7 +139,7 @@ async function fixture(t: TestContext) {
     key: string,
     name: string,
     packageVersion: string,
-    entries: typeof apiEntry[],
+    entries: (typeof apiEntry)[],
     paths: Record<string, string>,
   ) {
     const item = {
@@ -182,6 +182,7 @@ async function fixture(t: TestContext) {
       sourceLocale,
       locales: [sourceLocale, targetLocale],
       api: { dataDirectory: 'site/public/data/api' },
+      manual: { dataDirectory: 'site/public/data/manual' },
       translationWorkDirectory: 'tmp/docs-tools/api-translation',
     })} as const;\n`,
   );
@@ -280,7 +281,12 @@ async function createTranslation(t: TestContext, shared = false) {
     )}\n`,
   );
 
-  return { ...values, taskPath: task.taskPath, translationPath, sharedTargetPath };
+  return {
+    ...values,
+    taskPath: task.taskPath,
+    translationPath,
+    sharedTargetPath,
+  };
 }
 
 async function readTargetSnapshot(
@@ -289,7 +295,9 @@ async function readTargetSnapshot(
 ): Promise<Record<string, unknown>> {
   const index: unknown = JSON.parse(await readFile(targetPath, 'utf8'));
 
-  assert.ok(index !== null && typeof index === 'object' && !Array.isArray(index));
+  assert.ok(
+    index !== null && typeof index === 'object' && !Array.isArray(index),
+  );
   const reference = (index as Record<string, unknown>)['$ref'];
 
   if (typeof reference !== 'string') {
@@ -324,10 +332,10 @@ void test('applies a fresh translation and updates the version and current manif
     path.join(values.dataDirectory, index.$ref),
     'utf8',
   );
-  const target = await readTargetSnapshot(
+  const target = (await readTargetSnapshot(
     values.targetPath,
     values.dataDirectory,
-  ) as {
+  )) as {
     locale: string;
     children: { comment: { summary: { text: string }[] } }[];
   };
@@ -401,16 +409,19 @@ void test('applies translations through shared references and removes the orphan
   const index = JSON.parse(await readFile(values.targetPath, 'utf8')) as {
     $ref: string;
   };
-  const target = await readTargetSnapshot(
+  const target = (await readTargetSnapshot(
     values.targetPath,
     values.dataDirectory,
-  ) as {
+  )) as {
     locale: string;
     children: { comment: { summary: { text: string }[] } }[];
   };
 
   assert.match(index.$ref, /^api\/snapshots\/[a-f\d]{64}\.api\.json$/u);
-  assert.notEqual(path.join(values.dataDirectory, index.$ref), values.sharedTargetPath);
+  assert.notEqual(
+    path.join(values.dataDirectory, index.$ref),
+    values.sharedTargetPath,
+  );
   assert.equal(target.locale, targetLocale);
   assert.equal(target.children[0]?.comment.summary[0]?.text, 'A widget.');
   const siblingIndex = JSON.parse(
@@ -429,10 +440,10 @@ void test('preserves existing target-locale content outside the translated packa
     values.config,
   );
 
-  const target = await readTargetSnapshot(
+  const target = (await readTargetSnapshot(
     values.siblingTargetPath,
     values.dataDirectory,
-  ) as {
+  )) as {
     children: {
       name: string;
       comment: { summary: { text: string }[] };
@@ -495,10 +506,10 @@ void test('reports partial commit failures and preserves task files for recovery
     /partially updated .*manifest consistency may require recovery/u,
   );
 
-  const target = await readTargetSnapshot(
+  const target = (await readTargetSnapshot(
     values.targetPath,
     values.dataDirectory,
-  ) as {
+  )) as {
     children: { comment: { summary: { text: string }[] } }[];
   };
 

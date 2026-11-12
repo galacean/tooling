@@ -2,16 +2,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  parseSearch,
-  searchResults,
-} from '@galacean/docs-site';
+import { parseSearch, searchResults } from '@galacean/docs-site';
+import type { SearchResult } from '@galacean/docs-site';
 import { SearchPanel } from '../../src/components/search/search-panel';
 import type {
   SearchPanelMessages,
   SearchPanelProps,
 } from '../../src/components/search/search-panel';
-import type { SearchResult } from '@galacean/docs-site';
 import { SiteShell } from '../../src/components/site/site-shell';
 import type { SiteShellProps } from '../../src/components/site/site-shell';
 import { ThemeProvider } from '../../src/providers/theme';
@@ -20,6 +17,7 @@ const messages: SearchPanelMessages = {
   search: 'Search',
   close: 'Close',
   searchPlaceholder: 'Search docs',
+  manualSearchPlaceholder: 'Search manuals',
   storageError: 'Storage error',
   loading: 'Loading',
   loadError: 'Unable to load',
@@ -92,9 +90,7 @@ describe('shared SearchPanel', () => {
       navigate: () => undefined,
       close: () => undefined,
     };
-    const markup = renderToStaticMarkup(
-      createElement(SearchPanel, props),
-    );
+    const markup = renderToStaticMarkup(createElement(SearchPanel, props));
 
     expect(markup).toContain('aria-labelledby="site-search-title"');
     expect(markup).toContain('src="/brand.svg"');

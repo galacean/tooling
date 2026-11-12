@@ -23,12 +23,15 @@ import type {
   SiteShellMessages,
   SiteShellOutletContext,
 } from '../../src/components/site/site-shell';
+import { SearchPanel } from '../../src/components/search/search-panel';
+import type { SearchResult } from '../../src/search';
 import { ThemeProvider } from '../../src/providers/theme';
 
 const messages: SiteShellMessages = {
   search: 'Search',
   close: 'Close',
   searchPlaceholder: 'Search docs',
+  manualSearchPlaceholder: 'Search manuals',
   storageError: 'Storage error',
   loading: 'Loading',
   loadError: 'Unable to load',
@@ -87,7 +90,8 @@ function RoutedManualPage() {
 
 function RoutedSiteShell({
   pageKind = 'manual',
-}: { pageKind?: 'manual' | 'api' | 'other' } = {}) {
+  includeAPI = true,
+}: { pageKind?: 'manual' | 'api' | 'other'; includeAPI?: boolean } = {}) {
   const { locale = 'en' } = useParams();
   const locales = [
     { value: 'en', label: 'English' },
@@ -111,7 +115,9 @@ function RoutedSiteShell({
       homeHref={`/${locale}`}
       navigation={[
         { key: 'manual', label: 'Manual', to: `/${locale}/manual` },
-        { key: 'api', label: 'API', to: `/${locale}/api` },
+        ...(includeAPI
+          ? [{ key: 'api', label: 'API', to: `/${locale}/api` }]
+          : []),
       ]}
       historyKeyPrefix="example:docs:search"
       pageKind={pageKind}
@@ -129,7 +135,12 @@ function RoutedSiteShell({
 function renderSite({
   failStorageRead = false,
   initialEntry = '/en/manual?tab=read#intro',
-}: { failStorageRead?: boolean; initialEntry?: string } = {}) {
+  includeAPI = true,
+}: {
+  failStorageRead?: boolean;
+  initialEntry?: string;
+  includeAPI?: boolean;
+} = {}) {
   const values = new Map<string, string>();
   const storage = {
     getItem: vi.fn((key: string) => {
@@ -160,15 +171,20 @@ function renderSite({
         <Routes>
           <Route
             path="/:locale"
-            element={<RoutedSiteShell pageKind="other" />}
+            element={
+              <RoutedSiteShell pageKind="other" includeAPI={includeAPI} />
+            }
           />
-          <Route path="/:locale/manual" element={<RoutedSiteShell />}>
+          <Route
+            path="/:locale/manual"
+            element={<RoutedSiteShell includeAPI={includeAPI} />}
+          >
             <Route index element={<CurrentLocation />} />
             <Route path=":slug" element={<RoutedManualPage />} />
           </Route>
           <Route
             path="/:locale/api"
-            element={<RoutedSiteShell pageKind="api" />}
+            element={<RoutedSiteShell pageKind="api" includeAPI={includeAPI} />}
           >
             <Route index element={<CurrentLocation />} />
           </Route>
@@ -292,6 +308,66 @@ describe('SiteShell preferences', () => {
     });
   });
 
+  it('omits the API item from the page switcher when API navigation is disabled', () => {
+    renderSite({ initialEntry: '/en/manual/first', includeAPI: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Switch page' }));
+
+    const menu = screen.getByRole('menu', { name: 'Switch page' });
+
+    expect(within(menu).getByRole('menuitem', { name: 'Home' })).not.toBeNull();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Manual' }),
+    ).not.toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'API' })).toBeNull();
+  });
+
+  it('limits search to manuals when API navigation is disabled', async () => {
+    render(
+      <SearchPanel
+        locale="en"
+        brandLabel="Example Docs"
+        brandMarkUrl="/brand.svg"
+        historyKeyPrefix="example:search"
+        messages={messages}
+        includeAPI={false}
+        loadItems={async () =>
+          [
+            {
+              category: 'api',
+              name: 'ApiOnlySymbol',
+              summary: 'API-only result',
+              keywords: 'ApiOnlySymbol',
+              sourceLocale: 'en',
+              url: '/en/api/example/current/ApiOnlySymbol',
+            },
+            {
+              category: 'manual',
+              name: 'ManualGuide',
+              summary: 'Manual result',
+              keywords: 'ManualGuide',
+              sourceLocale: 'en',
+              url: '/en/manual/guide',
+            },
+          ] satisfies SearchResult[]
+        }
+        navigate={() => undefined}
+        close={() => undefined}
+      />,
+    );
+
+    const searchInput = screen.getByRole('searchbox', {
+      name: 'Search manuals',
+    });
+
+    expect(searchInput.getAttribute('placeholder')).toBe('Search manuals');
+    expect(document.querySelector('.site-search-footer')?.textContent).toBe(
+      'Manual',
+    );
+    fireEvent.change(searchInput, { target: { value: 'ApiOnlySymbol' } });
+
+    expect(await screen.findByText('No results')).toBeDefined();
+  });
+
   it('navigates from the crumb label without opening the page menu', async () => {
     renderSite({ initialEntry: '/en/manual/first' });
 
@@ -341,6 +417,18 @@ describe('SiteShell preferences', () => {
     expect(document.querySelector('.docs-site-header')).not.toBeNull();
     expect(document.querySelector('.manual-shell .site-header')).toBeNull();
     expect(document.querySelector('.manual-reader-title')).toBeNull();
+  });
+
+  it('syncs the current manual title to the browser tab', async () => {
+    renderSite({ initialEntry: '/en/manual/first' });
+
+    await waitFor(() => expect(document.title).toBe('first'));
+  });
+
+  it('omits the brand suffix from API document titles', async () => {
+    renderSite({ initialEntry: '/en/api' });
+
+    await waitFor(() => expect(document.title).toBe('API'));
   });
 
   it('switches the brand mark with the resolved theme', async () => {

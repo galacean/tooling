@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ManualHeading } from '../../manual';
@@ -13,10 +13,15 @@ import {
   MarkdownContent,
 } from '../shared';
 import {
-  buildManualNavigationGroups, flattenManualGroups, getPagesInGroups, groupManualPages,
+  buildManualNavigationGroups,
+  flattenManualGroups,
+  getPagesInGroups,
+  groupManualPages,
 } from './manual-navigation';
 import type {
-  ManualNavigationGroup, ManualNavigationNode, ManualNavigationPage,
+  ManualNavigationGroup,
+  ManualNavigationNode,
+  ManualNavigationPage,
 } from './manual-navigation';
 import { buildManualTocTree, flattenManualTocNodes } from './manual-toc';
 import type { ManualTocNode } from './manual-toc';
@@ -75,13 +80,13 @@ const manualActionIcons = {
   hideOutline: 'hideOutline',
 } as const;
 
-function ManualActionIcon ({ name }: { name: ManualActionIconName }) {
+function ManualActionIcon({ name }: { name: ManualActionIconName }) {
   return (
     <Icon name={manualActionIcons[name]} style={{ width: 16, height: 16 }} />
   );
 }
 
-export function ManualPage ({
+export function ManualPage({
   locale,
   slug,
   onTitleChange,
@@ -171,19 +176,19 @@ export function ManualPage ({
     tocExpansionStates.every(isExpanded => !isExpanded);
   const actionLabels = locale.startsWith('zh')
     ? {
-      locate: '定位当前文档',
-      collapseAll: '全部折叠',
-      expandAll: '全部展开',
-      hideOutline: '隐藏大纲',
-      expandOutline: '展开大纲',
-    }
+        locate: '定位当前文档',
+        collapseAll: '全部折叠',
+        expandAll: '全部展开',
+        hideOutline: '隐藏大纲',
+        expandOutline: '展开大纲',
+      }
     : {
-      locate: 'Locate current page',
-      collapseAll: 'Collapse all',
-      expandAll: 'Expand all',
-      hideOutline: 'Hide outline',
-      expandOutline: 'Show outline',
-    };
+        locate: 'Locate current page',
+        collapseAll: 'Collapse all',
+        expandAll: 'Expand all',
+        hideOutline: 'Hide outline',
+        expandOutline: 'Show outline',
+      };
   const directoryLabel = locale.startsWith('zh') ? '目录' : t.mobileDirectory;
   const tocLabel = locale.startsWith('zh') ? '大纲' : t.contents;
   const parsedLastModified =
@@ -192,7 +197,7 @@ export function ManualPage ({
       : new Date(displayedContent.lastModified);
   const lastModified =
     parsedLastModified !== undefined &&
-      !Number.isNaN(parsedLastModified.valueOf())
+    !Number.isNaN(parsedLastModified.valueOf())
       ? parsedLastModified
       : undefined;
   const formattedLastModified =
@@ -288,9 +293,7 @@ export function ManualPage ({
       ),
     );
     setExpandedPages(
-      Object.fromEntries(
-        collapsiblePages.map(page => [page.slug, isExpanded]),
-      ),
+      Object.fromEntries(collapsiblePages.map(page => [page.slug, isExpanded])),
     );
   };
   const toggleNavigation = () =>
@@ -343,8 +346,12 @@ export function ManualPage ({
     items: ManualNavigationNode[],
     className = '',
     depth = 0,
+    key?: string,
   ): ReactNode => (
-    <ul className={`manual-nav-list${className === '' ? '' : ` ${className}`}`}>
+    <ul
+      key={key}
+      className={`manual-nav-list${className === '' ? '' : ` ${className}`}`}
+    >
       {items.map(page => {
         const hasChildren = page.children.length > 0;
         const isExpanded =
@@ -396,49 +403,54 @@ export function ManualPage ({
     </ul>
   );
 
-  function renderNavigationGroup (
+  function renderNavigationGroup(
     group: ManualNavigationGroup,
     depth = 0,
   ): ReactNode {
+    if (group.title === '') {
+      return renderNavigationItems(
+        group.pages,
+        'manual-nav-root-pages',
+        depth,
+        group.key,
+      );
+    }
     const isExpanded = expandedGroups[group.key] ?? true;
 
     return (
       <section className="manual-nav-group" key={group.key || 'ungrouped'}>
-        {group.title !== '' && (
-          <button
-            type="button"
-            className="manual-nav-group-heading"
-            data-current={containsCurrentGroupPage(group) ? 'true' : undefined}
-            aria-label={getToggleLabel(isExpanded, group.title)}
-            aria-expanded={isExpanded}
-            style={{ '--manual-nav-depth': `${depth * 24}px` } as CSSProperties}
-            onClick={() =>
-              setExpandedGroups(current => ({
-                ...current,
-                [group.key]: !isExpanded,
-              }))
-            }
-          >
-            <span className="manual-nav-group-surface">
-              <span className="manual-nav-group-chevron" aria-hidden="true">
-                <Icon name="chevronDown" style={{ width: 16, height: 16 }} />
-              </span>
-              <span className="manual-nav-group-title">{group.title}</span>
+        <button
+          type="button"
+          className="manual-nav-group-heading"
+          data-current={containsCurrentGroupPage(group) ? 'true' : undefined}
+          aria-label={getToggleLabel(isExpanded, group.title)}
+          aria-expanded={isExpanded}
+          style={{ '--manual-nav-depth': `${depth * 24}px` } as CSSProperties}
+          onClick={() =>
+            setExpandedGroups(current => ({
+              ...current,
+              [group.key]: !isExpanded,
+            }))
+          }
+        >
+          <span className="manual-nav-group-surface">
+            <span className="manual-nav-group-chevron" aria-hidden="true">
+              <Icon name="chevronDown" style={{ width: 16, height: 16 }} />
             </span>
-          </button>
-        )}
-        {(group.title === '' || isExpanded) && (
-          <>
-            {renderNavigationItems(
-              group.pages,
-              'manual-nav-group-pages',
-              depth,
-            )}
-            {group.groups.map(child =>
-              renderNavigationGroup(child, depth + 1),
-            )}
-          </>
-        )}
+            <span className="manual-nav-group-title">{group.title}</span>
+          </span>
+        </button>
+        {isExpanded &&
+          group.items.map(item =>
+            'slug' in item
+              ? renderNavigationItems(
+                  [item],
+                  'manual-nav-group-pages',
+                  depth,
+                  item.slug,
+                )
+              : renderNavigationGroup(item, depth + 1),
+          )}
       </section>
     );
   }
@@ -447,7 +459,7 @@ export function ManualPage ({
       {items.map(item => {
         const hasChildren = item.children.length > 0;
         const isExpanded = expandedToc[item.key] ?? true;
-        const id = headingId(item.title);
+        const id = item.id ?? headingId(item.title);
 
         return (
           <li key={item.key}>
@@ -457,7 +469,7 @@ export function ManualPage ({
               data-depth={depth}
               data-current={activeTocId === id ? 'true' : undefined}
               style={
-                { '--manual-toc-depth': `${depth * 34}px` } as CSSProperties
+                { '--manual-toc-depth': `${depth * 17}px` } as CSSProperties
               }
             >
               {hasChildren ? (
@@ -478,9 +490,9 @@ export function ManualPage ({
                     style={{ width: 16, height: 16 }}
                   />
                 </button>
-              ) : depth === 0 ? (
+              ) : (
                 <span className="manual-toc-spacer" aria-hidden="true" />
-              ) : null}
+              )}
               <Link
                 className="manual-toc-link"
                 aria-current={activeTocId === id ? 'location' : undefined}
@@ -586,6 +598,11 @@ export function ManualPage ({
   useEffect(() => {
     onSidebarCollapsed?.(isSidebarCollapsed);
   }, [isSidebarCollapsed, onSidebarCollapsed]);
+  useLayoutEffect(() => {
+    if (articleRef.current !== null) {
+      articleRef.current.scrollTop = 0;
+    }
+  }, [locale, slug]);
   useEffect(() => {
     if (location.hash !== '') {
       document
@@ -598,7 +615,7 @@ export function ManualPage ({
       const headings = flattenManualTocNodes(
         buildManualTocTree(toc?.headings ?? [], slug ?? 'overview'),
       )
-        .map(item => document.getElementById(headingId(item.title)))
+        .map(item => document.getElementById(item.id ?? headingId(item.title)))
         .filter((heading): heading is HTMLElement => heading !== null);
 
       if (headings.length === 0) {
@@ -772,7 +789,7 @@ export function ManualPage ({
         ref={articleRef}
         aria-busy={isPageTransition}
       >
-        <div className="manual-article-content">
+        <div className="manual-article-content docs-reading-content">
           {slug === undefined ? (
             <>
               <h1>{t.manual}</h1>
@@ -852,89 +869,94 @@ export function ManualPage ({
         </div>
       </article>
       <BackToTopButton label={backToTopLabel} scrollRef={articleRef} />
-      <aside
-        className={`manual-toc docs-scroll-area${isTocOpen ? ' is-open' : ''}${isTocHidden ? ' is-hidden' : ''
+      {tocTree.length > 0 && (
+        <aside
+          className={`manual-toc docs-scroll-area${isTocOpen ? ' is-open' : ''}${
+            isTocHidden ? ' is-hidden' : ''
           }${isTocHoverSuppressed ? ' is-hover-suppressed' : ''}`}
-        aria-label={tocLabel}
-        onPointerEnter={() => setIsTocHoverSuppressed(false)}
-        onPointerLeave={() => setIsTocHoverSuppressed(false)}
-        onWheel={event => {
-          if (event.deltaY === 0) {
-            return;
-          }
-          const panel = event.currentTarget.classList.contains('is-hidden')
-            ? event.currentTarget.querySelector<HTMLElement>(
-              '.manual-toc-panel',
-            )
-            : null;
-          const scrollArea =
-            panel !== null &&
+          aria-label={tocLabel}
+          onPointerEnter={() => setIsTocHoverSuppressed(false)}
+          onPointerLeave={() => setIsTocHoverSuppressed(false)}
+          onWheel={event => {
+            if (event.deltaY === 0) {
+              return;
+            }
+            const panel = event.currentTarget.classList.contains('is-hidden')
+              ? event.currentTarget.querySelector<HTMLElement>(
+                  '.manual-toc-panel',
+                )
+              : null;
+            const scrollArea =
+              panel !== null &&
               window.getComputedStyle(panel).overflowY === 'auto'
-              ? panel
-              : event.currentTarget;
-          const scrollStyle = window.getComputedStyle(scrollArea);
-          const outlineOverflows =
-            (scrollStyle.overflowY === 'auto' ||
-              scrollStyle.overflowY === 'scroll') &&
-            scrollArea.scrollHeight > scrollArea.clientHeight;
+                ? panel
+                : event.currentTarget;
+            const scrollStyle = window.getComputedStyle(scrollArea);
+            const outlineOverflows =
+              (scrollStyle.overflowY === 'auto' ||
+                scrollStyle.overflowY === 'scroll') &&
+              scrollArea.scrollHeight > scrollArea.clientHeight;
 
-          if (outlineOverflows) {
-            return;
-          }
-          const article = articleRef.current;
+            if (outlineOverflows) {
+              return;
+            }
+            const article = articleRef.current;
 
-          if (article !== null) {
-            article.scrollBy({ top: event.deltaY, behavior: 'auto' });
-          }
-        }}
-        onKeyDown={event => {
-          if (event.key === 'Escape') {
-            event.currentTarget.querySelector<HTMLElement>(':focus')?.blur();
-            setIsTocOpen(false);
-          }
-        }}
-      >
-        {toc !== undefined && (
-          <>
-            {isTocHidden && (
-              <div className="manual-toc-small-head">{renderTocHeading()}</div>
-            )}
-            {!isTocHidden && (
-              <button
-                type="button"
-                className="manual-toc-trigger"
-                aria-label={getTocToggleLabel(isTocOpen, tocLabel)}
-                aria-expanded={isTocOpen}
-                aria-controls="manual-toc-panel"
-                onClick={event => {
-                  const nextOpen = !isTocOpen;
+            if (article !== null) {
+              article.scrollBy({ top: event.deltaY, behavior: 'auto' });
+            }
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Escape') {
+              event.currentTarget.querySelector<HTMLElement>(':focus')?.blur();
+              setIsTocOpen(false);
+            }
+          }}
+        >
+          {toc !== undefined && (
+            <>
+              {isTocHidden && (
+                <div className="manual-toc-small-head">
+                  {renderTocHeading()}
+                </div>
+              )}
+              {!isTocHidden && (
+                <button
+                  type="button"
+                  className="manual-toc-trigger"
+                  aria-label={getTocToggleLabel(isTocOpen, tocLabel)}
+                  aria-expanded={isTocOpen}
+                  aria-controls="manual-toc-panel"
+                  onClick={event => {
+                    const nextOpen = !isTocOpen;
 
-                  setIsTocOpen(nextOpen);
-                  if (!nextOpen) {
-                    event.currentTarget.blur();
-                  }
-                }}
+                    setIsTocOpen(nextOpen);
+                    if (!nextOpen) {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                >
+                  <Icon
+                    name="chevronRight"
+                    className="manual-toc-trigger-icon"
+                    style={{ width: 16, height: 16 }}
+                  />
+                  <span className="manual-toc-trigger-label" aria-hidden="true">
+                    {tocLabel}
+                  </span>
+                </button>
+              )}
+              <div
+                className="manual-toc-panel docs-scroll-area"
+                id="manual-toc-panel"
               >
-                <Icon
-                  name="chevronRight"
-                  className="manual-toc-trigger-icon"
-                  style={{ width: 16, height: 16 }}
-                />
-                <span className="manual-toc-trigger-label" aria-hidden="true">
-                  {tocLabel}
-                </span>
-              </button>
-            )}
-            <div
-              className="manual-toc-panel docs-scroll-area"
-              id="manual-toc-panel"
-            >
-              {!isTocHidden && renderTocHeading()}
-              {renderTocItems(tocTree)}
-            </div>
-          </>
-        )}
-      </aside>
+                {!isTocHidden && renderTocHeading()}
+                {renderTocItems(tocTree)}
+              </div>
+            </>
+          )}
+        </aside>
+      )}
     </main>
   );
 }

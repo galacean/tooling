@@ -23,7 +23,10 @@ localized product messages, and `renderHome`. Product typography and homepage st
 
 Mount `DocsSite` in the application root; it creates its own `BrowserRouter` and should not be nested in another router.
 Its `site` configuration supplies the brand, locale labels and messages, API data configuration, and optional search
-and canonical-origin settings.
+and canonical-origin settings. `manualDataURL` points to the published directory containing `navigation.json` and
+locale subdirectories; it defaults to `${dataBaseURL}data/manual/`. When docs-tools writes manual output outside the
+default public directory, configure this URL to match the server's published mapping. Search output can be mapped
+with `getSearchDataURL`.
 
 The root exports `CopyButton`, `Icon`, `SearchPanel`, and `useTheme` for product pages. `SearchPanel` is a lazily
 loaded standalone overlay; provide its localized messages, `loadItems`, and `navigate(url)` callback. It owns a

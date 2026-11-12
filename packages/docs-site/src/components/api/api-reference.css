@@ -5,10 +5,10 @@
   padding: 42px clamp(24px, 4vw, 64px) 88px;
 }
 .api-package-readme .markdown-content h1 {
-  margin: 0 0 24px;
+  margin: 0 0 10px;
   font-size: var(--site-doc-title-size);
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 .api-title {
   display: flex;
@@ -114,7 +114,6 @@
   color: #c6c8c0;
 }
 .api-signature {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.9;
   white-space: pre-wrap;
@@ -199,21 +198,6 @@
 .api-parameter-name {
   color: var(--site-accent);
   font-size: 15px;
-}
-.ge-api .markdown-content p {
-  margin: 0 0 10px;
-}
-.ge-api .markdown-content pre {
-  background: var(--site-code-background);
-  color: var(--site-code-foreground);
-  border-color: var(--site-border);
-  padding: 16px;
-  border-radius: 5px;
-  font-size: 13px;
-  line-height: 1.7;
-}
-.ge-api .markdown-content :not(pre) > code {
-  background: color-mix(in srgb, var(--site-border) 60%, transparent);
 }
 .api-notice {
   margin: 16px auto 0;

@@ -17,7 +17,7 @@ async function fixture(t: TestContext) {
   const distDirectory = path.join(repositoryRoot, 'site/dist');
   const dataDirectory = path.join(repositoryRoot, 'site/public/data');
   const apiDirectory = path.join(dataDirectory, 'api');
-  const manualDirectory = path.join(dataDirectory, 'manual');
+  const manualDirectory = path.join(repositoryRoot, 'site/manual-content');
   const searchDirectory = path.join(dataDirectory, 'search');
   const template =
     '<html lang="zh-CN"><head><link rel="icon" href="/docs/favicon.svg">' +
@@ -46,6 +46,7 @@ async function fixture(t: TestContext) {
       sourceLocale: 'en',
       locales: ['en', 'zh-CN'],
       api: { dataDirectory: 'site/public/data/api' },
+      manual: { dataDirectory: 'site/manual-content' },
       translationWorkDirectory: 'tmp/docs-tools/api-translation',
     })} as const;\n`,
   );
@@ -74,12 +75,14 @@ async function fixture(t: TestContext) {
   return {
     repositoryRoot,
     distDirectory,
+    manualDirectory,
     config: {
       repositoryRoot,
       configPath: path.join(repositoryRoot, 'site/site.config.ts'),
       sourceLocale: 'en',
       locales: ['en', 'zh-CN'],
       apiDirectory,
+      manualDirectory,
       translationWorkDirectory: path.join(
         repositoryRoot,
         'tmp/docs-tools/api-translation',
@@ -122,16 +125,71 @@ void test('builds localized deep links and validates a subpath artifact', async 
   );
 });
 
-void test('requires linked manual images to exist inside the locale manual directory', async t => {
+void test('builds manual routes without API configuration or an API manifest', async t => {
+  const values = await fixture(t);
+  const searchDirectory = path.join(
+    path.dirname(values.config.manualDirectory),
+    'search',
+  );
+  const manifestDirectory = path.dirname(values.config.apiDirectory);
+
+  await mkdir(searchDirectory, { recursive: true });
+  for (const locale of ['en', 'zh-CN']) {
+    await writeFile(
+      path.join(searchDirectory, `${locale}.json`),
+      JSON.stringify([{ url: `/${locale}/manual/intro/` }]),
+    );
+  }
+  await rm(path.join(manifestDirectory, 'api'), {
+    recursive: true,
+    force: true,
+  });
+  const result = await buildStaticRoutes(
+    { ...values.config, apiConfigured: false },
+    { base: '/docs/' },
+  );
+  const routes = JSON.parse(
+    await readFile(path.join(values.distDirectory, 'routes.json'), 'utf8'),
+  ) as string[];
+
+  assert.equal(result.routes, 6);
+  assert.ok(routes.includes('/en/manual/intro/'));
+  assert.ok(!routes.includes('/en/api/'));
+});
+
+void test('builds API routes without manual configuration or navigation', async t => {
   const values = await fixture(t);
   const manualDirectory = path.join(
-    values.repositoryRoot,
-    'site/public/data/manual/en/intro',
+    path.dirname(values.config.apiDirectory),
+    'manual',
   );
-  const manualPath = path.join(
-    values.repositoryRoot,
-    'site/public/data/manual/en/intro.md',
+  const searchDirectory = path.dirname(values.config.apiDirectory);
+
+  await rm(values.manualDirectory, { recursive: true, force: true });
+  await mkdir(path.join(searchDirectory, 'search'), { recursive: true });
+  for (const locale of ['en', 'zh-CN']) {
+    await writeFile(
+      path.join(searchDirectory, 'search', `${locale}.json`),
+      '[]\n',
+    );
+  }
+  const result = await buildStaticRoutes(
+    { ...values.config, manualDirectory, manualConfigured: false },
+    { base: '/docs/' },
   );
+  const routes = JSON.parse(
+    await readFile(path.join(values.distDirectory, 'routes.json'), 'utf8'),
+  ) as string[];
+
+  assert.equal(result.routes, 4);
+  assert.ok(routes.includes('/en/api/'));
+  assert.ok(!routes.includes('/en/manual/'));
+});
+
+void test('requires linked manual images to exist inside the locale manual directory', async t => {
+  const values = await fixture(t);
+  const manualDirectory = path.join(values.manualDirectory, 'en/intro');
+  const manualPath = path.join(values.manualDirectory, 'en/intro.md');
 
   await mkdir(manualDirectory, { recursive: true });
   await writeFile(path.join(manualDirectory, 'diagram.svg'), '<svg/>');
@@ -147,10 +205,7 @@ void test('requires linked manual images to exist inside the locale manual direc
 
 void test('validates HTML manual image assets under the locale manual directory', async t => {
   const values = await fixture(t);
-  const manualRoot = path.join(
-    values.repositoryRoot,
-    'site/public/data/manual',
-  );
+  const manualRoot = values.manualDirectory;
   const navigationPath = path.join(manualRoot, 'navigation.json');
   const navigation = JSON.parse(await readFile(navigationPath, 'utf8')) as {
     slug: string;
@@ -181,6 +236,33 @@ void test('validates HTML manual image assets under the locale manual directory'
     buildStaticRoutes(values.config, { base: '/docs/' }),
     /Manual asset does not exist/u,
   );
+});
+
+void test('does not validate custom data-video-src attributes as local assets', async t => {
+  const values = await fixture(t);
+  const manualRoot = values.manualDirectory;
+  const navigationPath = path.join(manualRoot, 'navigation.json');
+  const navigation = JSON.parse(await readFile(navigationPath, 'utf8')) as {
+    slug: string;
+    title: Record<string, string>;
+    group: Record<string, string>;
+  }[];
+
+  await writeFile(
+    navigationPath,
+    JSON.stringify([
+      {
+        ...navigation[0],
+        format: { en: 'html', 'zh-CN': 'markdown' },
+      },
+    ]),
+  );
+  await writeFile(
+    path.join(manualRoot, 'en/intro.html'),
+    '<article data-video-src="inputs/prod/yuque/missing.mp4"></article>',
+  );
+
+  await buildStaticRoutes(values.config, { base: '/docs/' });
 });
 
 void test('rejects invalid bases and unmaterialized search routes', async t => {

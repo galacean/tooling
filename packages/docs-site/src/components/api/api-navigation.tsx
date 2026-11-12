@@ -23,8 +23,7 @@ export function resolveAPIVersionTarget(
     selected?.entries.find(item => item.key === entryKey) ??
     selected?.entries[0];
   const symbol =
-    entry?.symbols.find(item => item.name === symbolName) ??
-    entry?.symbols[0];
+    entry?.symbols.find(item => item.name === symbolName) ?? entry?.symbols[0];
 
   return entry === undefined || symbol === undefined
     ? undefined
@@ -68,7 +67,6 @@ export function APISymbolMenu({
               <li key={item.name}>
                 <Link
                   to={getSymbolHref(item.name)}
-                  replace
                   onClick={onSelect}
                   className={
                     item.name === selectedName
@@ -138,13 +136,15 @@ export function APINavigationToolbar({
           }))}
           onChange={value => {
             if (packages.some(item => item.key === value)) {
-              void navigate(getPackageHref(value), { replace: true });
+              void navigate(getPackageHref(value));
             }
           }}
         />
         {!packageHome && (
           <>
-            <span>/</span>
+            <span className="api-breadcrumb-separator" aria-hidden="true">
+              /
+            </span>
             <SelectControl
               className="api-version-select"
               ariaLabel={t.version}
@@ -165,7 +165,7 @@ export function APINavigationToolbar({
                 );
 
                 if (target !== undefined) {
-                  void navigate(getSymbolHref(target), { replace: true });
+                  void navigate(getSymbolHref(target));
                 }
               }}
             />
@@ -173,7 +173,10 @@ export function APINavigationToolbar({
         )}
         {!packageHome && symbol !== undefined && (
           <span className="api-current-symbol">
-            / {renderKind(symbol.kind)} {symbol.name}
+            <span className="api-breadcrumb-separator" aria-hidden="true">
+              /
+            </span>{' '}
+            {renderKind(symbol.kind)} {symbol.name}
           </span>
         )}
       </div>

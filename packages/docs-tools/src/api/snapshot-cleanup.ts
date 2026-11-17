@@ -5,7 +5,7 @@ import { isRecord, parseAPIManifest } from '@galacean/docs-site';
 import type { APIManifest } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
-import { readJSON, parseJSON } from './read-json';
+import { getErrorCode, parseJSON, readJSON } from './read-json';
 import { resolveAPISnapshotReference } from './snapshot-reference';
 
 type SnapshotCleanupConfig = Pick<
@@ -33,15 +33,6 @@ function isWithin(parent: string, child: string): boolean {
     !relative.startsWith(`..${path.sep}`) &&
     !path.isAbsolute(relative)
   );
-}
-
-function errorCode(error: unknown): string | undefined {
-  return error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-    ? error.code
-    : undefined;
 }
 
 function relativeDataPath(dataRoot: string, filename: string): string {
@@ -104,7 +95,7 @@ async function findOrphanedSnapshots(
   try {
     entries = await readdir(snapshotsDirectory, { withFileTypes: true });
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') {
+    if (getErrorCode(error) === 'ENOENT') {
       return { orphaned: [], skipped: [] };
     }
     throw error;

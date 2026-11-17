@@ -48,3 +48,26 @@ export function parseJSON<T = unknown>(
 export async function readJSON<T = unknown>(filename: string): Promise<T> {
   return parseJSON<T>(await readFile(filename, 'utf8'), filename);
 }
+
+export function getErrorCode(error: unknown): string | undefined {
+  return error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
+}
+
+export async function readOptionalJSON<T = unknown>(
+  filename: string,
+): Promise<T | undefined> {
+  try {
+    return await readJSON<T>(filename);
+  } catch (error) {
+    if (getErrorCode(error) !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return undefined;
+}

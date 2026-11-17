@@ -72,6 +72,11 @@ if (group === '--help' || group === '-h') {
   const result = await generateAPIDocumentation(
     config,
     packageKeys.length === 0 ? undefined : packageKeys,
+    undefined,
+    item =>
+      logger.info(
+        `${item.version}: ${item.status}${item.reason === undefined ? '' : ` (${item.reason})`}`,
+      ),
   );
 
   logger.success(`API: ${result.packages} packages; ${result.exports} exports`);

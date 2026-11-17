@@ -1,9 +1,13 @@
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { DocsSitePageConfig } from '@galacean/docs-site';
 import { readJSON } from '../api/read-json';
+import { parseAPIVersionManifest } from '../api/versions';
+import type { APIVersionManifest } from '../api/versions';
 import { validateAPIConfig } from './api-config-validation';
 import { validateManualCollections } from './manual-config-validation';
+import { isSafePathSegment } from '../path-validation';
 
 export interface DocsSiteConfig {
   repositoryRoot: string;
@@ -11,11 +15,13 @@ export interface DocsSiteConfig {
   sourceLocale: string;
   locales: string[];
   apiDirectory: string;
+  apiVersions?: APIVersionManifest;
   apiConfigured?: boolean;
   manualDirectory: string;
   manualConfigured?: boolean;
   translationWorkDirectory: string;
   siteName?: string;
+  pages?: SitePageConfig[];
   apiPackages?: APIPackageConfig[];
   manuals?: ManualCollectionConfig[];
   typedocOptions?: Record<string, unknown>;
@@ -27,6 +33,8 @@ export interface APIEntryConfig {
   source: string;
   types: string;
 }
+
+export type SitePageConfig = DocsSitePageConfig<string, string>;
 
 export interface APIReadmeConfig {
   sourceLocale?: string;
@@ -83,11 +91,14 @@ export interface ManualCollectionConfig {
 interface SiteConfigInput {
   api?: {
     dataDirectory: string;
+    repository?: unknown;
+    versions?: unknown;
     packages?: APIPackageConfig[];
     typedocOptions?: Record<string, unknown>;
     sourceLinkTemplate?: string;
   };
   manual?: { dataDirectory: string; collections?: unknown[] };
+  pages?: unknown;
   sourceLocale: string;
   locales: string[];
   translationWorkDirectory?: string;
@@ -119,6 +130,81 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isLocaleTag(value: string): boolean {
   return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u.test(value);
+}
+
+function parseSitePages(
+  value: unknown,
+  locales: string[],
+): { pages: SitePageConfig[]; issues: string[] } {
+  if (value === undefined) {
+    return { pages: [], issues: [] };
+  }
+  if (!Array.isArray(value)) {
+    return { pages: [], issues: ['pages must be an array'] };
+  }
+
+  const issues: string[] = [];
+  const pages: SitePageConfig[] = [];
+  const slugs = new Set(['api', 'manual']);
+
+  for (const [index, page] of value.entries()) {
+    if (!isRecord(page)) {
+      issues.push(`pages[${index}] must be an object`);
+      continue;
+    }
+
+    const slug = page['slug'];
+    const title = page['title'];
+    const icon = page['icon'];
+
+    if (slug === null) {
+      if (pages.some(page => page.slug === null)) {
+        issues.push('pages must not contain more than one home page');
+        continue;
+      }
+    } else if (typeof slug !== 'string' || !isSafePathSegment(slug)) {
+      issues.push(`pages[${index}].slug must be null or a safe path segment`);
+      continue;
+    } else if (slugs.has(slug)) {
+      issues.push(`pages[${index}].slug conflicts with another site route: ${slug}`);
+    }
+    if (typeof slug === 'string') {
+      slugs.add(slug);
+    }
+    if (slug !== null && !isRecord(title)) {
+      issues.push(`pages[${index}].title must be an object`);
+      continue;
+    }
+    if (icon !== undefined && typeof icon !== 'string') {
+      issues.push(`pages[${index}].icon must be a string`);
+      continue;
+    }
+
+    const localizedTitles: Record<string, string> = {};
+
+    if (slug !== null && isRecord(title)) {
+      for (const locale of locales) {
+        const localizedTitle = title[locale];
+
+        if (typeof localizedTitle !== 'string' || localizedTitle.trim() === '') {
+          issues.push(`pages[${index}].title.${locale} must be a non-empty string`);
+        } else {
+          localizedTitles[locale] = localizedTitle;
+        }
+      }
+    }
+    pages.push(
+      slug === null
+        ? { slug, ...(icon === undefined ? {} : { icon }) }
+        : {
+            slug,
+            title: localizedTitles,
+            ...(icon === undefined ? {} : { icon }),
+          },
+    );
+  }
+
+  return { pages, issues };
 }
 
 export async function assertNoSymlinkPath(
@@ -187,6 +273,7 @@ export async function loadSiteConfig(
     config = config['default'];
   }
   const issues: string[] = [];
+  let pages: SitePageConfig[] | undefined;
 
   if (!isRecord(config)) {
     issues.push('expected an object export');
@@ -211,7 +298,6 @@ export async function loadSiteConfig(
         'manual collections must be configured under manual.collections',
       );
     }
-
     issues.push(...validateAPIConfig(api, locales, sourceLocale));
 
     if (
@@ -254,6 +340,17 @@ export async function loadSiteConfig(
       : undefined;
 
     issues.push(...validateManualCollections(manualCollections, locales));
+    const pageValidation = parseSitePages(
+      config['pages'],
+      Array.isArray(locales)
+        ? locales.filter((locale): locale is string => typeof locale === 'string')
+        : [],
+    );
+
+    issues.push(...pageValidation.issues);
+    if (config['pages'] !== undefined) {
+      pages = pageValidation.pages;
+    }
   }
   if (issues.length > 0) {
     const exportKeys = isRecord(config) ? Object.keys(config).join(', ') : '';
@@ -277,6 +374,13 @@ export async function loadSiteConfig(
     input.api === undefined
       ? path.join(dataDirectory, 'api')
       : path.resolve(root, input.api.dataDirectory);
+  const apiVersions =
+    input.api?.repository === undefined && input.api?.versions === undefined
+      ? undefined
+      : parseAPIVersionManifest({
+          repository: input.api.repository,
+          versions: input.api.versions,
+        });
   const manualDirectory =
     input.manual === undefined
       ? path.join(dataDirectory, 'manual')
@@ -420,12 +524,14 @@ export async function loadSiteConfig(
     sourceLocale: input.sourceLocale,
     locales: [...input.locales],
     apiDirectory,
+    ...(apiVersions === undefined ? {} : { apiVersions }),
     apiConfigured: input.api !== undefined,
     manualDirectory,
     manualConfigured:
       input.manual !== undefined || manualCollectionsInput !== undefined,
     translationWorkDirectory,
     ...(input.siteName === undefined ? {} : { siteName: input.siteName }),
+    ...(pages === undefined ? {} : { pages }),
     ...(apiPackages === undefined ? {} : { apiPackages }),
     ...(manuals === undefined ? {} : { manuals }),
     ...(input.api?.typedocOptions === undefined

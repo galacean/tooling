@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -515,6 +515,7 @@ test('local collections retain translations, localized navigation, and overview 
   ]);
 
   await mkdir(path.join(localDirectory, 'zh-CN'), { recursive: true });
+  await mkdir(path.join(localDirectory, 'en'), { recursive: true });
   await mkdir(translationDirectory, { recursive: true });
   await mkdir(path.join(config.manualDirectory, 'zh-CN'), {
     recursive: true,
@@ -537,6 +538,8 @@ test('local collections retain translations, localized navigation, and overview 
     path.join(localDirectory, 'zh-CN/getting-started.md'),
     '# 开始使用\n\n中文正文。\n',
   );
+  await writeFile(path.join(localDirectory, 'zh-CN/index.md'), '# 中文手册\n');
+  await writeFile(path.join(localDirectory, 'en/index.md'), '# English manuals\n');
   await writeFile(
     path.join(translationDirectory, 'getting-started.md'),
     '# Getting started\n\nEnglish body.\n',
@@ -547,15 +550,6 @@ test('local collections retain translations, localized navigation, and overview 
       'getting-started': { title: 'Getting started', group: 'Guides' },
     }),
   );
-  await writeFile(
-    path.join(config.manualDirectory, 'zh-CN/index.md'),
-    '# 中文手册\n',
-  );
-  await writeFile(
-    path.join(config.manualDirectory, 'en/index.md'),
-    '# English manuals\n',
-  );
-
   const result = await syncManuals(config);
   const output = config.manualDirectory;
   const navigation = JSON.parse(
@@ -574,6 +568,18 @@ test('local collections retain translations, localized navigation, and overview 
   assert.equal(navigation[0]?.title['en'], 'Getting started');
   assert.equal(navigation[0]?.group['en'], 'Guides');
   assert.equal(navigation[0]?.parent, 'getting-started-parent');
+  assert.equal(
+    await readFile(path.join(output, 'zh-CN/index.md'), 'utf8'),
+    '# 中文手册\n',
+  );
+  assert.equal(
+    await readFile(path.join(output, 'en/index.md'), 'utf8'),
+    '# English manuals\n',
+  );
+
+  await unlink(path.join(localDirectory, 'zh-CN/index.md'));
+  await unlink(path.join(localDirectory, 'en/index.md'));
+  await syncManuals(config);
   assert.equal(
     await readFile(path.join(output, 'zh-CN/index.md'), 'utf8'),
     '# 中文手册\n',

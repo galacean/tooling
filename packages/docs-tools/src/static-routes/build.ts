@@ -6,7 +6,7 @@ import {
   parseAPIManifest,
 } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import type { DocsSiteConfig, SitePageConfig } from '../config/site-config';
 import { isManualNavigation } from '../manual/navigation';
 import { isSafePathSegment } from '../path-validation';
 import { readJSON } from '../api/read-json';
@@ -161,6 +161,11 @@ export async function buildStaticRoutes(
 
   for (const locale of config.locales) {
     add(locale);
+    for (const page of config.pages ?? []) {
+      if (page.slug !== null) {
+        add(locale, [page.slug]);
+      }
+    }
     if (config.apiConfigured !== false) {
       add(locale, ['api']);
     }
@@ -189,6 +194,11 @@ export async function buildStaticRoutes(
 
   for (const [route, info] of routes) {
     const directory = path.join(dist, info.relativePath);
+    const pageSlug = info.relativePath.split('/')[1];
+    const pageTitle = config.pages?.find(
+      (page): page is Extract<SitePageConfig, { slug: string }> =>
+        page.slug === pageSlug,
+    )?.title[info.locale];
     const canonical =
       origin === undefined
         ? ''
@@ -211,7 +221,19 @@ export async function buildStaticRoutes(
         return `<link rel="alternate" hreflang="${escapeHTML(locale)}" href="${escapeHTML(href)}" />`;
       })
       .join('');
-    const html = template
+    const titledTemplate =
+      pageTitle === undefined
+        ? template
+        : /<title>[^<]*<\/title>/u.test(template)
+          ? template.replace(
+              /<title>[^<]*<\/title>/u,
+              `<title>${escapeHTML(pageTitle)}</title>`,
+            )
+          : template.replace(
+              '</head>',
+              `<title>${escapeHTML(pageTitle)}</title></head>`,
+            );
+    const html = titledTemplate
       .replace('lang="zh-CN"', `lang="${escapeHTML(info.locale)}"`)
       .replace('</head>', `${canonical}${alternates}</head>`);
 

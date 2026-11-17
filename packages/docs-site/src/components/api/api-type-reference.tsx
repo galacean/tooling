@@ -52,8 +52,8 @@ export function APITypeReference({
       const activeElement = document.activeElement;
 
       if (
-        !wrapRef.current?.contains(activeElement) &&
-        !contentRef.current?.contains(activeElement)
+        wrapRef.current?.contains(activeElement) !== true &&
+        contentRef.current?.contains(activeElement) !== true
       ) {
         setOpen(false);
       }

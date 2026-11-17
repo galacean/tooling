@@ -276,7 +276,7 @@ void test('preserves translations and does not overwrite an unselected package s
   assert.equal(agent.current.packageVersion, '0.4.0-alpha.1');
 });
 
-void test('retains latest versions per major/minor and deletes unreferenced snapshots', async t => {
+void test('retains every explicitly generated version and keeps its snapshots', async t => {
   const values = await fixture();
 
   t.onTestFinished(() =>
@@ -331,18 +331,18 @@ void test('retains latest versions per major/minor and deletes unreferenced snap
   const widget = manifest.packages.find(pkg => pkg.key === 'widget-dir');
 
   assert.equal(widget?.current.packageVersion, '2.0.0');
-  assert.deepEqual(
-    widget?.versions.map(item => item.version),
-    ['2.0.0', '1.2.5'],
-  );
+  assert.deepEqual(widget?.versions.map(item => item.version), [
+    '2.0.0',
+    '1.2.5',
+    '1.2.4',
+    '1.2.3',
+  ]);
   assert.equal(
     manifest.packages.find(pkg => pkg.key === 'agent')?.current.packageVersion,
     '0.4.0-alpha.1',
   );
   assert.ok(unretainedSnapshotPath);
-  await assert.rejects(readFile(snapshotFile(values, unretainedSnapshotPath)), {
-    code: 'ENOENT',
-  });
+  await assert.doesNotReject(readFile(snapshotFile(values, unretainedSnapshotPath)));
 });
 
 void test('starts a new package-key history from current code and leaves flat snapshots untouched', async t => {

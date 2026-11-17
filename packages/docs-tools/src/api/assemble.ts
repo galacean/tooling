@@ -9,7 +9,7 @@ import type {
 } from '@galacean/docs-site';
 import type { DocsSiteConfig } from '../config/site-config';
 import { assertNoSymlinkPath } from '../config/site-config';
-import { readJSON } from './read-json';
+import { getErrorCode, readOptionalJSON } from './read-json';
 import { sourceProject } from './snapshot';
 import { cleanAPISnapshots } from './snapshot-cleanup';
 import { readAPISnapshot } from './snapshot-reference';
@@ -22,7 +22,7 @@ import {
   translateParts,
 } from './translations';
 import type { DocumentationPackage } from './translations';
-import { compareVersions, parseVersion, versionGroup } from './versions';
+import { compareVersions, parseVersion } from './versions';
 
 export interface APIDocumentationPackage extends DocumentationPackage {
   version: string;
@@ -47,27 +47,6 @@ interface StagedFile {
   filename: string;
 }
 
-function errorCode(error: unknown): string | undefined {
-  return error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-    ? error.code
-    : undefined;
-}
-
-async function readOptionalJSON(filename: string): Promise<unknown> {
-  try {
-    return await readJSON(filename);
-  } catch (error) {
-    if (errorCode(error) !== 'ENOENT') {
-      throw error;
-    }
-  }
-
-  return undefined;
-}
-
 async function readOptionalSnapshot(
   filename: string,
   dataRoot: string,
@@ -76,7 +55,7 @@ async function readOptionalSnapshot(
   try {
     return (await readAPISnapshot(filename, dataRoot, repositoryRoot)).value;
   } catch (error) {
-    if (errorCode(error) !== 'ENOENT') {
+    if (getErrorCode(error) !== 'ENOENT') {
       throw error;
     }
   }
@@ -118,19 +97,9 @@ function safeSnapshotPath(dataRoot: string, relativePath: string): string {
 }
 
 function retainedVersions<T extends { version: string }>(versions: T[]): T[] {
-  const groups = new Map<string, T>();
-
-  for (const item of [...versions].sort((left, right) =>
+  return [...versions].sort((left, right) =>
     compareVersions(right.version, left.version),
-  )) {
-    const group = versionGroup(item.version);
-
-    if (!groups.has(group)) {
-      groups.set(group, item);
-    }
-  }
-
-  return [...groups.values()];
+  );
 }
 
 function historyLayout(
@@ -498,17 +467,6 @@ export async function assembleAPIDocumentation(
         ]),
       ),
     };
-
-    for (const oldVersion of previousPackage?.versions ?? []) {
-      if (
-        versionGroup(oldVersion.version) === versionGroup(pkg.version) &&
-        compareVersions(oldVersion.version, pkg.version) > 0
-      ) {
-        throw new Error(
-          `Cannot replace newer API documentation: ${pkg.key}@${pkg.version}`,
-        );
-      }
-    }
 
     return updatePackage(previousPackage, version, pkg);
   });

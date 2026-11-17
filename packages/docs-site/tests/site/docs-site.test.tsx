@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import { commonMessages, DocsSite } from '@galacean/docs-site';
+import type { DocsSitePage } from '@galacean/docs-site';
 
 const locales = ['en', 'zh-CN'] as const;
 
@@ -19,7 +20,21 @@ function renderSite(
   dataBaseURL = baseURL,
   includeAPI = true,
   manualDataURL?: string,
+  customPages: readonly DocsSitePage<(typeof locales)[number]>[] = [],
 ) {
+  const pages: DocsSitePage<(typeof locales)[number]>[] = [
+    {
+      slug: null,
+      render: locale => (
+        <>
+          <p>home:{locale}</p>
+          <SiteProbe />
+        </>
+      ),
+    },
+    ...customPages,
+  ];
+
   return render(
     <DocsSite
       baseURL={baseURL}
@@ -53,17 +68,13 @@ function renderSite(
             }
           : {}),
       }}
-      renderHome={locale => (
-        <>
-          <p>home:{locale}</p>
-          <SiteProbe />
-        </>
-      )}
+      pages={pages}
     />,
   );
 }
 
 beforeEach(() => {
+  vi.stubGlobal('scrollTo', vi.fn());
   vi.stubGlobal('navigator', { languages: ['zh-CN'], language: 'zh-CN' });
   vi.stubGlobal(
     'matchMedia',
@@ -88,6 +99,55 @@ describe('DocsSite routing', () => {
 
     expect(await screen.findByText('home:en')).toBeDefined();
     expect(screen.queryByRole('link', { name: 'API' })).toBeNull();
+  });
+
+  it('renders registered pages in the shared shell with localized titles', async () => {
+    window.history.replaceState({}, '', '/en/custom-page/');
+    renderSite('/', '/', false, undefined, [
+      {
+        slug: 'custom-page',
+        title: locale => (locale === 'en' ? 'Custom page' : '自定义页面'),
+        render: locale => (
+          <h1>{locale === 'en' ? 'Custom page' : '自定义页面'}</h1>
+        ),
+      },
+    ]);
+
+    expect(await screen.findByRole('heading', { name: 'Custom page' })).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Custom page' })).toBeDefined();
+    expect(document.title).toBe('Custom page | Shared docs');
+  });
+
+  it('includes registered business pages in the docs page switcher menu', async () => {
+    window.history.replaceState({}, '', '/en/manual');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('navigation.json')
+          ? Response.json([])
+          : new Response('# Manual introduction', { status: 200 }),
+      ),
+    );
+    renderSite('/', '/', false, undefined, [
+      {
+        slug: 'custom-page',
+        title: locale => (locale === 'en' ? 'Custom page' : '自定义页面'),
+        icon: 'source',
+        render: locale => (
+          <h1>{locale === 'en' ? 'Custom page' : '自定义页面'}</h1>
+        ),
+      },
+    ]);
+
+    expect(await screen.findByRole('heading', { name: 'Manual introduction' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch page' }));
+
+    const customPageItem = screen.getByRole('menuitem', { name: 'Custom page' });
+
+    expect(customPageItem.getAttribute('href')).toBe('/en/custom-page/');
+    expect(customPageItem.querySelector('svg')?.getAttribute('data-icon')).toBe(
+      'source',
+    );
   });
 
   it('loads manual data from a base separate from the route basename', async () => {

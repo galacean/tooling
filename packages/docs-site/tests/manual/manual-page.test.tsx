@@ -304,6 +304,7 @@ describe('ManualPage navigation', () => {
     await screen.findAllByRole('button', {
       name: 'Collapse menu Getting Started',
     });
+    await screen.findByRole('heading', { name: 'Intro' });
     const sidebar = document.querySelector<HTMLElement>('.manual-sidebar');
 
     expect(sidebar).not.toBeNull();
@@ -644,6 +645,7 @@ describe('ManualPage navigation', () => {
     await screen.findAllByRole('button', {
       name: 'Collapse menu Getting Started',
     });
+    await screen.findByRole('heading', { name: 'Intro' });
     const sidebar = document.querySelector<HTMLElement>('.manual-sidebar');
     const toc = document.querySelector<HTMLElement>('.manual-toc');
 

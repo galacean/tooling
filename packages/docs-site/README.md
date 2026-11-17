@@ -2,7 +2,7 @@
 
 [简体中文](README-zh_CN.md)
 
-Shared bilingual documentation site runtime and TypeDoc data contracts.
+Shared React runtime for bilingual API and manual documentation sites.
 
 ## Install
 
@@ -12,35 +12,22 @@ Install the package and its peer dependencies in the consuming React application
 pnpm add @galacean/docs-site react react-dom react-markdown react-router-dom remark-gfm highlight.js
 ```
 
-## Public API
+## Use
 
-Import `DocsSite`, its configuration types, common messages, and site data utilities from `@galacean/docs-site`;
-load `@galacean/docs-site/index.css` once. Provide the peer dependencies listed in `package.json`.
+Import `DocsSite` and its configuration types from `@galacean/docs-site`, and load `@galacean/docs-site/index.css` once. Mount `DocsSite` at the application root; it creates its own `BrowserRouter`.
 
-`DocsSite` owns locale redirects, the shared shell, API/manual routes, lazy search, canonical/hreflang links, and 404
-state. Consumers provide `baseURL`, `locales`, `defaultLocale`, `preferenceNamespace`, brand/runtime configuration,
-localized product messages, and `renderHome`. Product typography and homepage styles remain consumer-owned.
+Provide the site brand, locales, localized messages, API data settings, and a `pages` registry. A page has a `slug`, a `render(locale)` callback, and a localized `title(locale)` except for the homepage, whose slug is `null`. Product page content and typography remain application-owned.
 
-Mount `DocsSite` in the application root; it creates its own `BrowserRouter` and should not be nested in another router.
-Its `site` configuration supplies the brand, locale labels and messages, API data configuration, and optional search
-and canonical-origin settings. `manualDataURL` points to the published directory containing `navigation.json` and
-locale subdirectories; it defaults to `${dataBaseURL}data/manual/`. When docs-tools writes manual output outside the
-default public directory, configure this URL to match the server's published mapping. Search output can be mapped
-with `getSearchDataURL`.
+API and manual data are served as static files. `manualDataURL` defaults to `${dataBaseURL}data/manual/`; configure it when the published manual directory uses another URL. Use `getSearchDataURL` to map search indexes to their published URL.
 
-The root exports `CopyButton`, `Icon`, `SearchPanel`, and `useTheme` for product pages. `SearchPanel` is a lazily
-loaded standalone overlay; provide its localized messages, `loadItems`, and `navigate(url)` callback. It owns a
-Suspense fallback and does not require a router context, so consumers can connect results to their own routing
-system. The package root also exports the API, manual, search, shared UI, and site component barrels for advanced
-composition. Route and shell components require a React Router context; `DocsSite` remains the recommended
-integration for a complete site. All components can be imported from `@galacean/docs-site`.
+## Exports
 
-`createMessageCatalog` merges common English and Simplified Chinese UI copy with product-specific messages. API
-utilities include manifest/snapshot validation, reflection indexing and loading; `createManualContentClient` handles
-manual navigation and document loading. Route helpers include `normalizeBase` for subpath deployments.
+The package also exports `CopyButton`, `Icon`, `SearchPanel`, `useTheme`, message catalog helpers, API and manual data clients, route helpers, and component barrels. `SearchPanel` can be used without a router when given localized messages, a `loadItems` function, and a `navigate` callback. Route and shell components need a React Router context.
 
 ## Development
 
-Run `pnpm --filter @galacean/docs-site build` before consuming workspace exports, and rebuild after source changes.
-Vite builds the package entry, declarations, lazy route chunks, and CSS assets into `dist`.
-Run `pnpm --filter @galacean/docs-site test` and `pnpm --filter @galacean/docs-site check:ts` for package checks.
+```sh
+pnpm --filter @galacean/docs-site build
+pnpm --filter @galacean/docs-site test
+pnpm --filter @galacean/docs-site check:ts
+```

@@ -125,6 +125,38 @@ void test('builds localized deep links and validates a subpath artifact', async 
   );
 });
 
+void test('builds localized custom site pages with titles and static routes', async t => {
+  const values = await fixture(t);
+  const result = await buildStaticRoutes(
+    {
+      ...values.config,
+      pages: [
+        { slug: null },
+        { slug: 'custom-page', title: { en: 'Custom page', 'zh-CN': '自定义页面' } },
+      ],
+    },
+    { base: '/docs/', origin: 'https://example.test' },
+  );
+  const routes = JSON.parse(
+    await readFile(path.join(values.distDirectory, 'routes.json'), 'utf8'),
+  ) as string[];
+  const english = await readFile(
+    path.join(values.distDirectory, 'en/custom-page/index.html'),
+    'utf8',
+  );
+  const chinese = await readFile(
+    path.join(values.distDirectory, 'zh-CN/custom-page/index.html'),
+    'utf8',
+  );
+
+  assert.equal(result.routes, 10);
+  assert.ok(routes.includes('/en/custom-page/'));
+  assert.ok(routes.includes('/zh-CN/custom-page/'));
+  assert.match(english, /<title>Custom page<\/title>/u);
+  assert.match(chinese, /<title>自定义页面<\/title>/u);
+  assert.match(english, /canonical[^>]+https:\/\/example\.test\/docs\/en\/custom-page\//u);
+});
+
 void test('builds manual routes without API configuration or an API manifest', async t => {
   const values = await fixture(t);
   const searchDirectory = path.join(
@@ -285,6 +317,24 @@ void test('rejects invalid bases and unmaterialized search routes', async t => {
 void test('runs routes build from the mjs CLI with deployment environment', async t => {
   const values = await fixture(t);
   const cliPath = path.resolve(import.meta.dirname, '../bin/galacean-docs.mjs');
+  const configPath = path.join(values.repositoryRoot, 'site/site.config.ts');
+
+  await writeFile(
+    configPath,
+    `export default ${JSON.stringify({
+      siteName: 'Fixture Docs',
+      sourceLocale: 'en',
+      locales: ['en', 'zh-CN'],
+      api: { dataDirectory: 'site/public/data/api' },
+      manual: { dataDirectory: 'site/manual-content' },
+      pages: [
+        { slug: null },
+        { slug: 'custom-page', title: { en: 'Custom page', 'zh-CN': '自定义页面' } },
+      ],
+      translationWorkDirectory: 'tmp/docs-tools/api-translation',
+    })} as const;\n`,
+  );
+
   const result = await execFileAsync(
     process.execPath,
     [cliPath, 'routes', 'build', '--config', 'site/site.config.ts'],
@@ -298,11 +348,12 @@ void test('runs routes build from the mjs CLI with deployment environment', asyn
     },
   );
 
-  assert.match(result.stdout, /Static routes: 8; .*base \/docs\//u);
+  assert.match(result.stdout, /Static routes: 10; .*base \/docs\//u);
   const html = await readFile(
-    path.join(values.distDirectory, 'en/index.html'),
+    path.join(values.distDirectory, 'en/custom-page/index.html'),
     'utf8',
   );
 
+  assert.match(html, /<title>Custom page<\/title>/u);
   assert.match(html, /https:\/\/example\.test\/docs\/en\//u);
 });

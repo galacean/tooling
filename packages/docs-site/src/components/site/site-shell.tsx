@@ -8,6 +8,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { DocumentLoading, Icon, SelectControl } from '../shared';
+import type { IconName } from '../shared/icon';
 import { DocsPageSwitcher } from './docs-page-switcher';
 import type { DocsPageSwitcherItem } from './docs-page-switcher';
 import { DocsSearchTrigger } from './docs-search-trigger';
@@ -31,6 +32,7 @@ export interface SiteShellNavigationItem {
   label: string;
   to: string;
   end?: boolean;
+  icon?: IconName;
 }
 
 export interface SiteShellProps {
@@ -131,9 +133,15 @@ export function SiteShell({
   const manualPage = pageKind === 'manual';
   const documentPage = manualPage || apiPage;
   const activeDocumentTitle = manualPage
-    ? manualPageTitle || t.manual
+    ? manualPageTitle !== ''
+      ? manualPageTitle
+      : t.manual
     : apiPage
-      ? apiDocumentTitle || pageTitle || t.api
+      ? apiDocumentTitle !== ''
+        ? apiDocumentTitle
+        : pageTitle !== undefined && pageTitle !== ''
+          ? pageTitle
+          : t.api
       : (pageTitle ?? '');
   const manualSearchLabel = locale.startsWith('zh') ? '搜索' : 'Search';
   const themeIcon =
@@ -244,6 +252,14 @@ export function SiteShell({
     ...(includeAPI
       ? [{ key: 'api', label: t.api, href: apiHref, icon: 'source' as const }]
       : []),
+    ...navigation
+      .filter(item => !['home', 'manual', 'api'].includes(item.key))
+      .map(item => ({
+        key: item.key,
+        label: item.label,
+        href: item.to,
+        icon: item.icon ?? 'book',
+      })),
   ];
   const searchButton = (
     <DocsSearchTrigger

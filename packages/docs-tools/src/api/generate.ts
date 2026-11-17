@@ -1,20 +1,18 @@
 import { execFileSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Application, ReflectionKind } from 'typedoc';
 import type { JSONOutput } from 'typedoc';
 import ts from 'typescript';
-import { assertNoSymlinkPath } from '../config/site-config';
 import type { APIPackageConfig, DocsSiteConfig } from '../config/site-config';
 import { readJSON } from './read-json';
-import { assembleAPIDocumentation } from './assemble';
-import type {
-  APIDocumentationMetadata,
-  APIDocumentationPackage,
-} from './assemble';
+import type { APIDocumentationPackage } from './assemble';
 import { contentHash } from './translations';
 import { parseVersion } from './versions';
+import { generateVersionedAPIDocumentation } from './versioned-generation';
+import type { APIVersionBuilder } from './versioned-generation';
 
 const typeKinds = new Set([
   'array',
@@ -44,11 +42,11 @@ export interface APIGenerationDependencies {
     packages: APIPackageConfig[],
     repositoryRoot: string,
   ) => Promise<void>;
+  getCommit: (repositoryRoot: string) => string;
   convert: (
     config: DocsSiteConfig,
     commit: string,
   ) => Promise<JSONOutput.ProjectReflection>;
-  getCommit: (repositoryRoot: string) => string;
   generatorVersion: () => Promise<string>;
 }
 
@@ -452,21 +450,34 @@ export function externalizeTypeDocDependencies(
   return transform(project) as JSONOutput.ProjectReflection;
 }
 
+function typeScriptCompiler(repositoryRoot: string): string {
+  const projectCompiler = path.join(repositoryRoot, 'node_modules/.bin/tsc');
+
+  return existsSync(projectCompiler)
+    ? projectCompiler
+    : path.resolve(
+        path.dirname(fileURLToPath(import.meta.resolve('typescript'))),
+        '../bin/tsc',
+      );
+}
+
+function typeScriptVersion(repositoryRoot: string): string {
+  return execFileSync(
+    typeScriptCompiler(repositoryRoot),
+    ['--version'],
+    { cwd: repositoryRoot, encoding: 'utf8' },
+  ).trim().replace(/^Version\s+/u, '');
+}
+
 async function buildDeclarations(
   packages: APIPackageConfig[],
   repositoryRoot: string,
 ): Promise<void> {
-  const typeScriptEntry = fileURLToPath(import.meta.resolve('typescript'));
-  const compilerPath = path.resolve(
-    path.dirname(typeScriptEntry),
-    '../bin/tsc',
-  );
+  const compilerPath = typeScriptCompiler(repositoryRoot);
 
   execFileSync(
-    process.execPath,
+    compilerPath,
     [
-      '--',
-      compilerPath,
       '--build',
       ...packages.map(pkg => pkg.tsconfig),
       '--emitDeclarationOnly',
@@ -779,6 +790,217 @@ async function typeDocVersion(): Promise<string> {
   return manifest['version'];
 }
 
+async function docsToolsVersion(): Promise<string> {
+  const manifestPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../package.json',
+  );
+  const manifest = await readJSON(manifestPath);
+
+  if (!isRecord(manifest) || typeof manifest['version'] !== 'string') {
+    throw new Error('Cannot read docs-tools package version');
+  }
+
+  return manifest['version'];
+}
+
+function versionedPackageConfig(
+  config: DocsSiteConfig,
+  sourceRoot: string,
+): DocsSiteConfig {
+  const packages = config.apiPackages?.map(packageConfig => {
+    const packageRelative = path.relative(
+      config.repositoryRoot,
+      packageConfig.directory,
+    );
+    const directory = path.resolve(sourceRoot, packageRelative);
+    const relativeToPackage = (filename: string): string =>
+      path.resolve(
+        directory,
+        path.relative(packageConfig.directory, filename),
+      );
+
+    return {
+      ...packageConfig,
+      directory,
+      tsconfig: relativeToPackage(packageConfig.tsconfig),
+      entries: packageConfig.entries.map(entry => ({
+        ...entry,
+        source: relativeToPackage(entry.source),
+        types: relativeToPackage(entry.types),
+      })),
+    };
+  });
+
+  return {
+    ...config,
+    repositoryRoot: sourceRoot,
+    ...(packages === undefined ? {} : { apiPackages: packages }),
+  };
+}
+
+async function buildVersionAtTag(
+  config: DocsSiteConfig,
+  version: string,
+  repository: string,
+  dependencies: APIGenerationDependencies,
+): Promise<Awaited<ReturnType<APIVersionBuilder>>> {
+  const buildRoot = path.join(
+    config.repositoryRoot,
+    'tmp/docs-tools/api-build',
+  );
+
+  await mkdir(buildRoot, { recursive: true });
+  const checkoutRoot = await mkdtemp(path.join(buildRoot, `tag-${version}-`));
+
+  try {
+    execFileSync('git', ['init', '--quiet'], { cwd: checkoutRoot });
+    execFileSync('git', ['remote', 'add', 'origin', repository], {
+      cwd: checkoutRoot,
+    });
+    execFileSync('git', ['fetch', '--depth=1', 'origin', `refs/tags/${version}`], {
+      cwd: checkoutRoot,
+      stdio: 'inherit',
+    });
+    const commit = execFileSync(
+      'git',
+      ['rev-parse', 'FETCH_HEAD^{commit}'],
+      { cwd: checkoutRoot, encoding: 'utf8' },
+    ).trim();
+
+    execFileSync('git', ['checkout', '--quiet', '--detach', commit], {
+      cwd: checkoutRoot,
+    });
+    const buildConfig = versionedPackageConfig(config, checkoutRoot);
+    const packages = buildConfig.apiPackages ?? [];
+
+    for (const packageConfig of packages) {
+      const manifest = await readJSON(path.join(packageConfig.directory, 'package.json'));
+
+      if (
+        !isRecord(manifest) ||
+        manifest['name'] !== packageConfig.name ||
+        manifest['version'] !== version
+      ) {
+        throw new Error(
+          `Tag package manifest must match configured package and version: ${packageConfig.key}@${version}`,
+        );
+      }
+    }
+    await readFile(path.join(checkoutRoot, 'pnpm-lock.yaml'));
+    execFileSync('pnpm', ['install', '--frozen-lockfile'], {
+      cwd: checkoutRoot,
+      stdio: 'inherit',
+    });
+    const typescriptVersion = execFileSync(
+      'pnpm',
+      ['exec', 'tsc', '--version'],
+      { cwd: checkoutRoot, encoding: 'utf8' },
+    ).trim().replace(/^Version\s+/u, '');
+
+    await dependencies.buildDeclarations(packages, checkoutRoot);
+    const project = await dependencies.convert(buildConfig, commit);
+    const generatedPackages = buildAPIDocumentationPackages(
+      buildConfig,
+      new Map(
+        await Promise.all(
+          packages.map(async packageConfig => {
+            const manifest = await readJSON(
+              path.join(packageConfig.directory, 'package.json'),
+            );
+
+            if (
+              !isRecord(manifest) ||
+              typeof manifest['name'] !== 'string' ||
+              typeof manifest['version'] !== 'string'
+            ) {
+              throw new Error(
+                `Invalid package manifest in tag checkout: ${packageConfig.key}`,
+              );
+            }
+
+            return [packageConfig.key, {
+              name: manifest['name'],
+              version: manifest['version'],
+            }] as const;
+          }),
+        ),
+      ),
+      project,
+    );
+    const publicProject = externalizeTypeDocDependencies(
+      project,
+      generatedPackages,
+      config.sourceLocale,
+    );
+
+    return {
+      metadata: {
+        commit,
+        generatorVersion: await dependencies.generatorVersion(),
+        sourceHash: contentHash(publicProject),
+        packages: generatedPackages,
+      },
+      project: metadataProject(publicProject),
+      typescriptVersion,
+    };
+  } finally {
+    await rm(checkoutRoot, { recursive: true, force: true });
+  }
+}
+
+async function buildVersionAtCurrent(
+  config: DocsSiteConfig,
+  version: string,
+  dependencies: APIGenerationDependencies,
+): Promise<Awaited<ReturnType<APIVersionBuilder>>> {
+  const packages = config.apiPackages ?? [];
+  const packageManifests = new Map<string, { name: string; version: string }>();
+
+  for (const packageConfig of packages) {
+    const manifest = await readJSON(path.join(packageConfig.directory, 'package.json'));
+
+    if (
+      !isRecord(manifest) ||
+      manifest['name'] !== packageConfig.name ||
+      manifest['version'] !== version
+    ) {
+      throw new Error(
+        `Current package manifest must match configured package and version: ${packageConfig.key}@${version}`,
+      );
+    }
+    packageManifests.set(packageConfig.key, {
+      name: packageConfig.name,
+      version,
+    });
+  }
+  const commit = dependencies.getCommit(config.repositoryRoot);
+
+  await dependencies.buildDeclarations(packages, config.repositoryRoot);
+  const project = await dependencies.convert(config, commit);
+  const generatedPackages = buildAPIDocumentationPackages(
+    config,
+    packageManifests,
+    project,
+  );
+  const publicProject = externalizeTypeDocDependencies(
+    project,
+    generatedPackages,
+    config.sourceLocale,
+  );
+
+  return {
+    metadata: {
+      commit,
+      generatorVersion: await dependencies.generatorVersion(),
+      sourceHash: contentHash(publicProject),
+      packages: generatedPackages,
+    },
+    project: metadataProject(publicProject),
+    typescriptVersion: typeScriptVersion(config.repositoryRoot),
+  };
+}
+
 const defaultDependencies: APIGenerationDependencies = {
   buildDeclarations,
   convert: convertTypeDoc,
@@ -794,7 +1016,21 @@ export async function generateAPIDocumentation(
   config: DocsSiteConfig,
   selectedPackageKeys?: string[],
   dependencies: APIGenerationDependencies = defaultDependencies,
-): Promise<{ packages: number; exports: number; warnings: string[] }> {
+  reportVersionStatus?: (status: {
+    version: string;
+    status: 'complete' | 'missing' | 'invalid';
+    reason?: string;
+  }) => void,
+): Promise<{
+  packages: number;
+  exports: number;
+  warnings: string[];
+  versionStatuses: {
+    version: string;
+    status: 'complete' | 'missing' | 'invalid';
+    reason?: string;
+  }[];
+}> {
   const packages = config.apiPackages;
 
   if (packages === undefined || packages.length === 0) {
@@ -813,59 +1049,27 @@ export async function generateAPIDocumentation(
       'API generation selected unknown or duplicate package keys',
     );
   }
-  const packageManifests = new Map<string, { name: string; version: string }>();
-
-  for (const pkg of packages) {
-    await assertNoSymlinkPath(config.repositoryRoot, pkg.directory);
-    await assertNoSymlinkPath(config.repositoryRoot, pkg.tsconfig);
-    const manifestPath = path.join(pkg.directory, 'package.json');
-    const manifest = await readJSON(manifestPath);
-
-    if (
-      !isRecord(manifest) ||
-      typeof manifest['name'] !== 'string' ||
-      typeof manifest['version'] !== 'string' ||
-      manifest['name'] !== pkg.name
-    ) {
-      throw new Error(
-        `Package manifest does not match configured API package: ${pkg.key}`,
-      );
-    }
-    parseVersion(manifest['version']);
-    packageManifests.set(pkg.key, {
-      name: manifest['name'],
-      version: manifest['version'],
-    });
-    for (const entry of pkg.entries) {
-      await assertNoSymlinkPath(config.repositoryRoot, entry.source);
-      await assertNoSymlinkPath(config.repositoryRoot, entry.types);
-    }
+  if (config.apiVersions === undefined) {
+    throw new Error(
+      'api generate requires api.repository and api.versions configuration',
+    );
   }
-  await dependencies.buildDeclarations(packages, config.repositoryRoot);
-  const commit = dependencies.getCommit(config.repositoryRoot);
-  const project = await dependencies.convert(config, commit);
-  const generatedPackages = buildAPIDocumentationPackages(
-    config,
-    packageManifests,
-    project,
-  );
-  const publicProject = externalizeTypeDocDependencies(
-    project,
-    generatedPackages,
-    config.sourceLocale,
-  );
-  const metadata: APIDocumentationMetadata = {
-    commit,
-    generatorVersion: await dependencies.generatorVersion(),
-    sourceHash: contentHash(publicProject),
-    packages: generatedPackages,
-  };
+  const generatorVersion = await docsToolsVersion();
+  const buildVersion: APIVersionBuilder = (
+    versionConfig,
+    version,
+    repository,
+    source,
+  ) => source === 'current'
+    ? buildVersionAtCurrent(versionConfig, version, dependencies)
+    : buildVersionAtTag(versionConfig, version, repository, dependencies);
 
-  return assembleAPIDocumentation(
-    metadataProject(publicProject),
-    metadata,
+  return generateVersionedAPIDocumentation(
     config,
     selectedKeys,
+    buildVersion,
+    generatorVersion,
+    reportVersionStatus,
   );
 }
 

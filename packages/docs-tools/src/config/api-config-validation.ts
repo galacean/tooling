@@ -1,4 +1,5 @@
 import { isSafeRelativePath } from '../path-validation';
+import { parseAPIVersionManifest } from '../api/versions';
 import { isSafeSlug } from './validation';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -73,6 +74,25 @@ export function validateAPIConfig(
   }
 
   const issues: string[] = [];
+
+  if (value['versionsFile'] !== undefined) {
+    issues.push('api.versions must be configured inline, not via versionsFile');
+  }
+  if (
+    value['repository'] !== undefined ||
+    value['versions'] !== undefined
+  ) {
+    try {
+      parseAPIVersionManifest({
+        repository: value['repository'],
+        versions: value['versions'],
+      });
+    } catch (error) {
+      issues.push(
+        `api.repository/api.versions is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   if (value['packageReadmes'] !== undefined) {
     issues.push(

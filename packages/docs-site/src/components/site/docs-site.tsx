@@ -20,6 +20,7 @@ import {
 } from '../../i18n';
 import { ThemeProvider } from '../../providers';
 import { DocumentError } from '../shared';
+import type { IconName } from '../shared/icon';
 import { lazyComponent } from '../shared/lazy-component';
 import { SiteShell } from './site-shell';
 import type { ManualPageMessages } from '../manual';
@@ -59,8 +60,28 @@ export interface DocsSiteProps<TLocale extends string> {
   defaultLocale: TLocale;
   preferenceNamespace: string;
   site: DocsSiteConfiguration<TLocale>;
-  renderHome: (locale: TLocale) => ReactNode;
+  pages: readonly DocsSitePage<TLocale>[];
 }
+
+export type DocsSitePageConfig<
+  TLocale extends string,
+  TIcon extends string = IconName,
+> =
+  | { slug: null; icon?: TIcon }
+  | {
+      slug: string;
+      title: Readonly<Record<TLocale, string>>;
+      icon?: TIcon;
+    };
+
+export type DocsSitePage<TLocale extends string> =
+  | { slug: null; icon?: IconName; render: (locale: TLocale) => ReactNode }
+  | {
+      slug: string;
+      title: (locale: TLocale) => string;
+      icon?: IconName;
+      render: (locale: TLocale) => ReactNode;
+    };
 
 function LocaleRedirect({
   getPreferredLocale,
@@ -94,16 +115,20 @@ function ConfiguredSiteShell<TLocale extends string>({
   locales,
   locale,
   site,
+  pages,
 }: {
   baseURL: string;
   dataBaseURL: string;
   locales: readonly TLocale[];
   locale: TLocale;
   site: DocsSiteConfiguration<TLocale>;
+  pages: readonly DocsSitePage<TLocale>[];
 }) {
   const location = useLocation();
   const messages = site.messages(locale);
-  const section = location.pathname.split('/')[2];
+  const pathSegments = location.pathname.split('/').filter(Boolean);
+  const section = pathSegments[1];
+  const sitePage = pages.find(page => page.slug === (section ?? null));
   const pageKind =
     section === 'api' || section === 'manual' ? section : 'other';
   const origin = site.siteOrigin ?? window.location.origin;
@@ -128,6 +153,26 @@ function ConfiguredSiteShell<TLocale extends string>({
     api === undefined
       ? (['home', 'manual'] as const)
       : (['home', 'manual', 'api'] as const);
+  const navigation = [
+    ...navigationPages.map(page => ({
+      key: page,
+      label: messages[page],
+      to: localePath(locale, page === 'home' ? [] : [page]),
+      end: page === 'home',
+    })),
+    ...pages.flatMap(page =>
+      page.slug === null
+        ? []
+        : [
+            {
+              key: `site-page:${page.slug}`,
+              label: page.title(locale),
+              to: localePath(locale, [page.slug]),
+              ...(page.icon === undefined ? {} : { icon: page.icon }),
+            },
+          ],
+    ),
+  ];
 
   return (
     <SiteShell
@@ -140,12 +185,7 @@ function ConfiguredSiteShell<TLocale extends string>({
         ? {}
         : { docsBrandMarkUrls: site.docsBrandMarkUrls })}
       homeHref={localePath(locale)}
-      navigation={navigationPages.map(page => ({
-        key: page,
-        label: messages[page],
-        to: localePath(locale, page === 'home' ? [] : [page]),
-        end: page === 'home',
-      }))}
+      navigation={navigation}
       {...(site.githubHref === undefined
         ? {}
         : { githubHref: site.githubHref })}
@@ -154,7 +194,9 @@ function ConfiguredSiteShell<TLocale extends string>({
       pageTitle={
         pageKind === 'api'
           ? (location.pathname.split('/').filter(Boolean).at(-1) ?? 'API')
-          : ''
+          : sitePage === undefined || sitePage.slug === null
+            ? ''
+            : sitePage.title(locale)
       }
       canonicalHref={absoluteURL(location.pathname)}
       getAlternateHref={language => {
@@ -196,13 +238,18 @@ export function DocsSite<TLocale extends string>({
   defaultLocale,
   preferenceNamespace,
   site,
-  renderHome,
+  pages,
 }: DocsSiteProps<TLocale>) {
   const [getPreferredLocale] = useState(() =>
     createBrowserLocalePreference(locales, defaultLocale, preferenceNamespace),
   );
   const basename = normalizeBase(baseURL).replace(/\/$/u, '') || '/';
   const api = site.api;
+  const homePage = pages.find(page => page.slug === null);
+
+  if (homePage === undefined) {
+    throw new Error('DocsSite requires a page with a null slug for the locale home route');
+  }
 
   return (
     <ThemeProvider namespace={preferenceNamespace}>
@@ -223,10 +270,11 @@ export function DocsSite<TLocale extends string>({
                   locales={locales}
                   locale={locale}
                   site={site}
+                  pages={pages}
                 ></ConfiguredSiteShell>
               }
             >
-              <Route index element={renderHome(locale)} />
+              <Route index element={homePage.render(locale)} />
               {api !== undefined &&
                 (['api', 'api/:pkg', 'api/:pkg/:version/:symbol'] as const).map(
                   path => (
@@ -264,6 +312,15 @@ export function DocsSite<TLocale extends string>({
                   }
                 />
               ))}
+              {pages.map(page =>
+                page.slug === null ? null : (
+                  <Route
+                    key={page.slug}
+                    path={page.slug}
+                    element={page.render(locale)}
+                  />
+                ),
+              )}
               <Route
                 path="*"
                 element={

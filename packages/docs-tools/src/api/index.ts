@@ -7,4 +7,6 @@ export * from './snapshot';
 export * from './snapshot-cleanup';
 export * from './snapshot-reference';
 export * from './translations';
+export * from './versioned-generation';
+export * from './versioned-state';
 export * from './versions';

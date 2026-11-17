@@ -831,6 +831,43 @@ async function syncLocalCollection(
   return localItems.length;
 }
 
+async function readManualOverview(
+  config: DocsSiteConfig,
+  locale: string,
+): Promise<Buffer | undefined> {
+  for (const collection of config.manuals ?? []) {
+    if (collection.source.type !== 'local') {
+      continue;
+    }
+    const sourcePath = path.join(
+      collection.source.directory,
+      locale,
+      'index.md',
+    );
+
+    await assertNoSymlinkPath(config.repositoryRoot, sourcePath);
+    try {
+      return await readFile(sourcePath);
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+  const existingPath = path.join(config.manualDirectory, locale, 'index.md');
+
+  await assertNoSymlinkPath(config.repositoryRoot, existingPath);
+  try {
+    return await readFile(existingPath);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return undefined;
+}
+
 async function writeManualData(
   config: DocsSiteConfig,
   pages: ManualPage[],
@@ -852,20 +889,15 @@ async function writeManualData(
       `${JSON.stringify(navigation, null, 2)}\n`,
     );
     for (const locale of config.locales) {
-      const overviewPath = path.join(targetDirectory, locale, 'index.md');
+      const overview = await readManualOverview(config, locale);
 
-      try {
-        await assertNoSymlinkPath(config.repositoryRoot, overviewPath);
-        const overview = await readFile(overviewPath);
-        const localeDirectory = path.join(temporaryDirectory, locale);
-
-        await mkdir(localeDirectory, { recursive: true });
-        await writeFile(path.join(localeDirectory, 'index.md'), overview);
-      } catch (error) {
-        if (errorCode(error) !== 'ENOENT') {
-          throw error;
-        }
+      if (overview === undefined) {
+        continue;
       }
+      const localeDirectory = path.join(temporaryDirectory, locale);
+
+      await mkdir(localeDirectory, { recursive: true });
+      await writeFile(path.join(localeDirectory, 'index.md'), overview);
     }
     for (const page of pages) {
       for (const locale of config.locales) {

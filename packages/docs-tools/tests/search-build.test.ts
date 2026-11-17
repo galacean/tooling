@@ -149,6 +149,9 @@ async function fixture(t: TestContext) {
     `export default ${JSON.stringify({
       sourceLocale: 'en',
       locales,
+      pages: [
+        { slug: 'custom-page', title: { en: 'Custom page', 'zh-CN': '自定义页面' } },
+      ],
       api: {
         dataDirectory: 'site/public/data/api',
         packages: [
@@ -221,6 +224,9 @@ async function fixture(t: TestContext) {
       configPath: path.join(repositoryRoot, 'site/site.config.ts'),
       sourceLocale: 'en',
       locales,
+      pages: [
+        { slug: 'custom-page', title: { en: 'Custom page', 'zh-CN': '自定义页面' } },
+      ],
       apiDirectory,
       manualDirectory,
       translationWorkDirectory: path.join(
@@ -311,6 +317,8 @@ void test('builds search indexes from each package current path and localized co
   assert.ok(
     chinese.some(item => item.name === '介绍' && item.category === 'manual'),
   );
+  assert.ok(!english.some(item => item.url.includes('/custom-page/')));
+  assert.ok(!chinese.some(item => item.url.includes('/custom-page/')));
   assert.deepEqual(counts, { en: english.length, 'zh-CN': chinese.length });
 });
 

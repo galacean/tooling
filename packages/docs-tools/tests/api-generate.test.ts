@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -134,7 +134,7 @@ async function fixture() {
   const dependencies: APIGenerationDependencies = {
     buildDeclarations: async () => undefined,
     convert: async () => project as never,
-    getCommit: () => 'c'.repeat(40),
+    getCommit: () => 'a'.repeat(40),
     generatorVersion: async () => '0.28.20',
   };
 
@@ -282,107 +282,105 @@ void test('externalizes dependency trees while preserving public external export
   assert.equal(Object.keys(externalized.symbolIdMap).includes('13'), false);
 });
 
-void test('generates package-key snapshots after checking real package name and public exports', async t => {
+void test('requires API version configuration', async t => {
   const values = await fixture();
+  let buildCalled = false;
 
   t.onTestFinished(() =>
     rm(values.repositoryRoot, { recursive: true, force: true }),
   );
-  const result = await generateAPIDocumentation(
-    values.config,
-    undefined,
-    values.dependencies,
-  );
-
-  assert.equal(result.packages, 1);
-  assert.equal(result.exports, 1);
-  assert.ok(result.warnings.some(warning => warning.includes('zh-CN')));
-  await assert.doesNotReject(
-    import('node:fs/promises').then(fs =>
-      fs.access(path.join(values.apiDirectory, 'widget-dir/1.2.3/en.api.json')),
-    ),
-  );
-});
-
-void test('rejects a package name mismatch before invoking the TypeDoc converter', async t => {
-  const values = await fixture();
-
-  t.onTestFinished(() =>
-    rm(values.repositoryRoot, { recursive: true, force: true }),
-  );
-  await writeFile(
-    path.join(values.packageDirectory, 'package.json'),
-    JSON.stringify({
-      name: '@example/wrong-name',
-      version: '1.2.3',
-      types: './dist/index.d.ts',
-    }),
-  );
-  let converted = false;
-
   await assert.rejects(
     generateAPIDocumentation(values.config, undefined, {
       ...values.dependencies,
-      convert: async (...args) => {
-        converted = true;
-
-        return values.dependencies.convert(...args);
+      buildDeclarations: async () => {
+        buildCalled = true;
       },
     }),
-    /Package manifest does not match/u,
+    /api generate requires api\.repository and api\.versions configuration/u,
   );
-  assert.equal(converted, false);
+  assert.equal(buildCalled, false);
 });
 
-void test('runs api generate through the mjs CLI with an isolated TypeDoc package', async t => {
+void test('builds the configured package version from the local workspace when versions match', async t => {
+  const values = await fixture();
+  const commit = 'c'.repeat(40);
+  let buildCount = 0;
+
+  t.onTestFinished(() =>
+    rm(values.repositoryRoot, { recursive: true, force: true }),
+  );
+  values.config.apiVersions = {
+    repository: 'https://github.com/example/project.git',
+    versions: ['1.2.3'],
+  };
+
+  const result = await generateAPIDocumentation(values.config, undefined, {
+    ...values.dependencies,
+    buildDeclarations: async () => {
+      buildCount += 1;
+    },
+    getCommit: () => commit,
+  });
+  const manifest = JSON.parse(
+    await (await import('node:fs/promises')).readFile(
+      path.join(values.apiDirectory, 'manifest.json'),
+      'utf8',
+    ),
+  ) as {
+    packages: {
+      current: { packageVersion: string };
+      versions: { version: string }[];
+    }[];
+  };
+  const sources = JSON.parse(
+    await (await import('node:fs/promises')).readFile(
+      path.join(values.apiDirectory, 'version-sources.json'),
+      'utf8',
+    ),
+  ) as {
+    versions: {
+      version: string;
+      commit: string;
+      generatorVersion: string;
+      typeDocVersion: string;
+      typescriptVersion: string;
+    }[];
+  };
+
+  assert.equal(buildCount, 1);
+  assert.deepEqual(result.versionStatuses, [
+    { version: '1.2.3', status: 'missing' },
+  ]);
+  assert.equal(manifest.packages[0]?.current.packageVersion, '1.2.3');
+  assert.equal(manifest.packages[0]?.versions[0]?.version, '1.2.3');
+  assert.deepEqual(
+    sources.versions.map(({ version, commit: sourceCommit, generatorVersion, typeDocVersion }) => ({
+      version,
+      commit: sourceCommit,
+      generatorVersion,
+      typeDocVersion,
+    })),
+    [{
+      version: '1.2.3',
+      commit,
+      generatorVersion: '0.0.9',
+      typeDocVersion: '0.28.20',
+    }],
+  );
+  assert.match(sources.versions[0]?.typescriptVersion ?? '', /^\d+\.\d+\.\d+$/u);
+});
+
+void test('requires fixed API versions through the mjs CLI', async t => {
   const values = await fixture();
 
   t.onTestFinished(() =>
     rm(values.repositoryRoot, { recursive: true, force: true }),
   );
   const siteDirectory = path.join(values.repositoryRoot, 'site');
-  const secondPackage = path.join(values.repositoryRoot, 'packages/second');
   const configPath = path.join(siteDirectory, 'site.config.ts');
   const cliPath = path.resolve(import.meta.dirname, '../bin/galacean-docs.mjs');
 
   await mkdir(siteDirectory, { recursive: true });
-  await mkdir(path.join(secondPackage, 'src'), { recursive: true });
-  await writeFile(
-    path.join(secondPackage, 'src/public.ts'),
-    'export interface SecondWidget { id: string; }\n',
-  );
-  await writeFile(
-    path.join(secondPackage, 'package.json'),
-    JSON.stringify({
-      name: '@example/second-widget',
-      version: '2.0.0',
-      type: 'module',
-      types: './dist/index.d.ts',
-      exports: {
-        '.': { types: './dist/index.d.ts', import: './dist/index.js' },
-      },
-    }),
-  );
-  await writeFile(
-    path.join(secondPackage, 'tsconfig.json'),
-    JSON.stringify({
-      compilerOptions: {
-        strict: true,
-        target: 'ES2022',
-        module: 'ESNext',
-        composite: true,
-        rootDir: 'src',
-        declaration: true,
-        emitDeclarationOnly: true,
-        outDir: 'dist',
-      },
-      include: ['src/**/*.ts'],
-    }),
-  );
-  await writeFile(
-    path.join(values.repositoryRoot, 'pnpm-workspace.yaml'),
-    'packages:\n  - packages/*\n',
-  );
   await writeFile(
     configPath,
     `export default ${JSON.stringify({
@@ -391,7 +389,6 @@ void test('runs api generate through the mjs CLI with an isolated TypeDoc packag
       manual: { dataDirectory: 'site/public/data/manual' },
       api: {
         dataDirectory: 'site/public/data/api',
-        sourceLinkTemplate: 'https://example.test/blob/{commit}/{path}#L{line}',
         packages: [
           {
             key: 'widget-dir',
@@ -399,19 +396,10 @@ void test('runs api generate through the mjs CLI with an isolated TypeDoc packag
             directory: 'packages/widget-dir',
             tsconfig: 'tsconfig.json',
             entries: [
-              { key: 'root', source: 'src/index.ts', types: 'dist/index.d.ts' },
-            ],
-          },
-          {
-            key: 'second',
-            name: '@example/second-widget',
-            directory: 'packages/second',
-            tsconfig: 'tsconfig.json',
-            entries: [
               {
-                key: 'public',
-                source: 'src/public.ts',
-                types: 'dist/public.d.ts',
+                key: 'root',
+                source: 'src/index.ts',
+                types: 'dist/index.d.ts',
               },
             ],
           },
@@ -420,46 +408,23 @@ void test('runs api generate through the mjs CLI with an isolated TypeDoc packag
       translationWorkDirectory: 'tmp/docs-tools/api-translation',
     })} as const;\n`,
   );
-  await execFileAsync('git', ['init', '--quiet'], {
-    cwd: values.repositoryRoot,
-  });
-  await execFileAsync(
-    'git',
-    ['config', 'user.email', 'docs-tools@example.test'],
-    { cwd: values.repositoryRoot },
-  );
-  await execFileAsync('git', ['config', 'user.name', 'Docs Tools Test'], {
-    cwd: values.repositoryRoot,
-  });
-  await execFileAsync('git', ['add', '--all'], { cwd: values.repositoryRoot });
-  await execFileAsync('git', ['commit', '--quiet', '-m', 'fixture'], {
-    cwd: values.repositoryRoot,
-  });
-  const result = await execFileAsync(
-    process.execPath,
-    [cliPath, 'api', 'generate', '--config', 'site/site.config.ts'],
-    { cwd: values.repositoryRoot },
-  );
-  const manifest = JSON.parse(
-    await readFile(path.join(values.apiDirectory, 'manifest.json'), 'utf8'),
-  ) as {
-    packages: {
-      key: string;
-      name: string;
-      current: { json: Record<string, string> };
-    }[];
-  };
+
+  let stderr = '';
+
+  try {
+    await execFileAsync(
+      process.execPath,
+      [cliPath, 'api', 'generate', '--config', 'site/site.config.ts'],
+      { cwd: values.repositoryRoot },
+    );
+  } catch (error) {
+    if (error !== null && typeof error === 'object' && 'stderr' in error) {
+      stderr = String(error.stderr);
+    }
+  }
 
   assert.match(
-    result.stdout,
-    /\[docs-tools\]\[api generate\]\[SUCCESS\] API: 2 packages; 2 exports/u,
+    stderr,
+    /api generate requires api\.repository and api\.versions configuration/u,
   );
-  assert.equal(manifest.packages[0]?.key, 'widget-dir');
-  assert.equal(manifest.packages[0]?.name, '@example/real-widget');
-  assert.equal(
-    manifest.packages[0]?.current.json['en'],
-    'api/widget-dir/1.2.3/en.api.json',
-  );
-  assert.equal(manifest.packages[1]?.key, 'second');
-  assert.equal(manifest.packages[1]?.name, '@example/second-widget');
-}, 15_000);
+});

@@ -17,6 +17,14 @@ void test('loads TypeScript site config and resolves configured paths from repos
     locales: ['zh-CN', 'en'],
     api: { dataDirectory: 'site/public/data/api' },
     manual: { dataDirectory: 'site/generated/manual' },
+    pages: [
+      { slug: null },
+      {
+        slug: 'custom-page',
+        title: { en: 'Custom page', 'zh-CN': '自定义页面' },
+        icon: 'source',
+      },
+    ],
     translationWorkDirectory: 'tmp/docs-tools/api-translation',
   } satisfies Record<string, unknown>;\n`,
   );
@@ -25,6 +33,14 @@ void test('loads TypeScript site config and resolves configured paths from repos
 
   assert.equal(config.sourceLocale, 'zh-CN');
   assert.deepEqual(config.locales, ['zh-CN', 'en']);
+  assert.deepEqual(config.pages, [
+    { slug: null },
+    {
+      slug: 'custom-page',
+      title: { 'zh-CN': '自定义页面', en: 'Custom page' },
+      icon: 'source',
+    },
+  ]);
   assert.equal(
     config.apiDirectory,
     path.join(config.repositoryRoot, 'site/public/data/api'),
@@ -86,6 +102,31 @@ void test('loads API-only config without a manual directory', async t => {
     config.manualDirectory,
     path.join(config.repositoryRoot, 'site/public/data/manual'),
   );
+});
+
+void test('loads inline api.versions configuration', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-site-config-'));
+
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    path.join(root, 'site.config.json'),
+    JSON.stringify({
+      sourceLocale: 'en',
+      locales: ['en'],
+      api: {
+        dataDirectory: 'site/data/api',
+        repository: 'https://github.com/example/project.git',
+        versions: ['1.2.3', '1.2.4'],
+      },
+    }),
+  );
+
+  const config = await loadSiteConfig('site.config.json', root);
+
+  assert.deepEqual(config.apiVersions, {
+    repository: 'https://github.com/example/project.git',
+    versions: ['1.2.3', '1.2.4'],
+  });
 });
 
 void test('loads config without API or manual directories', async t => {

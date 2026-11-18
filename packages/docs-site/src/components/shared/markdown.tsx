@@ -1,5 +1,12 @@
-import { Children, isValidElement, memo, useEffect, useRef } from 'react';
-import type { ReactNode } from 'react';
+import {
+  Children,
+  isValidElement,
+  memo,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js/lib/core';
@@ -8,6 +15,66 @@ import json from 'highlight.js/lib/languages/json';
 import bash from 'highlight.js/lib/languages/bash';
 import { Link, useLocation } from 'react-router-dom';
 import { CopyButton } from './copy-button';
+import { ImageViewer } from './image-viewer';
+import type { ImageViewerImage } from './image-viewer';
+
+const getContentImages = (root: HTMLElement) =>
+  Array.from(root.querySelectorAll('img')).filter(
+    image => image.currentSrc !== '' || image.getAttribute('src') !== null,
+  );
+
+function useImageViewer() {
+  const [opened, setOpened] = useState<{
+    images: ImageViewerImage[];
+    initialIndex: number;
+    returnFocusTo: () => HTMLImageElement | undefined;
+  }>();
+
+  const showImage = (event: ReactMouseEvent<HTMLElement>) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const clickedImage = event.target.closest('img');
+
+    if (!(clickedImage instanceof HTMLImageElement)) {
+      return;
+    }
+    const root = event.currentTarget;
+    const contentImages = getContentImages(root);
+    const index = contentImages.indexOf(clickedImage);
+
+    if (index < 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const images = contentImages.map(image => ({
+      src: image.currentSrc || image.src,
+      alt: image.alt,
+      title: image.title,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+    }));
+
+    setOpened({
+      images,
+      initialIndex: index,
+      returnFocusTo: () => getContentImages(root)[index],
+    });
+  };
+
+  const viewer =
+    opened === undefined ? null : (
+      <ImageViewer
+        images={opened.images}
+        initialIndex={opened.initialIndex}
+        returnFocusTo={opened.returnFocusTo}
+        onClose={() => setOpened(undefined)}
+      />
+    );
+
+  return { showImage, viewer };
+}
 
 hljs.registerLanguage('ts', typescript);
 hljs.registerLanguage('typescript', typescript);
@@ -96,10 +163,11 @@ export function MarkdownContent({
   resolveImage?: (url: string) => string;
 }) {
   const location = useLocation();
+  const { showImage, viewer } = useImageViewer();
   let headingInserted = false;
 
   return (
-    <div className="markdown-content">
+    <div className="markdown-content" onClickCapture={showImage}>
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -199,6 +267,7 @@ export function MarkdownContent({
       >
         {text}
       </Markdown>
+      {viewer}
     </div>
   );
 }
@@ -236,6 +305,7 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
   html: string;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const { showImage, viewer } = useImageViewer();
 
   useEffect(() => {
     const root = container.current;
@@ -258,15 +328,19 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
   }, [html]);
 
   return (
-    <div
-      ref={element => {
-        container.current = element;
-        if (element !== null) {
-          replaceYuqueVideoPlaceholders(element);
-        }
-      }}
-      className="markdown-content lake-content"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <div
+        ref={element => {
+          container.current = element;
+          if (element !== null) {
+            replaceYuqueVideoPlaceholders(element);
+          }
+        }}
+        className="markdown-content lake-content"
+        onClickCapture={showImage}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {viewer}
+    </>
   );
 });

@@ -19,6 +19,7 @@ import {
   applyTranslationPairsWithRename,
   contentHash,
   extractTranslationTasks,
+  migrateAPITranslations,
   sourceProject,
 } from '@galacean/docs-tools';
 
@@ -35,7 +36,7 @@ async function fixture(t: TestContext) {
   );
   const dataDirectory = path.join(repositoryRoot, 'site/public/data');
   const apiDirectory = path.join(dataDirectory, 'api');
-  const translationWorkDirectory = path.join(
+  const apiTranslationDirectory = path.join(
     repositoryRoot,
     'tmp/docs-tools/api-translation',
   );
@@ -183,7 +184,7 @@ async function fixture(t: TestContext) {
       locales: [sourceLocale, targetLocale],
       api: { dataDirectory: 'site/public/data/api' },
       manual: { dataDirectory: 'site/public/data/manual' },
-      translationWorkDirectory: 'tmp/docs-tools/api-translation',
+      translationDirectory: 'tmp/docs-tools',
     })} as const;\n`,
   );
   await writeFile(
@@ -209,7 +210,7 @@ async function fixture(t: TestContext) {
     repositoryRoot,
     dataDirectory,
     apiDirectory,
-    translationWorkDirectory,
+    apiTranslationDirectory,
     sourcePath,
     targetPath,
     siblingSourcePath,
@@ -220,7 +221,7 @@ async function fixture(t: TestContext) {
       sourceLocale,
       locales: [sourceLocale, targetLocale],
       apiDirectory,
-      translationWorkDirectory,
+      apiTranslationDirectory,
     },
   };
 }
@@ -363,6 +364,19 @@ void test('applies a fresh translation and updates the version and current manif
   );
   assert.equal(target.locale, targetLocale);
   assert.equal(target.children[0]?.comment.summary[0]?.text, 'A widget.');
+  const archive = JSON.parse(
+    await readFile(
+      path.join(
+        values.repositoryRoot,
+        'tmp/docs-tools/translation-cache/api/widget/1.2.3/en.json',
+      ),
+      'utf8',
+    ),
+  ) as { locale: string; version: string; translations: Record<string, string> };
+
+  assert.equal(archive.locale, targetLocale);
+  assert.equal(archive.version, version);
+  assert.equal(Object.values(archive.translations)[0], 'A widget.');
   assert.notEqual(
     manifest.packages[0]?.current.snapshot,
     originalManifest.packages[0]?.current.snapshot,
@@ -375,6 +389,48 @@ void test('applies a fresh translation and updates the version and current manif
   assert.equal(await readFile(values.sourcePath, 'utf8'), originalSource);
   await assert.rejects(readFile(values.taskPath), { code: 'ENOENT' });
   await assert.rejects(readFile(values.translationPath), { code: 'ENOENT' });
+});
+
+void test('migrates a valid translated API snapshot into the persistent archive', async t => {
+  const values = await createTranslation(t);
+  const config = {
+    ...values.config,
+    configPath: path.join(values.repositoryRoot, 'site/site.config.ts'),
+    manualDirectory: path.join(values.repositoryRoot, 'site/public/data/manual'),
+    apiVersions: {
+      repository: 'https://github.com/example/project.git',
+      versions: [version],
+    },
+    apiPackages: [{
+      key: packageKey,
+      name: '@example/widget',
+      directory: path.join(values.repositoryRoot, 'packages/widget'),
+      tsconfig: path.join(values.repositoryRoot, 'packages/widget/tsconfig.json'),
+      entries: [],
+    }],
+  };
+
+  await applyTranslationPairs(
+    [{ taskPath: values.taskPath, translationPath: values.translationPath }],
+    config,
+  );
+  const archivePath = path.join(
+    values.repositoryRoot,
+    `tmp/docs-tools/translation-cache/api/${packageKey}/${version}/en.json`,
+  );
+
+  await rm(archivePath, { force: true });
+  const result = await migrateAPITranslations(config);
+  const archive = JSON.parse(await readFile(archivePath, 'utf8')) as {
+    locale: string;
+    version: string;
+    translations: Record<string, string>;
+  };
+
+  assert.equal(result.migrated, 1);
+  assert.equal(archive.locale, 'en');
+  assert.equal(archive.version, version);
+  assert.equal(Object.values(archive.translations)[0], 'A widget.');
 });
 
 void test('rejects a stale target without changing it or consuming task files', async t => {

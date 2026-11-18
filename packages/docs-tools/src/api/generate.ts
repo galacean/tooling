@@ -12,7 +12,10 @@ import type { APIDocumentationPackage } from './assemble';
 import { contentHash } from './translations';
 import { parseVersion } from './versions';
 import { generateVersionedAPIDocumentation } from './versioned-generation';
-import type { APIVersionBuilder } from './versioned-generation';
+import type {
+  APIGenerationOptions,
+  APIVersionBuilder,
+} from './versioned-generation';
 
 const typeKinds = new Set([
   'array',
@@ -461,14 +464,6 @@ function typeScriptCompiler(repositoryRoot: string): string {
       );
 }
 
-function typeScriptVersion(repositoryRoot: string): string {
-  return execFileSync(
-    typeScriptCompiler(repositoryRoot),
-    ['--version'],
-    { cwd: repositoryRoot, encoding: 'utf8' },
-  ).trim().replace(/^Version\s+/u, '');
-}
-
 async function buildDeclarations(
   packages: APIPackageConfig[],
   repositoryRoot: string,
@@ -790,20 +785,6 @@ async function typeDocVersion(): Promise<string> {
   return manifest['version'];
 }
 
-async function docsToolsVersion(): Promise<string> {
-  const manifestPath = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '../../package.json',
-  );
-  const manifest = await readJSON(manifestPath);
-
-  if (!isRecord(manifest) || typeof manifest['version'] !== 'string') {
-    throw new Error('Cannot read docs-tools package version');
-  }
-
-  return manifest['version'];
-}
-
 function versionedPackageConfig(
   config: DocsSiteConfig,
   sourceRoot: string,
@@ -892,11 +873,6 @@ async function buildVersionAtTag(
       cwd: checkoutRoot,
       stdio: 'inherit',
     });
-    const typescriptVersion = execFileSync(
-      'pnpm',
-      ['exec', 'tsc', '--version'],
-      { cwd: checkoutRoot, encoding: 'utf8' },
-    ).trim().replace(/^Version\s+/u, '');
 
     await dependencies.buildDeclarations(packages, checkoutRoot);
     const project = await dependencies.convert(buildConfig, commit);
@@ -942,7 +918,6 @@ async function buildVersionAtTag(
         packages: generatedPackages,
       },
       project: metadataProject(publicProject),
-      typescriptVersion,
     };
   } finally {
     await rm(checkoutRoot, { recursive: true, force: true });
@@ -997,7 +972,6 @@ async function buildVersionAtCurrent(
       packages: generatedPackages,
     },
     project: metadataProject(publicProject),
-    typescriptVersion: typeScriptVersion(config.repositoryRoot),
   };
 }
 
@@ -1021,6 +995,7 @@ export async function generateAPIDocumentation(
     status: 'complete' | 'missing' | 'invalid';
     reason?: string;
   }) => void,
+  options: APIGenerationOptions = {},
 ): Promise<{
   packages: number;
   exports: number;
@@ -1054,7 +1029,6 @@ export async function generateAPIDocumentation(
       'api generate requires api.repository and api.versions configuration',
     );
   }
-  const generatorVersion = await docsToolsVersion();
   const buildVersion: APIVersionBuilder = (
     versionConfig,
     version,
@@ -1068,8 +1042,8 @@ export async function generateAPIDocumentation(
     config,
     selectedKeys,
     buildVersion,
-    generatorVersion,
     reportVersionStatus,
+    options,
   );
 }
 

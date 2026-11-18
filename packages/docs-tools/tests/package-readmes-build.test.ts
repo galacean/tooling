@@ -120,7 +120,7 @@ async function fixture(t: TestContext) {
       locales: ['en', 'zh-CN'],
       apiDirectory,
       manualDirectory: path.join(repositoryRoot, 'site/public/data/manual'),
-      translationWorkDirectory: path.join(
+      apiTranslationDirectory: path.join(
         repositoryRoot,
         'tmp/docs-tools/api-translation',
       ),

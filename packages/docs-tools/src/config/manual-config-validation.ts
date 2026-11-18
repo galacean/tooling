@@ -201,23 +201,7 @@ export function validateManualCollections(
       }
     }
     if (item['translations'] !== undefined) {
-      const translations = item['translations'];
-
-      if (!isRecord(translations)) {
-        issues.push(`${prefix}.translations must map locales to safe paths`);
-      } else if (
-        Object.entries(translations).some(
-          ([locale, filename]) =>
-            !supportedLocales.includes(locale) ||
-            locale === source['locale'] ||
-            typeof filename !== 'string' ||
-            !isSafeRelativePath(filename),
-        )
-      ) {
-        issues.push(
-          `${prefix}.translations must map non-source locales to safe paths`,
-        );
-      }
+      issues.push(`${prefix}.translations is no longer supported; use translationDirectory`);
     }
   }
 

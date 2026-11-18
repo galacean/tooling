@@ -13,6 +13,7 @@ import { getErrorCode, readOptionalJSON } from './read-json';
 import { sourceProject } from './snapshot';
 import { cleanAPISnapshots } from './snapshot-cleanup';
 import { readAPISnapshot } from './snapshot-reference';
+import { readAPITranslationArchive } from './translation-archive';
 import {
   buildTranslationSource,
   collectCommentFields,
@@ -406,6 +407,79 @@ export async function assembleAPIDocumentation(
 
         if (existing !== undefined && existing !== translation) {
           throw new Error(`Conflicting preserved API translations for ${locale}: ${key}`);
+        }
+        merged[key] = translation;
+      }
+    }
+  }
+  for (const pkg of metadata.packages) {
+    for (const locale of config.locales) {
+      if (locale === config.sourceLocale) {
+        continue;
+      }
+      let archive;
+
+      try {
+        archive = await readAPITranslationArchive(
+          config,
+          pkg.key,
+          pkg.version,
+          locale,
+        );
+      } catch (error) {
+        warnings.push(
+          `${pkg.key}/${locale}: ignored invalid translation archive (${error instanceof Error ? error.message : String(error)}).`,
+        );
+        continue;
+      }
+      if (archive === undefined) {
+        continue;
+      }
+      const packageSource = buildTranslationSource(project, [pkg], {
+        sourceLocale: config.sourceLocale,
+      });
+
+      if (archive.sourceHash !== packageSource.sourceHash) {
+        warnings.push(
+          `${pkg.key}/${locale}: translation archive sourceHash does not match the generated API source; translations need review.`,
+        );
+        continue;
+      }
+      const merged = preservedTranslations.get(locale);
+
+      if (merged === undefined) {
+        continue;
+      }
+      const packagePrefix = `${pkg.name}|`;
+      const sourceFields = new Map(
+        packageSource.fields
+          .filter(field => field.key.startsWith(packagePrefix))
+          .map(field => [field.key, field]),
+      );
+
+      for (const [key, translation] of Object.entries(archive.translations)) {
+        const field = sourceFields.get(key);
+
+        if (field === undefined || field.sourceLocale === locale) {
+          warnings.push(
+            `${pkg.key}/${locale}: ignored stale translation field ${key}.`,
+          );
+          continue;
+        }
+        try {
+          translateParts(field, translation);
+        } catch {
+          warnings.push(
+            `${pkg.key}/${locale}: ignored invalid archived translation ${key}.`,
+          );
+          continue;
+        }
+        const existing = merged[key];
+
+        if (existing !== undefined && existing !== translation) {
+          throw new Error(
+            `Conflicting API translations for ${locale}: ${key}`,
+          );
         }
         merged[key] = translation;
       }

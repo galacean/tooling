@@ -10,7 +10,11 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'vitest';
-import { assembleAPIDocumentation } from '@galacean/docs-tools';
+import {
+  assembleAPIDocumentation,
+  buildTranslationSource,
+  writeAPITranslationArchive,
+} from '@galacean/docs-tools';
 import type {
   APIDocumentationMetadata,
   DocsSiteConfig,
@@ -96,7 +100,7 @@ async function fixture() {
     locales: ['en', 'zh-CN'],
     apiDirectory,
     manualDirectory: path.join(repositoryRoot, 'site/public/data/manual'),
-    translationWorkDirectory: path.join(
+    apiTranslationDirectory: path.join(
       repositoryRoot,
       'tmp/docs-tools/api-translation',
     ),
@@ -177,6 +181,47 @@ void test('shares one content-addressed snapshot across packages', async t => {
     2,
   );
   assert.equal(result.warnings.length, 2);
+});
+
+void test('restores API translations from the persistent archive after generated data is removed', async t => {
+  const values = await fixture();
+  const packageConfig = values.metadata.packages[0];
+
+  assert.ok(packageConfig);
+  const translationSource = buildTranslationSource(
+    values.project,
+    [packageConfig],
+    { sourceLocale: values.config.sourceLocale },
+  );
+  const field = translationSource.fields.find(item =>
+    item.key.startsWith(`${packageConfig?.name ?? ''}|`),
+  );
+
+  assert.ok(field);
+  t.onTestFinished(() =>
+    rm(values.repositoryRoot, { recursive: true, force: true }),
+  );
+  await writeAPITranslationArchive(
+    values.config,
+    {
+      locale: 'zh-CN',
+      version: packageConfig.version,
+      sourceHash: translationSource.sourceHash,
+      translations: { [field.key]: '根描述翻译。' },
+    },
+    packageConfig.key,
+  );
+  await assembleAPIDocumentation(values.project, values.metadata, values.config);
+
+  const wrapper = JSON.parse(
+    await readFile(
+      path.join(values.apiDirectory, 'widget-dir/1.2.3/zh-CN.api.json'),
+      'utf8',
+    ),
+  ) as { $ref: string };
+  const snapshot = await readFile(snapshotFile(values, wrapper.$ref), 'utf8');
+
+  assert.match(snapshot, /根描述翻译。/u);
 });
 
 void test('preserves translations and does not overwrite an unselected package snapshot', async t => {

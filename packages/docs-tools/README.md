@@ -23,6 +23,7 @@ export default {
     dataDirectory: 'site/public/data/api',
     repository: 'https://github.com/example/project.git',
     versions: ['1.2.3', '1.3.0'],
+    generation: { scope: 'latest' },
     packages: [{
       key: 'engine',
       name: '@example/engine',
@@ -37,13 +38,18 @@ export default {
     collections: [{
       key: 'guides',
       source: { type: 'local', directory: 'site/manual', locale: 'en' },
-      translations: { 'zh-CN': 'site/manual-translations/zh-CN' },
     }],
   },
+  translationDirectory: 'tmp/docs-tools',
+  cdn: { baseUrl: 'https://cdn.example.com/example-docs/' },
 };
 ```
 
-`api.packages[].entries` identifies public TypeScript entry points. `api.repository` and `api.versions` specify the Git repository and SemVer versions used by `api generate`. When a configured version matches every API package's local `package.json` version, the checked-out workspace is built without fetching a Git tag. Other configured versions are built from their matching Git tags. A manual collection can use local Markdown or a Yuque source. Set `tokenEnv` to the name of the environment variable holding a Yuque token; do not put the token in the config.
+`api.packages[].entries` identifies public TypeScript entry points. `api.repository` and `api.versions` specify the Git repository and the complete SemVer version list shown by the site. `api.generation.scope` defaults to `latest`, so `api generate` only inspects and builds the highest configured SemVer version. Use `--version <tag>` to backfill a historical version and `--force` to rebuild the selected version. When the selected version matches every API package's local `package.json` version, the checked-out workspace is built without fetching a Git tag. Other versions are built from their matching Git tags. A manual collection can use local Markdown or a Yuque source. Set `tokenEnv` to the name of the environment variable holding a Yuque token; do not put the token in the config.
+
+`translationDirectory` defaults to the ignored `tmp/docs-tools/`. API and manual translations are persisted under `translation-cache/`; disposable API extraction tasks use `api-translation/`. Do not remove the cache when cleaning generated `site/data`. Manual translation archives use the collection key and stable document key; Yuque documents use `docId`, while local Markdown uses its route slug.
+
+`cdn.baseUrl` is the production data root for the consuming docs site, not an upload target. `docs-tools` never uploads data or tracks CDN state. Publish manually by recursively uploading every file under `site/data/` to `${cdn.baseUrl}/data/`, preserving relative paths; validate API, manual, README, and search URLs before switching the production site config. Local builds do not require a CDN URL.
 
 ## Commands
 
@@ -51,9 +57,12 @@ Pass the config path relative to the repository root with `--config`:
 
 | Command | Purpose |
 | --- | --- |
-| `api generate` | Generate API snapshots and the manifest from configured versions, using the current workspace for a matching local package version. |
+| `api generate` | Generate only the latest configured SemVer version by default; `--version <tag>` selects a historical version and `--force` reruns the selected version. |
 | `api extract` / `api apply` | Prepare API comment translation tasks and apply translated results. |
+| `api status` | Report generation integrity and translation archive status for configured versions. |
+| `api translations migrate` | One-time migration of complete, validated translations from existing API snapshots. |
 | `manual sync` | Synchronize configured local and Yuque manual collections. |
+| `manual translations migrate` | One-time migration from explicitly supplied collection translation directories. |
 | `package-readmes build` | Generate localized package README data. |
 | `search build` | Build localized indexes from API, README, and manual data. |
 | `routes build` | Generate static routes after the frontend build. |
@@ -63,12 +72,19 @@ Example:
 
 ```sh
 pnpm exec galacean-docs api generate --config site/docs.config.ts
+pnpm exec galacean-docs api generate --config site/docs.config.ts --version 1.2.3
+pnpm exec galacean-docs api generate --config site/docs.config.ts --force
+pnpm exec galacean-docs api status --config site/docs.config.ts
+pnpm exec galacean-docs api translations migrate --config site/docs.config.ts
+pnpm exec galacean-docs manual translations migrate --config site/docs.config.ts guides zh-CN site/manual-translations/zh-CN
 pnpm exec galacean-docs manual sync --config site/docs.config.ts
 pnpm exec galacean-docs search build --config site/docs.config.ts
 pnpm exec galacean-docs skills sync
 ```
 
 `routes build` reads `site/dist/index.html`. Set `SITE_BASE_PATH` for a subpath deployment and `VITE_SITE_ORIGIN` to generate absolute canonical URLs. Run `pnpm exec galacean-docs --help` for command syntax.
+
+Migration commands never overwrite an existing translation archive. API migration imports only complete translations from valid snapshots. Manual migration accepts repeated `<collection-key> <locale> <legacy-directory>` triples; run it while the old generated manual `navigation.json` is available so Yuque route slugs can be mapped to stable `docId` keys. Review skipped entries before removing old directories.
 
 ## Translation skills
 
@@ -85,7 +101,7 @@ The first command writes the managed skill files to `.agents/skills`; `--check` 
 
 Use this skill only for TypeDoc API snapshot comments, not manuals, arbitrary JSON, or source-code comments. For example: “Use `api-documentation-translation` with `site/docs.config.ts` to translate the current `engine` API snapshot into `zh-CN`.”
 
-The skill locates the configured API directory and manifest, then selects the requested package, version, and target locale. It extracts a task from the wrapper path recorded in the manifest:
+The skill locates the configured API directory and manifest, then selects the requested package, version, and target locale. Before translating, inspect the persistent archive at `<translationDirectory>/translation-cache/api/<package-key>/<version>/<locale>.json`. Extract a fresh task from the wrapper path recorded in the manifest and validate any archived result against that task. Reuse a valid archive without retranslating; when the source hash changed, reuse only matching field keys whose placeholders validate and report the changed source for human review:
 
 ```sh
 pnpm exec galacean-docs api extract --config <docs-config> <snapshot-wrapper-path>
@@ -97,12 +113,12 @@ Translate every task field and save a JSON file beside the task. Copy `locale`, 
 pnpm exec galacean-docs api apply --config <docs-config> <task.json> <translation.json>
 ```
 
-Apply related tasks for a shared model and locale together when possible. If a task is stale or validation fails, extract a fresh task; never edit a wrapper or content-addressed snapshot manually. After applying, run the repository's documented data and search generation steps.
+Apply related tasks for a shared model and locale together when possible. `api apply` writes the validated result to the persistent archive before updating generated snapshots. If a task is stale or validation fails, extract a fresh task; never edit a wrapper or content-addressed snapshot manually. After applying, run the repository's documented data and search generation steps.
 
 ### Manual documentation translation
 
-Use this skill for Markdown pages in configured manual collections, not API snapshots. For example: “Use `manual-documentation-translation` with `site/docs.config.ts` to translate the `guides` collection into `zh-CN`; preserve route slugs and report pages needing review.”
+Use this Skill for Markdown and HTML pages in configured manual collections, not API snapshots. For example: “Use `manual-documentation-translation` with `site/docs.config.ts` to translate missing English pages in the Yuque collection; reuse existing bilingual local guides and report pages needing review.”
 
-The skill reads the selected collection's source and translation directories. Source pages use `<source directory>/<locale>/<slug>.md`; when `translations[targetLocale]` is configured, write translated pages there using the configured route slug. If source and generated output share a directory, edit only pages marked `source: { type: 'local' }` in `navigation.json`. Update localized `title` and `group` entries in the appropriate navigation file.
+The Skill uses each collection's `source.locale`. Reuse complete target-language pages already authored in the source tree by migrating them into the archive; do not translate them again. Prioritize collections and pages missing a target locale. Store archives under `<translationDirectory>/translation-cache/manual/<collection-key>/<locale>/`, keyed by Yuque `docId` or local route slug. Preserve source format: `.md` for Markdown and `.html` for HTML. For HTML, translate text-node strings only and preserve all tags and attributes; never convert it to Markdown. Store localized navigation labels in `navigation.json` using the same key.
 
 Preserve Markdown structure, code, identifiers, links, images, front matter, and file names. Compare existing translations with the source and report changes that need review instead of silently overwriting them. Check links, anchors, assets, placeholders, and code fences. For Yuque collections, translating synchronized files is separate from refreshing Yuque content; do not fetch remote content or call machine-translation APIs as part of translation. Finish with the repository's documented manual sync, search generation, and validation commands.

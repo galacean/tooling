@@ -65,7 +65,6 @@ function renderManualPage(
         {...(onTitleChange === undefined ? {} : { onTitleChange })}
         {...(onSidebarCollapsed === undefined ? {} : { onSidebarCollapsed })}
         messages={messages}
-        sectionLabel="Manual"
         homeHref="/en/"
         getPageHref={slug => `/en/manual/${slug ?? ''}`}
         loadNavigation={async () => pages}
@@ -402,7 +401,6 @@ describe('ManualPage navigation', () => {
           slug={slug}
           onTitleChange={onTitleChange}
           messages={messages}
-          sectionLabel="Manual"
           homeHref="/en/"
           getPageHref={value => `/en/manual/${value ?? ''}`}
           loadNavigation={async () => transitionPages}

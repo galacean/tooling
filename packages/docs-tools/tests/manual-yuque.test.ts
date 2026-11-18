@@ -5,7 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { test, vi } from 'vitest';
-import { loadSiteConfig, syncManuals } from '@galacean/docs-tools';
+import {
+  loadSiteConfig,
+  migrateManualTranslations,
+  syncManuals,
+} from '@galacean/docs-tools';
 
 const execFileAsync = promisify(execFile);
 
@@ -316,7 +320,7 @@ test('documents mode requests only allowed references in configured order', asyn
           {
             namespace: 'team/one',
             slug: 'first',
-            routeSlug: 'first',
+            routeSlug: 'renamed-first',
             group: 'A',
           },
           {
@@ -345,6 +349,17 @@ test('documents mode requests only allowed references in configured order', asyn
     return yuqueDocument(slug ?? '', slug ?? '');
   });
 
+  const archiveDirectory = path.join(
+    config.translationCacheDirectory!,
+    'manual/selected/en',
+  );
+
+  await mkdir(archiveDirectory, { recursive: true });
+  await writeFile(
+    path.join(archiveDirectory, 'doc-101.md'),
+    '# First translation\n\nPersistent text.\n',
+  );
+
   const result = await syncManuals(config, fetcher);
   const navigation = JSON.parse(
     await readFile(
@@ -360,11 +375,189 @@ test('documents mode requests only allowed references in configured order', asyn
   );
   assert.deepEqual(
     navigation.map(item => item.slug),
-    ['first', 'last'],
+    ['renamed-first', 'last'],
   );
   assert.deepEqual(
     navigation.map(item => item.group['zh-CN']),
     ['A', 'B'],
+  );
+  assert.equal(
+    await readFile(
+      path.join(config.manualDirectory, 'en/renamed-first.md'),
+      'utf8',
+    ),
+    '# First translation\n\nPersistent text.\n',
+  );
+});
+
+test('migrates Yuque route-keyed translations into stable docId archives', async t => {
+  const root = await fixture(t);
+  const config = await loadConfig(root, [
+    {
+      key: 'guide',
+      source: {
+        type: 'yuque',
+        mode: 'documents',
+        baseURL: 'https://www.yuque.com/api/v2',
+        tokenEnv: 'YUQUE_TEST_TOKEN',
+        locale: 'zh-CN',
+        documents: [
+          {
+            namespace: 'team/book',
+            slug: 'article',
+            routeSlug: 'new-route',
+            docId: '101',
+          },
+        ],
+      },
+    },
+  ]);
+  const legacyDirectory = path.join(root, 'site/legacy-translations');
+
+  await mkdir(legacyDirectory, { recursive: true });
+  await mkdir(config.manualDirectory, { recursive: true });
+  await writeFile(
+    path.join(config.manualDirectory, 'navigation.json'),
+    JSON.stringify([
+      {
+        slug: 'old-route',
+        source: {
+          type: 'yuque',
+          namespace: 'team/book',
+          slug: 'article',
+          docId: '101',
+        },
+      },
+    ]),
+  );
+  await writeFile(
+    path.join(legacyDirectory, 'old-route.md'),
+    '# Article\n\nLegacy translation.\n',
+  );
+  await writeFile(
+    path.join(legacyDirectory, 'navigation.json'),
+    JSON.stringify({ 'old-route': { title: 'Article', group: 'Guides' } }),
+  );
+
+  const result = await migrateManualTranslations(config, [
+    {
+      collectionKey: 'guide',
+      locale: 'en',
+      legacyDirectory: 'site/legacy-translations',
+    },
+  ]);
+
+  assert.deepEqual(result, { migrated: 1, skipped: 0 });
+  assert.equal(
+    await readFile(
+      path.join(
+        config.translationCacheDirectory!,
+        'manual/guide/en/doc-101.md',
+      ),
+      'utf8',
+    ),
+    '# Article\n\nLegacy translation.\n',
+  );
+  const migratedNavigation = JSON.parse(
+    await readFile(
+      path.join(
+        config.translationCacheDirectory!,
+        'manual/guide/en/navigation.json',
+      ),
+      'utf8',
+    ),
+  ) as Record<string, unknown>;
+
+  assert.deepEqual(migratedNavigation['doc-101'], {
+    title: 'Article',
+    group: 'Guides',
+  });
+});
+
+test('rewrites Yuque links in HTML pages only', async t => {
+  const root = await fixture(t);
+  const tokenBefore = process.env['YUQUE_TEST_TOKEN'];
+
+  process.env['YUQUE_TEST_TOKEN'] = 'test-token';
+  t.onTestFinished(() => {
+    if (tokenBefore === undefined) {
+      delete process.env['YUQUE_TEST_TOKEN'];
+    } else {
+      process.env['YUQUE_TEST_TOKEN'] = tokenBefore;
+    }
+  });
+  const config = await loadConfig(root, [
+    {
+      key: 'selected',
+      source: {
+        type: 'yuque',
+        mode: 'documents',
+        baseURL: 'https://www.yuque.com/api/v2',
+        tokenEnv: 'YUQUE_TEST_TOKEN',
+        locale: 'zh-CN',
+        documents: [
+          {
+            namespace: 'kpcugk/bld4le',
+            slug: 'ar87k5d92f23myc5',
+            routeSlug: 'ar87k5d92f23myc5',
+          },
+          {
+            namespace: 'kpcugk/bld4le',
+            slug: 'uadx5gd73vyerrhw',
+            routeSlug: 'uadx5gd73vyerrhw',
+          },
+          {
+            namespace: 'kpcugk/bld4le',
+            slug: 'markdown-source',
+            routeSlug: 'markdown-source',
+          },
+        ],
+      },
+    },
+  ]);
+  const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+    const slug = new URL(String(input)).pathname.split('/').at(-1) ?? '';
+    const targetURL =
+      'https://galacean-effects.yuque.com/kpcugk/bld4le/uadx5gd73vyerrhw';
+
+    return Response.json({
+      data:
+        slug === 'ar87k5d92f23myc5'
+          ? {
+              slug,
+              title: slug,
+              format: 'lake',
+              body: '{"type":"doc"}',
+              body_html:
+                `<a href="${targetURL}" data-href="${targetURL}" class="ne-link"><span class="ne-text">「信息图设计」</span></a>`,
+            }
+          : {
+              slug,
+              title: slug,
+              format: 'markdown',
+              body: `[Link](${targetURL})\n`,
+            },
+    });
+  });
+
+  await syncManuals(config, fetcher);
+
+  assert.equal(
+    await readFile(
+      path.join(
+        config.manualDirectory,
+        'zh-CN/ar87k5d92f23myc5.html',
+      ),
+      'utf8',
+    ),
+    '<a href="../uadx5gd73vyerrhw/" data-href="../uadx5gd73vyerrhw/" class="ne-link"><span class="ne-text">「信息图设计」</span></a>',
+  );
+  assert.equal(
+    await readFile(
+      path.join(config.manualDirectory, 'zh-CN/markdown-source.md'),
+      'utf8',
+    ),
+      '# markdown-source\n\n[Link](https://galacean-effects.yuque.com/kpcugk/bld4le/uadx5gd73vyerrhw)\n',
   );
 });
 
@@ -455,6 +648,129 @@ test('preserves Yuque Lake HTML in an HTML artifact', async t => {
   );
 });
 
+test('preserves HTML translation structure and format from the archive', async t => {
+  const root = await fixture(t);
+  const tokenBefore = process.env['YUQUE_TEST_TOKEN'];
+
+  process.env['YUQUE_TEST_TOKEN'] = 'test-token';
+  t.onTestFinished(() => {
+    if (tokenBefore === undefined) {
+      delete process.env['YUQUE_TEST_TOKEN'];
+    } else {
+      process.env['YUQUE_TEST_TOKEN'] = tokenBefore;
+    }
+  });
+  const config = await loadConfig(root, [
+    {
+      key: 'lake-guide',
+      source: {
+        type: 'yuque',
+        mode: 'documents',
+        baseURL: 'https://yuque.internal/api/v2',
+        tokenEnv: 'YUQUE_TEST_TOKEN',
+        locale: 'zh-CN',
+        documents: [
+          {
+            namespace: 'team/book',
+            slug: 'lake-guide',
+            routeSlug: 'lake-guide',
+            docId: '102',
+          },
+        ],
+      },
+    },
+  ]);
+  const archiveDirectory = path.join(
+    config.translationCacheDirectory!,
+    'manual/lake-guide/en',
+  );
+  const translatedHTML = '<div><p>English overview.</p><ul><li><strong>First</strong> item.</li></ul><img src="https://cdn.example.test/image.png"></div>';
+
+  await mkdir(archiveDirectory, { recursive: true });
+  await writeFile(path.join(archiveDirectory, 'doc-102.html'), translatedHTML);
+
+  await syncManuals(config, async () => yuqueLakeDocument('lake-guide', 'Lake guide'));
+
+  const navigation = JSON.parse(
+    await readFile(path.join(config.manualDirectory, 'navigation.json'), 'utf8'),
+  ) as { format: Record<string, string> }[];
+
+  assert.equal(navigation[0]?.format['en'], 'html');
+  assert.equal(
+    await readFile(path.join(config.manualDirectory, 'en/lake-guide.html'), 'utf8'),
+    translatedHTML,
+  );
+  await assert.rejects(
+    readFile(path.join(config.manualDirectory, 'en/lake-guide.md')),
+    { code: 'ENOENT' },
+  );
+});
+
+test('migrates legacy HTML translations without converting them to Markdown', async t => {
+  const root = await fixture(t);
+  const config = await loadConfig(root, [
+    {
+      key: 'guide',
+      source: {
+        type: 'yuque',
+        mode: 'documents',
+        baseURL: 'https://www.yuque.com/api/v2',
+        tokenEnv: 'YUQUE_TEST_TOKEN',
+        locale: 'zh-CN',
+        documents: [
+          {
+            namespace: 'team/book',
+            slug: 'article',
+            routeSlug: 'article',
+            docId: '101',
+          },
+        ],
+      },
+    },
+  ]);
+  const legacyDirectory = path.join(root, 'site/legacy-translations');
+  const translatedHTML = '<div><p><strong>English text</strong></p><img src="https://cdn.example.test/image.png"></div>';
+
+  await mkdir(legacyDirectory, { recursive: true });
+  await mkdir(config.manualDirectory, { recursive: true });
+  await writeFile(
+    path.join(config.manualDirectory, 'navigation.json'),
+    JSON.stringify([
+      {
+        slug: 'old-route',
+        source: {
+          type: 'yuque',
+          namespace: 'team/book',
+          slug: 'article',
+          docId: '101',
+        },
+      },
+    ]),
+  );
+  await writeFile(path.join(legacyDirectory, 'old-route.html'), translatedHTML);
+
+  const result = await migrateManualTranslations(config, [
+    {
+      collectionKey: 'guide',
+      locale: 'en',
+      legacyDirectory: 'site/legacy-translations',
+    },
+  ]);
+  const archiveDirectory = path.join(
+    config.translationCacheDirectory!,
+    'manual/guide/en',
+  );
+
+  assert.deepEqual(result, { migrated: 1, skipped: 0 });
+  assert.equal(
+    await readFile(path.join(archiveDirectory, 'doc-101.html'), 'utf8'),
+    translatedHTML,
+  );
+  await assert.rejects(readFile(path.join(archiveDirectory, 'doc-101.md')), {
+    code: 'ENOENT',
+  });
+});
+
 test('failed remote sync leaves existing manual data untouched', async t => {
   const root = await fixture(t);
   const tokenBefore = process.env['YUQUE_TEST_TOKEN'];
@@ -501,7 +817,10 @@ test('failed remote sync leaves existing manual data untouched', async t => {
 test('local collections retain translations, localized navigation, and overview files', async t => {
   const root = await fixture(t);
   const localDirectory = path.join(root, 'site/manual-local');
-  const translationDirectory = path.join(root, 'site/translations/en');
+  const translationDirectory = path.join(
+    root,
+    'tmp/docs-tools/translation-cache/manual/local-guide/en',
+  );
   const config = await loadConfig(root, [
     {
       key: 'local-guide',
@@ -510,7 +829,6 @@ test('local collections retain translations, localized navigation, and overview 
         directory: 'site/manual-local',
         locale: 'zh-CN',
       },
-      translations: { en: 'site/translations/en' },
     },
   ]);
 
@@ -587,6 +905,52 @@ test('local collections retain translations, localized navigation, and overview 
   assert.equal(
     await readFile(path.join(output, 'en/index.md'), 'utf8'),
     '# English manuals\n',
+  );
+});
+
+test('local sync does not read translations from the source directory', async t => {
+  const root = await fixture(t);
+  const localDirectory = path.join(root, 'site/manual-local');
+  const config = await loadConfig(root, [
+    {
+      key: 'local-guide',
+      source: {
+        type: 'local',
+        directory: 'site/manual-local',
+        locale: 'zh-CN',
+      },
+    },
+  ]);
+
+  await mkdir(path.join(localDirectory, 'zh-CN'), { recursive: true });
+  await mkdir(path.join(localDirectory, 'en'), { recursive: true });
+  await writeFile(
+    path.join(localDirectory, 'navigation.json'),
+    JSON.stringify([
+      {
+        slug: 'getting-started',
+        title: { 'zh-CN': '开始使用' },
+        group: { 'zh-CN': '指南' },
+      },
+    ]),
+  );
+  await writeFile(
+    path.join(localDirectory, 'zh-CN/getting-started.md'),
+    '# 开始使用\n\n中文正文。\n',
+  );
+  await writeFile(
+    path.join(localDirectory, 'en/getting-started.md'),
+    '# Getting started\n\nLegacy English translation.\n',
+  );
+
+  await syncManuals(config);
+
+  assert.equal(
+    await readFile(
+      path.join(config.manualDirectory, 'en/getting-started.md'),
+      'utf8',
+    ),
+    '# 开始使用\n\n中文正文。\n',
   );
 });
 

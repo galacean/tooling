@@ -25,6 +25,203 @@ import {
 import { SelectControl } from '../../src/components/shared/select-control';
 
 describe('shared MarkdownContent', () => {
+  it('opens Markdown and Yuque HTML images in a navigable viewer', async () => {
+    const { container } = render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(MarkdownContent, {
+          text: '![First](https://images.example.test/first.png)\n\n![Second](https://images.example.test/second.png)',
+        }),
+        createElement(HTMLDocumentContent, {
+          html: '<p><img src="https://images.example.test/lake.png" alt="Lake"></p>',
+        }),
+      ),
+    );
+    const markdownImages = container.querySelectorAll<HTMLImageElement>(
+      '.markdown-content img',
+    );
+
+    Object.defineProperties(markdownImages[0], {
+      naturalWidth: { value: 1200 },
+      naturalHeight: { value: 800 },
+    });
+    Object.defineProperties(markdownImages[1], {
+      naturalWidth: { value: 1800 },
+      naturalHeight: { value: 1200 },
+    });
+
+    fireEvent.click(container.querySelector('.markdown-content img')!);
+
+    expect(screen.getByRole('dialog', { name: 'Image viewer' })).not.toBeNull();
+    expect(screen.getByText('1 / 2')).not.toBeNull();
+    fireEvent.click(screen.getByText('1 / 2'));
+    expect(screen.getByRole('dialog', { name: 'Image viewer' })).not.toBeNull();
+    const activeFrame = document.querySelector<HTMLDivElement>(
+      '.image-viewer-slide[aria-hidden="false"] .image-viewer-image-frame',
+    )!;
+
+    expect(Number.parseFloat(activeFrame.style.width)).toBeCloseTo(930);
+    expect(Number.parseFloat(activeFrame.style.height)).toBeCloseTo(620);
+    const fitButton = screen.getByRole('button', {
+      name: 'Fit image to screen',
+    });
+    const originalButton = screen.getByRole('button', {
+      name: 'View image at original size',
+    });
+
+    expect(fitButton.getAttribute('aria-pressed')).toBe('true');
+    expect(originalButton.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(originalButton);
+    expect(originalButton.getAttribute('aria-pressed')).toBe('true');
+    expect(fitButton.getAttribute('aria-pressed')).toBe('false');
+    const activeImage = document.querySelector<HTMLImageElement>(
+      '.image-viewer-slide[aria-hidden="false"] .image-viewer-image',
+    )!;
+
+    expect(activeImage.style.cursor).toBe('grab');
+    fireEvent.mouseDown(activeImage, {
+      button: 0,
+      clientX: 300,
+      clientY: 240,
+    });
+    expect(activeImage.style.cursor).toBe('grabbing');
+    fireEvent.mouseMove(window, { clientX: 260, clientY: 240 });
+    const pannedFrame = document.querySelector<HTMLDivElement>(
+      '.image-viewer-slide[aria-hidden="false"] .image-viewer-image-frame',
+    )!;
+
+    expect(pannedFrame.classList.contains('is-panning')).toBe(true);
+    expect(pannedFrame.getAttribute('style')).toContain(
+      'translate3d(-40px, 0px, 0)',
+    );
+    fireEvent.mouseUp(window, { button: 0, clientX: 260, clientY: 240 });
+    expect(pannedFrame.classList.contains('is-panning')).toBe(false);
+    const projectedX = Number.parseFloat(
+      pannedFrame.style.transform.match(/translate3d\(([-\d.]+)px/u)?.[1] ?? '0',
+    );
+
+    expect(projectedX).toBeLessThan(-40);
+    expect(projectedX).toBeGreaterThanOrEqual(-120);
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(originalButton.getAttribute('aria-pressed')).toBe('false');
+    expect(fitButton.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(fitButton);
+    expect(fitButton.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+    expect(screen.getByText('2 / 2')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
+    const stage = document.querySelector('.image-viewer-stage')!;
+
+    fireEvent.mouseDown(stage, { button: 0, clientX: 300, clientY: 240 });
+    fireEvent.mouseMove(window, { clientX: 240, clientY: 240 });
+    expect(
+      document.querySelector('.image-viewer-track')?.getAttribute('style'),
+    ).toContain('-60px');
+    fireEvent.mouseUp(window, { button: 0, clientX: 120, clientY: 240 });
+    expect(
+      document.querySelector('.image-viewer-track')?.classList.contains('is-settling'),
+    ).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByText('2 / 2')).not.toBeNull();
+    });
+    expect(
+      document.querySelector('.image-viewer-track')?.classList.contains('is-settling'),
+    ).toBe(false);
+    expect(fitButton.getAttribute('aria-pressed')).toBe('true');
+    expect(originalButton.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Image viewer' })).toBeNull();
+    });
+    expect(document.activeElement).toBe(
+      container.querySelector('.markdown-content img'),
+    );
+
+    fireEvent.click(container.querySelector('.markdown-content img')!);
+    fireEvent.click(document.querySelector('.image-viewer-stage')!);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Image viewer' })).toBeNull();
+    });
+
+    fireEvent.click(container.querySelector('.markdown-content img')!);
+    fireEvent.click(document.querySelector('.image-viewer-track')!);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Image viewer' })).toBeNull();
+    });
+
+    fireEvent.click(container.querySelector('.markdown-content img')!);
+    fireEvent.click(document.querySelector('.image-viewer-backdrop')!);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Image viewer' })).toBeNull();
+    });
+
+    fireEvent.click(container.querySelector('.lake-content img')!);
+    expect(screen.getByRole('dialog', { name: 'Image viewer' })).not.toBeNull();
+    expect(screen.getByText('1 / 1')).not.toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Image viewer' })).toBeNull();
+    });
+  });
+
+  it('keeps unmeasured images visible and traps/restores keyboard focus', async () => {
+    const { container } = render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(MarkdownContent, {
+          text: '![Unmeasured](https://images.example.test/unmeasured.png)',
+        }),
+      ),
+    );
+    const sourceImage = container.querySelector<HTMLImageElement>(
+      '.markdown-content img',
+    )!;
+
+    fireEvent.click(sourceImage);
+
+    const activeFrame = document.querySelector<HTMLDivElement>(
+      '.image-viewer-slide[aria-hidden="false"] .image-viewer-image-frame',
+    )!;
+    const closeButton = screen.getByRole('button', { name: 'Close image viewer' });
+    const fitButton = screen.getByRole('button', { name: 'Fit image to screen' });
+
+    expect(Number.parseFloat(activeFrame.style.width)).toBeGreaterThan(0);
+    const viewerImage = document.querySelector<HTMLImageElement>(
+      '.image-viewer-slide[aria-hidden="false"] .image-viewer-image',
+    )!;
+
+    Object.defineProperties(viewerImage, {
+      naturalWidth: { value: 1200 },
+      naturalHeight: { value: 800 },
+    });
+    fireEvent.load(viewerImage);
+    expect(Number.parseFloat(activeFrame.style.width)).toBeCloseTo(930);
+
+    const viewer = screen.getByRole('dialog', { name: 'Image viewer' });
+
+    viewer.focus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(fitButton);
+    fitButton.focus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(document.activeElement).toBe(closeButton);
+    closeButton.focus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(fitButton);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Image viewer' })).toBeNull();
+    });
+    expect(document.activeElement).toBe(
+      container.querySelector('.markdown-content img'),
+    );
+  });
+
   it('preserves Yuque HTML document structure for rendering', () => {
     const html =
       '<article><h2 id="intro">Intro</h2><table><tbody><tr><td>Cell</td></tr></tbody></table></article>';
@@ -391,7 +588,6 @@ describe('shared ManualPage', () => {
     const props: ManualPageProps = {
       locale: 'zh-CN',
       slug: 'parent',
-      sectionLabel: 'GUIDE',
       homeHref: '/',
       getPageHref: slug => `/guide/${slug ?? ''}`,
       loadNavigation: async () => [
@@ -506,7 +702,6 @@ describe('shared ManualPage', () => {
     const props: ManualPageProps = {
       locale: 'fr',
       slug: 'introduction',
-      sectionLabel: 'EXAMPLE GUIDE',
       homeHref: '/fr/',
       getPageHref: slug => `/fr/guide/${slug ?? ''}`,
       loadNavigation,

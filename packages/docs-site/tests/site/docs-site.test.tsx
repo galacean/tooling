@@ -51,7 +51,6 @@ function renderSite(
           ...commonMessages[locale],
           manualIntro: 'Manual introduction',
         }),
-        manualSectionLabel: 'Documentation',
         ...(manualDataURL === undefined ? {} : { manualDataURL }),
         ...(includeAPI
           ? {

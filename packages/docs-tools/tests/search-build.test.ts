@@ -191,7 +191,7 @@ async function fixture(t: TestContext) {
         ],
       },
       manual: { dataDirectory: 'site/manual-content' },
-      translationWorkDirectory: 'tmp/docs-tools/api-translation',
+      translationDirectory: 'tmp/docs-tools',
     })} as const;\n`,
   );
   await writeFile(
@@ -229,7 +229,7 @@ async function fixture(t: TestContext) {
       ],
       apiDirectory,
       manualDirectory,
-      translationWorkDirectory: path.join(
+      apiTranslationDirectory: path.join(
         repositoryRoot,
         'tmp/docs-tools/api-translation',
       ),

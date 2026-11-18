@@ -169,15 +169,6 @@
   border: 0;
 }
 
-@media (max-width: 1050px) {
-  .api-shell {
-    --api-shell-sidebar-width: var(--site-doc-sidebar-compact-width);
-  }
-  .ge-api {
-    --api-sidebar-width: var(--site-doc-sidebar-compact-width);
-  }
-}
-
 @media (max-width: 767px) {
   .api-shell .docs-header-shell {
     right: 0;

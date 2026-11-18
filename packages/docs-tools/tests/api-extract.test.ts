@@ -6,7 +6,11 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'vitest';
 import type { TestContext } from 'vitest';
-import { extractTranslationTasks } from '@galacean/docs-tools';
+import {
+  extractTranslationTasks,
+  getAPIStatus,
+  writeAPITranslationArchive,
+} from '@galacean/docs-tools';
 
 const execFileAsync = promisify(execFile);
 
@@ -15,7 +19,7 @@ async function fixture(t: TestContext) {
     path.join(os.tmpdir(), 'docs-api-extract-'),
   );
   const apiDirectory = path.join(repositoryRoot, 'site/public/data/api');
-  const translationWorkDirectory = path.join(
+  const apiTranslationDirectory = path.join(
     repositoryRoot,
     'tmp/docs-tools/api-translation',
   );
@@ -98,7 +102,7 @@ async function fixture(t: TestContext) {
   return {
     repositoryRoot,
     apiDirectory,
-    translationWorkDirectory,
+    apiTranslationDirectory,
     sourcePath,
     targetPath,
     config: {
@@ -106,7 +110,7 @@ async function fixture(t: TestContext) {
       sourceLocale: 'zh-CN',
       locales: ['zh-CN', 'en'],
       apiDirectory,
-      translationWorkDirectory,
+      apiTranslationDirectory,
     },
   };
 }
@@ -172,6 +176,91 @@ void test('rejects legacy flat API paths and duplicate targets before creating a
   );
 });
 
+void test('selects latest pending API translations and skips a valid archive', async t => {
+  const values = await fixture(t);
+  const snapshotHash = 'a'.repeat(64);
+  const relativePath = 'api/widget-dir/1.2.3/en.api.json';
+  const locales = {
+    'zh-CN': 'api/widget-dir/1.2.3/zh-CN.api.json',
+    en: relativePath,
+  };
+
+  await writeFile(
+    path.join(values.apiDirectory, 'manifest.json'),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      defaultVersion: 'current',
+      packages: [{
+        key: 'widget-dir',
+        name: '@example/real-widget',
+        latestVersion: '1.2.3',
+        entries: [],
+        current: {
+          version: 'current',
+          packageVersion: '1.2.3',
+          snapshot: snapshotHash,
+          commit: 'a'.repeat(40),
+          entries: [],
+          json: locales,
+        },
+        versions: [{
+          version: '1.2.3',
+          snapshot: snapshotHash,
+          commit: 'a'.repeat(40),
+          entries: [],
+          json: locales,
+        }],
+      }],
+    })}\n`,
+  );
+  const config = {
+    ...values.config,
+    configPath: path.join(values.repositoryRoot, 'site.config.json'),
+    manualDirectory: path.join(values.repositoryRoot, 'site/data/manual'),
+    apiVersions: {
+      repository: 'https://github.com/example/project.git',
+      versions: ['1.2.3'],
+    },
+    apiPackages: [{
+      key: 'widget-dir',
+      name: '@example/real-widget',
+      directory: path.join(values.repositoryRoot, 'packages/widget-dir'),
+      tsconfig: path.join(values.repositoryRoot, 'packages/widget-dir/tsconfig.json'),
+      entries: [],
+    }],
+  };
+  const [task] = await extractTranslationTasks([], config);
+
+  assert.ok(task);
+  const beforeArchive = await getAPIStatus(config);
+
+  assert.equal(beforeArchive[0]?.translations[0]?.status, 'missing');
+  const taskValue = JSON.parse(await readFile(task.taskPath, 'utf8')) as {
+    sourceHash: string;
+    version: string;
+    locale: string;
+    fields: { key: string }[];
+  };
+
+  await writeAPITranslationArchive(
+    config,
+    {
+      locale: taskValue.locale,
+      version: taskValue.version,
+      sourceHash: taskValue.sourceHash,
+      translations: Object.fromEntries(
+        taskValue.fields.map(field => [field.key, 'A translated widget.']),
+      ),
+    },
+    task.packageKey,
+  );
+
+  assert.deepEqual(await extractTranslationTasks([], config), []);
+  const afterArchive = await getAPIStatus(config);
+
+  assert.equal(afterArchive[0]?.translations[0]?.status, 'complete');
+});
+
 void test('runs api extract from the CLI with a TypeScript site config', async t => {
   const values = await fixture(t);
   const configDirectory = path.join(values.repositoryRoot, 'site');
@@ -186,7 +275,7 @@ void test('runs api extract from the CLI with a TypeScript site config', async t
       locales: ['zh-CN', 'en'],
       api: { dataDirectory: 'site/public/data/api' },
       manual: { dataDirectory: 'site/public/data/manual' },
-      translationWorkDirectory: 'tmp/docs-tools/api-translation',
+      translationDirectory: 'tmp/docs-tools',
     })} as const;\n`,
   );
 

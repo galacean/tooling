@@ -47,7 +47,7 @@ async function fixture(t: TestContext) {
       locales: ['en', 'zh-CN'],
       api: { dataDirectory: 'site/public/data/api' },
       manual: { dataDirectory: 'site/manual-content' },
-      translationWorkDirectory: 'tmp/docs-tools/api-translation',
+      translationDirectory: 'tmp/docs-tools',
     })} as const;\n`,
   );
   await writeFile(
@@ -83,7 +83,7 @@ async function fixture(t: TestContext) {
       locales: ['en', 'zh-CN'],
       apiDirectory,
       manualDirectory,
-      translationWorkDirectory: path.join(
+      apiTranslationDirectory: path.join(
         repositoryRoot,
         'tmp/docs-tools/api-translation',
       ),
@@ -331,7 +331,7 @@ void test('runs routes build from the mjs CLI with deployment environment', asyn
         { slug: null },
         { slug: 'custom-page', title: { en: 'Custom page', 'zh-CN': '自定义页面' } },
       ],
-      translationWorkDirectory: 'tmp/docs-tools/api-translation',
+      translationDirectory: 'tmp/docs-tools',
     })} as const;\n`,
   );
 

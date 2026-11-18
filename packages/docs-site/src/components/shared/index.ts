@@ -4,5 +4,6 @@ export * from './document-error';
 export * from './document-loading';
 export * from './docs-sidebar-collapse';
 export * from './icon';
+export * from './image-viewer';
 export * from './markdown';
 export * from './select-control';

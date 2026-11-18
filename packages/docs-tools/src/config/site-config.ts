@@ -19,7 +19,10 @@ export interface DocsSiteConfig {
   apiConfigured?: boolean;
   manualDirectory: string;
   manualConfigured?: boolean;
-  translationWorkDirectory: string;
+  translationDirectory?: string;
+  apiTranslationDirectory?: string;
+  translationCacheDirectory?: string;
+  cdnBaseUrl?: string;
   siteName?: string;
   pages?: SitePageConfig[];
   apiPackages?: APIPackageConfig[];
@@ -85,7 +88,6 @@ export interface ManualCollectionConfig {
     documentRefs?: { namespace: string; slug: string }[];
     titleContains?: string[];
   };
-  translations?: Record<string, string>;
 }
 
 interface SiteConfigInput {
@@ -93,6 +95,7 @@ interface SiteConfigInput {
     dataDirectory: string;
     repository?: unknown;
     versions?: unknown;
+    generation?: { scope?: unknown };
     packages?: APIPackageConfig[];
     typedocOptions?: Record<string, unknown>;
     sourceLinkTemplate?: string;
@@ -101,7 +104,8 @@ interface SiteConfigInput {
   pages?: unknown;
   sourceLocale: string;
   locales: string[];
-  translationWorkDirectory?: string;
+  translationDirectory?: string;
+  cdn?: { baseUrl?: unknown };
   siteName?: string;
 }
 
@@ -299,6 +303,14 @@ export async function loadSiteConfig(
       );
     }
     issues.push(...validateAPIConfig(api, locales, sourceLocale));
+    if (isRecord(api) && api['generation'] !== undefined) {
+      if (
+        !isRecord(api['generation']) ||
+        api['generation']['scope'] !== 'latest'
+      ) {
+        issues.push('api.generation.scope must be latest');
+      }
+    }
 
     if (
       manual !== undefined &&
@@ -322,11 +334,36 @@ export async function loadSiteConfig(
         issues.push('locales must not contain duplicates');
       }
     }
+    if (config['translationWorkDirectory'] !== undefined) {
+      issues.push('translationWorkDirectory is no longer supported; use translationDirectory');
+    }
     if (
-      config['translationWorkDirectory'] !== undefined &&
-      typeof config['translationWorkDirectory'] !== 'string'
+      config['translationDirectory'] !== undefined &&
+      typeof config['translationDirectory'] !== 'string'
     ) {
-      issues.push('translationWorkDirectory must be a string');
+      issues.push('translationDirectory must be a string');
+    }
+    if (config['cdn'] !== undefined) {
+      const cdn = config['cdn'];
+      let validBaseUrl = false;
+
+      if (isRecord(cdn) && typeof cdn['baseUrl'] === 'string') {
+        try {
+          const url = new URL(cdn['baseUrl']);
+
+          validBaseUrl =
+            ['http:', 'https:'].includes(url.protocol) &&
+            url.username.length === 0 &&
+            url.password.length === 0 &&
+            url.search.length === 0 &&
+            url.hash.length === 0;
+        } catch {
+          validBaseUrl = false;
+        }
+      }
+      if (!validBaseUrl) {
+        issues.push('cdn.baseUrl must be an HTTP(S) URL without credentials, query, or hash');
+      }
     }
     if (
       config['siteName'] !== undefined &&
@@ -385,17 +422,33 @@ export async function loadSiteConfig(
     input.manual === undefined
       ? path.join(dataDirectory, 'manual')
       : path.resolve(root, input.manual.dataDirectory);
-  const translationWorkDirectory = path.resolve(
+  const translationDirectory = path.resolve(
     root,
-    input.translationWorkDirectory ?? 'tmp/docs-tools/api-translation',
+    input.translationDirectory ?? 'tmp/docs-tools',
   );
+  const apiTranslationDirectory = path.join(
+    translationDirectory,
+    'api-translation',
+  );
+  const translationCacheDirectory = path.join(
+    translationDirectory,
+    'translation-cache',
+  );
+  const cdnBaseUrl = isRecord(config) && isRecord(config['cdn']) &&
+    typeof config['cdn']['baseUrl'] === 'string'
+    ? `${config['cdn']['baseUrl'].replace(/\/+$/u, '')}/`
+    : undefined;
 
   if (
     !isWithin(root, dataDirectory) ||
     (input.api !== undefined && !isWithin(root, apiDirectory)) ||
     ((input.manual !== undefined || manualCollectionsInput !== undefined) &&
       !isWithin(root, manualDirectory)) ||
-    !isWithin(root, translationWorkDirectory)
+    !isWithin(root, translationDirectory) ||
+    isWithin(apiDirectory, translationDirectory) ||
+    isWithin(translationDirectory, apiDirectory) ||
+    isWithin(manualDirectory, translationDirectory) ||
+    isWithin(translationDirectory, manualDirectory)
   ) {
     throw new Error(
       `Configured data and work directories must stay inside the repository: ${filename}`,
@@ -407,7 +460,7 @@ export async function loadSiteConfig(
   if (input.manual !== undefined || manualCollectionsInput !== undefined) {
     await assertNoSymlinkPath(root, manualDirectory);
   }
-  await assertNoSymlinkPath(root, translationWorkDirectory);
+  await assertNoSymlinkPath(root, translationDirectory);
   let apiPackages: APIPackageConfig[] | undefined;
 
   if (input.api?.packages !== undefined) {
@@ -492,28 +545,9 @@ export async function loadSiteConfig(
         await assertNoSymlinkPath(root, directory);
         source = { ...source, directory };
       }
-      let translations: Record<string, string> | undefined;
-
-      if (collection.translations !== undefined) {
-        translations = {};
-        for (const [locale, filename] of Object.entries(
-          collection.translations,
-        )) {
-          const absolutePath = path.resolve(root, filename);
-
-          if (!isWithin(root, absolutePath)) {
-            throw new Error(
-              `Manual translation path must stay inside the repository: ${filename}`,
-            );
-          }
-          await assertNoSymlinkPath(root, absolutePath);
-          translations[locale] = absolutePath;
-        }
-      }
       manuals.push({
         ...collection,
         source,
-        ...(translations === undefined ? {} : { translations }),
       });
     }
   }
@@ -529,7 +563,10 @@ export async function loadSiteConfig(
     manualDirectory,
     manualConfigured:
       input.manual !== undefined || manualCollectionsInput !== undefined,
-    translationWorkDirectory,
+    translationDirectory,
+    apiTranslationDirectory,
+    translationCacheDirectory,
+    ...(cdnBaseUrl === undefined ? {} : { cdnBaseUrl }),
     ...(input.siteName === undefined ? {} : { siteName: input.siteName }),
     ...(pages === undefined ? {} : { pages }),
     ...(apiPackages === undefined ? {} : { apiPackages }),

@@ -16,7 +16,6 @@ export interface ManualRouteProps<TLocale extends string> {
   manualDataURL?: string;
   locales: readonly TLocale[];
   locale: TLocale;
-  sectionLabel: string;
   messages: ManualPageMessages;
 }
 
@@ -31,7 +30,6 @@ export function ManualRoute<TLocale extends string>({
   manualDataURL,
   locales,
   locale,
-  sectionLabel,
   messages,
 }: ManualRouteProps<TLocale>) {
   const { slug } = useParams();
@@ -53,7 +51,6 @@ export function ManualRoute<TLocale extends string>({
       messages={messages}
       onTitleChange={setManualPageTitle}
       onSidebarCollapsed={setManualSidebarCollapsed}
-      sectionLabel={sectionLabel}
       homeHref={localePath(locale)}
       getPageHref={value =>
         localePath(locale, value === undefined ? ['manual'] : ['manual', value])

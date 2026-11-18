@@ -46,7 +46,6 @@ export interface DocsSiteConfiguration<TLocale extends string> {
   historyKeyPrefix: string;
   localeLabels: Readonly<Record<TLocale, string>>;
   messages: (locale: TLocale) => DocsSiteMessages;
-  manualSectionLabel: string;
   manualDataURL?: string;
   api?: import('../api/configured-api-page').DocsSiteAPIConfiguration;
   siteOrigin?: string;
@@ -306,7 +305,6 @@ export function DocsSite<TLocale extends string>({
                         : { manualDataURL: site.manualDataURL })}
                       locales={locales}
                       locale={locale}
-                      sectionLabel={site.manualSectionLabel}
                       messages={site.messages(locale)}
                     />
                   }

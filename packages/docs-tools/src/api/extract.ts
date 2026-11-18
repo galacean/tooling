@@ -1,13 +1,20 @@
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { isRecord, parseProject } from '@galacean/docs-site';
+import { isRecord, parseAPIManifest, parseProject } from '@galacean/docs-site';
 import { assertNoSymlinkPath } from '../config/site-config';
 import type { DocsSiteConfig } from '../config/site-config';
+import { isSafeRelativePath } from '../path-validation';
+import { readAPITranslationArchive } from './translation-archive';
+import { readJSON } from './read-json';
 import { sourceProject } from './snapshot';
-import { buildTranslationSource, contentHash } from './translations';
+import {
+  buildTranslationSource,
+  contentHash,
+  validateTranslation,
+} from './translations';
 import type { DocumentationPackage, TranslationSource } from './translations';
-import { parseVersion } from './versions';
+import { compareVersions, parseVersion } from './versions';
 import { readAPISnapshot } from './snapshot-reference';
 
 type ExtractConfig = Pick<
@@ -16,7 +23,9 @@ type ExtractConfig = Pick<
   | 'sourceLocale'
   | 'locales'
   | 'apiDirectory'
-  | 'translationWorkDirectory'
+  | 'apiTranslationDirectory'
+  | 'apiVersions'
+  | 'apiPackages'
 >;
 
 export interface ExtractedTranslationTask {
@@ -44,6 +53,11 @@ export interface TranslationInput {
   targetProject: Record<string, unknown>;
   apiSnapshot: Record<string, unknown>;
   translationSource: TranslationSource;
+}
+
+export interface ExtractOptions {
+  version?: string;
+  locale?: string;
 }
 
 function isWithin(parent: string, child: string): boolean {
@@ -205,41 +219,136 @@ export async function loadTranslationInput(
 export async function extractTranslationTasks(
   targetFiles: string[],
   config: ExtractConfig,
+  options: ExtractOptions = {},
 ): Promise<ExtractedTranslationTask[]> {
-  if (targetFiles.length === 0) {
-    throw new Error('Provide one or more API snapshot paths');
+  let selectedTargetFiles = targetFiles;
+
+  if (selectedTargetFiles.length === 0) {
+    const versions = config.apiVersions?.versions;
+
+    if (versions === undefined || versions.length === 0) {
+      throw new Error('api extract requires api.repository and api.versions');
+    }
+    const version = options.version ?? [...versions].sort(compareVersions).at(-1);
+
+    if (version === undefined || !versions.includes(version)) {
+      throw new Error(`API version is not configured: ${version ?? '(none)'}`);
+    }
+    const locales = options.locale === undefined
+      ? config.locales.filter(locale => locale !== config.sourceLocale)
+      : [options.locale];
+
+    if (
+      locales.some(
+        locale => locale === config.sourceLocale || !config.locales.includes(locale),
+      )
+    ) {
+      throw new Error('api extract locale must be a configured target locale');
+    }
+    const manifest = parseAPIManifest(
+      await readJSON(path.join(config.apiDirectory, 'manifest.json')),
+    );
+    const dataRoot = path.dirname(config.apiDirectory);
+    const packageKeys = config.apiPackages?.map(pkg => pkg.key) ??
+      manifest.packages.map(pkg => pkg.key);
+
+    selectedTargetFiles = [];
+    for (const packageKey of packageKeys) {
+      const packageVersion = manifest.packages
+        .find(pkg => pkg.key === packageKey)
+        ?.versions.find(item => item.version === version);
+
+      if (packageVersion === undefined) {
+        throw new Error(`API manifest does not contain ${packageKey}@${version}`);
+      }
+      for (const locale of locales) {
+        const relativePath = packageVersion.json[locale];
+
+        if (relativePath === undefined || !isSafeRelativePath(relativePath)) {
+          throw new Error(
+            `API manifest is missing a safe ${locale} path for ${packageKey}@${version}`,
+          );
+        }
+        const targetPath = path.resolve(dataRoot, relativePath);
+        const relativeTarget = path.relative(dataRoot, targetPath);
+
+        if (
+          relativeTarget === '..' ||
+          relativeTarget.startsWith(`..${path.sep}`) ||
+          path.isAbsolute(relativeTarget)
+        ) {
+          throw new Error(`API manifest path leaves data directory: ${relativePath}`);
+        }
+        selectedTargetFiles.push(targetPath);
+      }
+    }
   }
 
   const inputs = await Promise.all(
-    targetFiles.map(targetFile => loadTranslationInput(targetFile, config)),
+    selectedTargetFiles.map(targetFile => loadTranslationInput(targetFile, config)),
   );
   const seenTargets = new Set<string>();
+  const pendingInputs: TranslationInput[] = [];
 
   for (const input of inputs) {
     if (seenTargets.has(input.targetPath)) {
       throw new Error(`Duplicate target API snapshot: ${input.targetPath}`);
     }
     seenTargets.add(input.targetPath);
+    let archived = false;
+
+    try {
+      const archive = await readAPITranslationArchive(
+        config,
+        input.packageKey,
+        input.version,
+        input.locale,
+      );
+
+      if (archive !== undefined) {
+        validateTranslation(
+          {
+            version: archive.version,
+            sourceHash: archive.sourceHash,
+            translations: archive.translations,
+          },
+          input.translationSource,
+          input.locale,
+          input.version,
+        );
+        archived = true;
+      }
+    } catch {
+      archived = false;
+    }
+    if (archived) {
+      continue;
+    }
     if (input.fields.length === 0) {
       throw new Error(
         `No API comment fields need translation: ${input.targetPath}`,
       );
     }
+    pendingInputs.push(input);
   }
 
-  await assertNoSymlinkPath(
-    config.repositoryRoot,
-    config.translationWorkDirectory,
-  );
-  await mkdir(config.translationWorkDirectory, { recursive: true });
+  if (pendingInputs.length === 0) {
+    return [];
+  }
+
+  const apiTranslationDirectory = config.apiTranslationDirectory ??
+    path.join(config.repositoryRoot, 'tmp/docs-tools/api-translation');
+
+  await assertNoSymlinkPath(config.repositoryRoot, apiTranslationDirectory);
+  await mkdir(apiTranslationDirectory, { recursive: true });
   const runDirectory = await mkdtemp(
-    path.join(config.translationWorkDirectory, 'run-'),
+    path.join(apiTranslationDirectory, 'run-'),
   );
 
   try {
     const tasks: ExtractedTranslationTask[] = [];
 
-    for (const [index, input] of inputs.entries()) {
+    for (const [index, input] of pendingInputs.entries()) {
       const task = {
         schemaVersion: 1,
         sourceLocale: config.sourceLocale,

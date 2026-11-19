@@ -809,6 +809,34 @@ async function syncLocalCollection(
 
     await assertNoSymlinkPath(config.repositoryRoot, sourceMarkdownPath);
     const markdown = await readFile(sourceMarkdownPath, 'utf8');
+    const translations: ManualPage['translations'] = {};
+
+    for (const locale of config.locales) {
+      if (locale === collection.source.locale) {
+        continue;
+      }
+      const localizedMarkdownPath = path.join(
+        collection.source.directory,
+        locale,
+        `${slug}.md`,
+      );
+
+      await assertNoSymlinkPath(config.repositoryRoot, localizedMarkdownPath);
+      try {
+        translations[locale] = {
+          content: await readFile(localizedMarkdownPath, 'utf8'),
+          format: 'markdown',
+        };
+      } catch (error) {
+        if (errorCode(error) !== 'ENOENT') {
+          throw error;
+        }
+        throw new Error(
+          `Missing local manual for ${collection.key}/${locale}/${slug}`,
+          { cause: error },
+        );
+      }
+    }
     const navigation: ManualNavigationItem = {
       slug: safeRouteSlug(collection.routePrefix, slug),
       title: Object.fromEntries(
@@ -844,21 +872,6 @@ async function syncLocalCollection(
         : {}),
       source: { type: 'local' },
     };
-    const translations = await loadTranslations(
-      collection,
-      manualTranslationKey(navigation),
-      'markdown',
-      config,
-    );
-
-    for (const [locale, translation] of Object.entries(translations)) {
-      if (translation.title !== undefined) {
-        navigation.title[locale] = translation.title;
-      }
-      if (translation.group !== undefined) {
-        navigation.group[locale] = translation.group;
-      }
-    }
 
     addPage(pages, slugs, {
       navigation,

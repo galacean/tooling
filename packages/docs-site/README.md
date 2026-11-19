@@ -18,7 +18,31 @@ Import `DocsSite` and its configuration types from `@galacean/docs-site`, and lo
 
 Provide the site brand, locales, localized messages, API data settings, and a `pages` registry. A page has a `slug`, a `render(locale)` callback, and a localized `title(locale)` except for the homepage, whose slug is `null`. Product page content and typography remain application-owned.
 
-API and manual data are served as static files. `manualDataURL` defaults to `${dataBaseURL}data/manual/`; configure it when the published manual directory uses another URL. Use `getSearchDataURL` to map search indexes to their published URL.
+`DocsSite` requires `baseURL`, `locales`, `defaultLocale`, `site`, and `pages`; `site.brandLabel`, `brandMarkUrls`, `localeLabels`, and `messages` are also required.
+
+Optional `DocsSite` and `site` settings receive defaults once at the site entry point:
+
+- `dataBaseURL` defaults to `baseURL`.
+- `site.docsBrandMarkUrls` defaults to `site.brandMarkUrls`.
+- `site.getHomeHref(locale)` defaults to the current locale's home path.
+- `site.storageKeys` defaults to `locale`, `theme`, and the `search-history` prefix; the locale is appended to search history, for example `search-history:en`.
+- `site.siteOrigin` defaults to `window.location.origin`.
+- `site.manualDataURL` defaults to `${dataBaseURL}data/manual/`.
+- `site.getSearchDataURL(locale)` defaults to `${dataBaseURL}data/search/${locale}.json`.
+- `site.api` and `site.githubHref` enable optional features; omitting them hides API navigation or the GitHub link.
+
+Override only the values that need customization:
+
+```ts
+storageKeys: {
+	locale: 'umi_locale',
+	theme: 'ui_theme',
+	searchHistory: 'docs-search',
+},
+getHomeHref: locale => `/docs/${locale}/`,
+```
+
+API and manual data are served as static files. Override their published paths with `manualDataURL` and `getSearchDataURL`.
 
 ## Exports
 

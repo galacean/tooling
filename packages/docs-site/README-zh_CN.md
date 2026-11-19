@@ -18,7 +18,31 @@ pnpm add @galacean/docs-site react react-dom react-markdown react-router-dom rem
 
 调用方提供站点品牌、支持语言、本地化文案、API 数据配置和 `pages` 注册表。页面包含 `slug`、`render(locale)`；除首页外还需提供本地化的 `title(locale)`。首页的 `slug` 为 `null`。产品页面内容和字体样式由应用维护。
 
-API 和手册数据以静态文件形式发布。`manualDataURL` 默认是 `${dataBaseURL}data/manual/`；手册发布到其他 URL 时需显式配置。搜索索引发布在非默认 URL 时，通过 `getSearchDataURL` 指定。
+`DocsSite` 的 `baseURL`、`locales`、`defaultLocale`、`site`、`pages`，以及 `site.brandLabel`、`brandMarkUrls`、`localeLabels`、`messages` 仍为必填配置。
+
+`DocsSite` 和 `site` 的可选配置会在站点入口统一应用默认值：
+
+- `dataBaseURL` 默认等于 `baseURL`。
+- `site.docsBrandMarkUrls` 默认等于 `site.brandMarkUrls`。
+- `site.getHomeHref(locale)` 默认返回当前语言首页路径。
+- `site.storageKeys` 默认使用 `locale`、`theme` 和 `search-history`；搜索历史会追加语言后缀，例如 `search-history:zh-CN`。
+- `site.siteOrigin` 默认使用 `window.location.origin`。
+- `site.manualDataURL` 默认是 `${dataBaseURL}data/manual/`。
+- `site.getSearchDataURL(locale)` 默认返回 `${dataBaseURL}data/search/${locale}.json`。
+- `site.api` 和 `site.githubHref` 是可选功能；省略时不显示 API 导航或 GitHub 链接。
+
+需要覆盖部分默认值时，只提供要修改的字段：
+
+```ts
+storageKeys: {
+	locale: 'umi_locale',
+	theme: 'ui_theme',
+	searchHistory: 'docs-search',
+},
+getHomeHref: locale => `/docs/${locale}/`,
+```
+
+API 和手册数据以静态文件形式发布；发布路径可通过 `manualDataURL` 和 `getSearchDataURL` 覆盖默认值。
 
 ## 导出内容
 

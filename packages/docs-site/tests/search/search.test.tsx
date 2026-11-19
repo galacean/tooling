@@ -67,6 +67,31 @@ describe('shared search query', () => {
     ).toHaveLength(40);
   });
 
+  it('supports conservative typo matching and requires every query term', () => {
+    expect(searchResults(items, 'animaton').map(result => result.name)).toEqual([
+      'IRScene',
+    ]);
+    expect(searchResults(items, 'a animation').map(result => result.name)).toEqual([
+      'IRScene',
+    ]);
+    expect(searchResults(items, 'animation missing')).toEqual([]);
+    expect(searchResults(items, 'validteIR').map(result => result.name)).toEqual([
+      'validateIR',
+    ]);
+  });
+
+  it('matches Chinese documents by full pinyin and initials', () => {
+    const chinese = {
+      ...item('计算方法', '中文 API'),
+      pinyin: 'jisuanfangfazhongwenapi',
+      pinyinInitials: 'jsffzw',
+    };
+
+    expect(searchResults([chinese], 'suanfa')).toEqual([chinese]);
+    expect(searchResults([chinese], 'jsff')).toEqual([chinese]);
+    expect(searchResults([chinese], 'jisuanfag')).toEqual([chinese]);
+  });
+
   it('validates source locales from the consumer config', () => {
     expect(parseSearch(items, ['en', 'zh-CN'])).toEqual(items);
     expect(() =>
@@ -74,6 +99,9 @@ describe('shared search query', () => {
     ).toThrow('Invalid search index');
     expect(() =>
       parseSearch([{ ...items[0], summary: null }], ['en', 'zh-CN']),
+    ).toThrow('Invalid search index');
+    expect(() =>
+      parseSearch([{ ...items[0], pinyin: 1 }], ['en', 'zh-CN']),
     ).toThrow('Invalid search index');
   });
 });
@@ -84,7 +112,7 @@ describe('shared SearchPanel', () => {
       locale: 'en',
       brandLabel: 'Example Docs',
       brandMarkUrl: '/brand.svg',
-      historyKeyPrefix: 'example:site:search',
+      historyKey: 'example:site:search:en',
       messages,
       loadItems: async () => items,
       navigate: () => undefined,
@@ -133,7 +161,11 @@ describe('shared SiteShell', () => {
           { key: 'start', label: 'Start here', to: '/fr', end: true },
         ],
         githubHref: 'https://github.com/example/docs',
-        historyKeyPrefix: 'example:search',
+        storageKeys: {
+          locale: 'example:locale',
+          theme: 'example:theme',
+          searchHistory: 'example:search',
+        },
         pageKind,
         canonicalHref: 'https://example.test/docs/fr/',
         getAlternateHref: locale => `https://example.test/docs/${locale}/`,
@@ -142,7 +174,7 @@ describe('shared SiteShell', () => {
         errorFallback: () => 'Content unavailable',
       };
       const markup = renderToStaticMarkup(
-        <ThemeProvider namespace="example:docs">
+        <ThemeProvider themeStorageKey="example:theme">
           <MemoryRouter initialEntries={['/fr']}>
             <Routes>
               <Route path="/fr" element={<SiteShell {...props} />}>

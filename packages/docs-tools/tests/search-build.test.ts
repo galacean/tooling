@@ -276,6 +276,8 @@ void test('builds search indexes from each package current path and localized co
     category: string;
     name: string;
     summary: string;
+    pinyin: string;
+    pinyinInitials: string;
     sourceLocale: string;
     url: string;
   }[];
@@ -285,6 +287,8 @@ void test('builds search indexes from each package current path and localized co
     category: string;
     name: string;
     summary: string;
+    pinyin: string;
+    pinyinInitials: string;
     sourceLocale: string;
     url: string;
   }[];
@@ -306,7 +310,9 @@ void test('builds search indexes from each package current path and localized co
       item =>
         item.name === '@example/alpha' &&
         item.sourceLocale === 'zh-CN' &&
-        item.summary.includes('Alpha 中文包'),
+        item.summary.includes('Alpha 中文包') &&
+        item.pinyin.includes('zhongwenbao') &&
+        item.pinyinInitials.includes('zwb'),
     ),
   );
   assert.ok(

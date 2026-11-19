@@ -26,7 +26,7 @@ export interface SearchPanelProps {
   locale: string;
   brandLabel: string;
   brandMarkUrl: string;
-  historyKeyPrefix: string;
+  historyKey: string;
   messages: SearchPanelMessages;
   includeAPI?: boolean;
   loadItems: (locale: string) => Promise<SearchResult[]>;
@@ -52,7 +52,7 @@ export function SearchPanel({
   locale,
   brandLabel,
   brandMarkUrl,
-  historyKeyPrefix,
+  historyKey,
   messages: t,
   includeAPI = true,
   loadItems,
@@ -70,13 +70,14 @@ export function SearchPanel({
   const input = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const key = `${historyKeyPrefix}:${locale}`;
 
   useEffect(() => {
     setQuery('');
     setDebounced('');
     try {
-      const stored: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+      const stored: unknown = JSON.parse(
+        localStorage.getItem(historyKey) ?? '[]',
+      );
 
       if (
         !Array.isArray(stored) ||
@@ -92,7 +93,7 @@ export function SearchPanel({
       setHistory([]);
       setStorageError(true);
     }
-  }, [key]);
+  }, [historyKey]);
   useEffect(() => {
     let cancelled = false;
 
@@ -146,7 +147,7 @@ export function SearchPanel({
   const saveHistory = (values: string[]) => {
     setHistory(values);
     try {
-      localStorage.setItem(key, JSON.stringify(values));
+      localStorage.setItem(historyKey, JSON.stringify(values));
     } catch {
       setStorageError(true);
     }

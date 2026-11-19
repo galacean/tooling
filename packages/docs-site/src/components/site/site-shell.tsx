@@ -14,6 +14,7 @@ import type { DocsPageSwitcherItem } from './docs-page-switcher';
 import { DocsSearchTrigger } from './docs-search-trigger';
 import { LazySearchPanel as SearchPanel } from '../search/lazy-search-panel';
 import { useTheme } from '../../providers';
+import type { DocsSiteStorageKeys } from '../../preferences';
 import type { SearchResult } from '../../search';
 import type { SearchPanelMessages } from '../search';
 
@@ -38,6 +39,7 @@ export interface SiteShellNavigationItem {
 export interface SiteShellProps {
   locale: string;
   locales: { value: string; label: string }[];
+  storageKeys: DocsSiteStorageKeys;
   messages: SiteShellMessages;
   brandLabel: string;
   brandMarkUrls: Readonly<{ light: string; dark: string }>;
@@ -45,7 +47,6 @@ export interface SiteShellProps {
   homeHref: string;
   navigation: SiteShellNavigationItem[];
   githubHref?: string;
-  historyKeyPrefix: string;
   pageKind: 'api' | 'manual' | 'other';
   pageTitle?: string;
   canonicalHref: string;
@@ -105,9 +106,9 @@ export function SiteShell({
   brandMarkUrls,
   docsBrandMarkUrls,
   homeHref,
+  storageKeys,
   navigation,
   githubHref,
-  historyKeyPrefix,
   pageKind,
   pageTitle,
   canonicalHref,
@@ -269,6 +270,7 @@ export function SiteShell({
       onOpen={() => setSearch(true)}
     />
   );
+  const searchHistoryKey = `${storageKeys.searchHistory}:${locale}`;
   const docsSearchButton = (
     <DocsSearchTrigger
       variant="header"
@@ -287,7 +289,7 @@ export function SiteShell({
         options={locales}
         icon={<Icon name="language" />}
         onChange={value => {
-          persist('locale', value);
+          persist(storageKeys.locale, value);
           void navigate(getLocaleHref(value, location.search, location.hash));
         }}
       />
@@ -472,7 +474,7 @@ export function SiteShell({
               locale={locale}
               brandLabel={brandLabel}
               brandMarkUrl={docsBrandMarkUrl}
-              historyKeyPrefix={historyKeyPrefix}
+              historyKey={searchHistoryKey}
               messages={t}
               includeAPI={includeAPI}
               loadItems={loadSearchItems}

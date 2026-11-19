@@ -23,7 +23,8 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@remixicon/react": "^4.9.0"
+    "@remixicon/react": "^4.9.0",
+    "fuse.js": "7.5.0"
   },
   "peerDependencies": {
     "highlight.js": "^11.11.0",

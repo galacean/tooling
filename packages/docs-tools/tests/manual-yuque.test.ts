@@ -814,13 +814,9 @@ test('failed remote sync leaves existing manual data untouched', async t => {
   );
 });
 
-test('local collections retain translations, localized navigation, and overview files', async t => {
+test('local collections use localized source pages, navigation, and overview files', async t => {
   const root = await fixture(t);
   const localDirectory = path.join(root, 'site/manual-local');
-  const translationDirectory = path.join(
-    root,
-    'tmp/docs-tools/translation-cache/manual/local-guide/en',
-  );
   const config = await loadConfig(root, [
     {
       key: 'local-guide',
@@ -834,7 +830,6 @@ test('local collections retain translations, localized navigation, and overview 
 
   await mkdir(path.join(localDirectory, 'zh-CN'), { recursive: true });
   await mkdir(path.join(localDirectory, 'en'), { recursive: true });
-  await mkdir(translationDirectory, { recursive: true });
   await mkdir(path.join(config.manualDirectory, 'zh-CN'), {
     recursive: true,
   });
@@ -846,8 +841,8 @@ test('local collections retain translations, localized navigation, and overview 
     JSON.stringify([
       {
         slug: 'getting-started',
-        title: { 'zh-CN': '开始使用' },
-        group: { 'zh-CN': '指南' },
+        title: { 'zh-CN': '开始使用', en: 'Getting started' },
+        group: { 'zh-CN': '指南', en: 'Guides' },
         parent: 'getting-started-parent',
       },
     ]),
@@ -856,18 +851,12 @@ test('local collections retain translations, localized navigation, and overview 
     path.join(localDirectory, 'zh-CN/getting-started.md'),
     '# 开始使用\n\n中文正文。\n',
   );
-  await writeFile(path.join(localDirectory, 'zh-CN/index.md'), '# 中文手册\n');
-  await writeFile(path.join(localDirectory, 'en/index.md'), '# English manuals\n');
   await writeFile(
-    path.join(translationDirectory, 'getting-started.md'),
+    path.join(localDirectory, 'en/getting-started.md'),
     '# Getting started\n\nEnglish body.\n',
   );
-  await writeFile(
-    path.join(translationDirectory, 'navigation.json'),
-    JSON.stringify({
-      'getting-started': { title: 'Getting started', group: 'Guides' },
-    }),
-  );
+  await writeFile(path.join(localDirectory, 'zh-CN/index.md'), '# 中文手册\n');
+  await writeFile(path.join(localDirectory, 'en/index.md'), '# English manuals\n');
   const result = await syncManuals(config);
   const output = config.manualDirectory;
   const navigation = JSON.parse(
@@ -908,7 +897,7 @@ test('local collections retain translations, localized navigation, and overview 
   );
 });
 
-test('local sync does not read translations from the source directory', async t => {
+test('local sync fails when a configured locale source page is missing', async t => {
   const root = await fixture(t);
   const localDirectory = path.join(root, 'site/manual-local');
   const config = await loadConfig(root, [
@@ -923,7 +912,13 @@ test('local sync does not read translations from the source directory', async t 
   ]);
 
   await mkdir(path.join(localDirectory, 'zh-CN'), { recursive: true });
+  const translationDirectory = path.join(
+    root,
+    'tmp/docs-tools/translation-cache/manual/local-guide/en',
+  );
+
   await mkdir(path.join(localDirectory, 'en'), { recursive: true });
+  await mkdir(translationDirectory, { recursive: true });
   await writeFile(
     path.join(localDirectory, 'navigation.json'),
     JSON.stringify([
@@ -939,18 +934,13 @@ test('local sync does not read translations from the source directory', async t 
     '# 开始使用\n\n中文正文。\n',
   );
   await writeFile(
-    path.join(localDirectory, 'en/getting-started.md'),
-    '# Getting started\n\nLegacy English translation.\n',
+    path.join(translationDirectory, 'getting-started.md'),
+    '# Getting started\n\nCached English translation.\n',
   );
 
-  await syncManuals(config);
-
-  assert.equal(
-    await readFile(
-      path.join(config.manualDirectory, 'en/getting-started.md'),
-      'utf8',
-    ),
-    '# 开始使用\n\n中文正文。\n',
+  await assert.rejects(
+    syncManuals(config),
+    /Missing local manual for local-guide\/en\/getting-started/u,
   );
 });
 
@@ -969,6 +959,7 @@ test('shared manual output directory imports only entries marked as local', asyn
   const manualDirectory = path.join(config.manualDirectory);
 
   await mkdir(path.join(manualDirectory, 'zh-CN'), { recursive: true });
+  await mkdir(path.join(manualDirectory, 'en'), { recursive: true });
   await writeFile(
     path.join(manualDirectory, 'navigation.json'),
     JSON.stringify([
@@ -993,6 +984,10 @@ test('shared manual output directory imports only entries marked as local', asyn
   await writeFile(
     path.join(manualDirectory, 'zh-CN/local-page.md'),
     '# Local\n\nLocal page content.\n',
+  );
+  await writeFile(
+    path.join(manualDirectory, 'en/local-page.md'),
+    '# Local\n\nEnglish local page content.\n',
   );
 
   const result = await syncManuals(config);

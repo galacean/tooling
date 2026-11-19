@@ -26,6 +26,7 @@ import type {
 import { SearchPanel } from '../../src/components/search/search-panel';
 import type { SearchResult } from '../../src/search';
 import { ThemeProvider } from '../../src/providers/theme';
+import { resolveDocsSiteStorageKeys } from '../../src/components/site/default-docs-site-config';
 
 const messages: SiteShellMessages = {
   search: 'Search',
@@ -91,7 +92,12 @@ function RoutedManualPage() {
 function RoutedSiteShell({
   pageKind = 'manual',
   includeAPI = true,
-}: { pageKind?: 'manual' | 'api' | 'other'; includeAPI?: boolean } = {}) {
+  includeSearchHistory = true,
+}: {
+  pageKind?: 'manual' | 'api' | 'other';
+  includeAPI?: boolean;
+  includeSearchHistory?: boolean;
+} = {}) {
   const { locale = 'en' } = useParams();
   const locales = [
     { value: 'en', label: 'English' },
@@ -113,13 +119,19 @@ function RoutedSiteShell({
         dark: '/brand/artis-mark-dark.svg',
       }}
       homeHref={`/${locale}`}
+      storageKeys={resolveDocsSiteStorageKeys({
+        locale: 'example:docs:locale',
+        theme: 'example:docs:theme',
+        ...(includeSearchHistory
+          ? { searchHistory: 'example:docs:search' }
+          : {}),
+      })}
       navigation={[
         { key: 'manual', label: 'Manual', to: `/${locale}/manual` },
         ...(includeAPI
           ? [{ key: 'api', label: 'API', to: `/${locale}/api` }]
           : []),
       ]}
-      historyKeyPrefix="example:docs:search"
       pageKind={pageKind}
       canonicalHref={`https://example.test/${locale}/manual`}
       getAlternateHref={language => `https://example.test/${language}/manual`}
@@ -136,10 +148,12 @@ function renderSite({
   failStorageRead = false,
   initialEntry = '/en/manual?tab=read#intro',
   includeAPI = true,
+  includeSearchHistory = true,
 }: {
   failStorageRead?: boolean;
   initialEntry?: string;
   includeAPI?: boolean;
+  includeSearchHistory?: boolean;
 } = {}) {
   const values = new Map<string, string>();
   const storage = {
@@ -166,25 +180,40 @@ function renderSite({
   vi.stubGlobal('scrollTo', vi.fn());
 
   render(
-    <ThemeProvider namespace="example:docs">
+    <ThemeProvider themeStorageKey="example:docs:theme">
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route
             path="/:locale"
             element={
-              <RoutedSiteShell pageKind="other" includeAPI={includeAPI} />
+              <RoutedSiteShell
+                pageKind="other"
+                includeAPI={includeAPI}
+                includeSearchHistory={includeSearchHistory}
+              />
             }
           />
           <Route
             path="/:locale/manual"
-            element={<RoutedSiteShell includeAPI={includeAPI} />}
+            element={
+              <RoutedSiteShell
+                includeAPI={includeAPI}
+                includeSearchHistory={includeSearchHistory}
+              />
+            }
           >
             <Route index element={<CurrentLocation />} />
             <Route path=":slug" element={<RoutedManualPage />} />
           </Route>
           <Route
             path="/:locale/api"
-            element={<RoutedSiteShell pageKind="api" includeAPI={includeAPI} />}
+            element={
+              <RoutedSiteShell
+                pageKind="api"
+                includeAPI={includeAPI}
+                includeSearchHistory={includeSearchHistory}
+              />
+            }
           >
             <Route index element={<CurrentLocation />} />
           </Route>
@@ -327,7 +356,7 @@ describe('SiteShell preferences', () => {
         locale="en"
         brandLabel="Example Docs"
         brandMarkUrl="/brand.svg"
-        historyKeyPrefix="example:search"
+        historyKey="example:search:en"
         messages={messages}
         includeAPI={false}
         loadItems={async () =>
@@ -543,16 +572,27 @@ describe('SiteShell preferences', () => {
   });
 
   it('opens search with the keyboard shortcut and closes from the panel', async () => {
-    renderSite();
+    const { storage } = renderSite();
 
     fireEvent.keyDown(window, { key: 'K', ctrlKey: true });
 
     expect(await screen.findByRole('dialog', { name: 'Search' })).toBeDefined();
+    expect(storage.getItem).toHaveBeenCalledWith('example:docs:search:en');
     expect(showModal).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Search' })).toBeNull(),
+    );
+  });
+
+  it('uses the default locale-scoped search history key', async () => {
+    const { storage } = renderSite({ includeSearchHistory: false });
+
+    fireEvent.keyDown(window, { key: 'K', ctrlKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Search' })).toBeDefined();
+    expect(storage.getItem).toHaveBeenCalledWith(
+      'search-history:en',
     );
   });
 

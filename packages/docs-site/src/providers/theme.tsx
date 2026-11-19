@@ -15,18 +15,18 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({
-  namespace,
+  themeStorageKey,
   children,
 }: {
-  namespace: string;
+  themeStorageKey: string;
   children: ReactNode;
 }) {
-  const [preferences] = useState(() => createPreferenceStorage(namespace));
+  const [preferences] = useState(() => createPreferenceStorage());
   const [preference, setPreference] = useState<{
     mode: ThemeMode;
     failed: boolean;
   }>(() => {
-    const result = preferences.read('theme');
+    const result = preferences.read(themeStorageKey);
     const mode =
       result.value === 'dark' || result.value === 'light'
         ? result.value
@@ -65,7 +65,7 @@ export function ThemeProvider({
     return succeeded;
   };
   const change = (value: ThemeMode) => {
-    persist('theme', value);
+    persist(themeStorageKey, value);
     setPreference(current => ({ ...current, mode: value }));
   };
 

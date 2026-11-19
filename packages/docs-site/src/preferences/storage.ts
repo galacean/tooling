@@ -8,16 +8,20 @@ export interface PreferenceStorage {
   write(key: string, value: string): boolean;
 }
 
-export function createPreferenceStorage(namespace: string): PreferenceStorage {
-  if (namespace.trim() === '') {
-    throw new Error('Preference namespace must be a non-empty string');
-  }
+export interface DocsSiteStorageKeys {
+  locale: string;
+  theme: string;
+  searchHistory: string;
+}
 
+export type DocsSiteStorageKeyOverrides = Partial<DocsSiteStorageKeys>;
+
+export function createPreferenceStorage(): PreferenceStorage {
   return {
     read(key) {
       try {
         return {
-          value: localStorage.getItem(`${namespace}:${key}`),
+          value: localStorage.getItem(key),
           failed: false,
         };
       } catch {
@@ -26,7 +30,7 @@ export function createPreferenceStorage(namespace: string): PreferenceStorage {
     },
     write(key, value) {
       try {
-        localStorage.setItem(`${namespace}:${key}`, value);
+        localStorage.setItem(key, value);
 
         return true;
       } catch {

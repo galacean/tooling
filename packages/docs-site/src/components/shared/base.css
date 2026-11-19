@@ -13,28 +13,24 @@
   --site-doc-heading-4-size: 20px;
   --site-doc-nav-size: 14px;
   --site-doc-outline-size: 14px;
-  --site-doc-sidebar-width: 260px;
-  --site-doc-sidebar-compact-width: 240px;
+  --site-doc-sidebar-width: clamp(259px, 18vw, 480px);
   --site-doc-outline-width: 305px;
   --site-doc-reading-width: 1120px;
   --site-doc-reading-gutter: clamp(24px, 4vw, 64px);
   --docs-scrollbar-track: #fff;
-  --docs-scrollbar-thumb: #585a5a;
-  --docs-scrollbar-thumb-hover: #585a5a;
+  --docs-scrollbar-thumb: #e7e9e8;
+  --docs-scrollbar-thumb-hover: #d8dad9;
 }
 :root[data-theme='dark'] {
-  --docs-scrollbar-track: var(--site-background, #202320);
-  --docs-scrollbar-thumb: var(--site-muted, #71766f);
-  --docs-scrollbar-thumb-hover: var(--site-ink, #fff);
+  --docs-scrollbar-track: var(--site-surface, #1f1f1f);
+  --docs-scrollbar-thumb: #333;
+  --docs-scrollbar-thumb-hover: #424242;
 }
 * {
   box-sizing: border-box;
   letter-spacing: 0;
   scrollbar-color: var(--docs-scrollbar-thumb) var(--docs-scrollbar-track);
   scrollbar-width: thin;
-}
-.docs-scroll-area {
-  scrollbar-gutter: stable;
 }
 .docs-reading-content {
   max-width: calc(
@@ -53,11 +49,7 @@
 *::-webkit-scrollbar-thumb {
   border: 3px solid var(--docs-scrollbar-track);
   border-radius: 5px;
-  background: color-mix(
-    in srgb,
-    var(--docs-scrollbar-thumb) 55%,
-    var(--docs-scrollbar-track)
-  );
+  background: var(--docs-scrollbar-thumb);
 }
 *::-webkit-scrollbar-thumb:hover {
   background: var(--docs-scrollbar-thumb-hover);

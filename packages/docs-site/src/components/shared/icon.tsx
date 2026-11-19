@@ -13,6 +13,7 @@ import {
   RiEyeOffLine,
   RiEyeLine,
   RiFocus3Line,
+  RiFullscreenLine,
   RiGithubFill,
   RiHomeLine,
   RiListUnordered,
@@ -28,6 +29,8 @@ import {
   RiSunLine,
   RiTimeLine,
   RiTranslate2,
+  RiZoomInLine,
+  RiZoomOutLine,
 } from '@remixicon/react';
 
 const icons = {
@@ -60,6 +63,9 @@ const icons = {
   clock: RiTimeLine,
   eyeOff: RiEyeOffLine,
   eye: RiEyeLine,
+  fullscreen: RiFullscreenLine,
+  zoomIn: RiZoomInLine,
+  zoomOut: RiZoomOutLine,
 } as const;
 
 export type IconName = keyof typeof icons | 'github';

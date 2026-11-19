@@ -46,9 +46,9 @@ export function resolvePreferredLocale<T extends string>(
 export function createBrowserLocalePreference<T extends string>(
   locales: readonly T[],
   defaultLocale: T,
-  namespace: string,
+  storageKey: string,
 ): () => T {
-  const preferences = createPreferenceStorage(namespace);
+  const preferences = createPreferenceStorage();
 
   return () => {
     const languages =
@@ -59,7 +59,7 @@ export function createBrowserLocalePreference<T extends string>(
     return resolvePreferredLocale(
       locales,
       defaultLocale,
-      preferences.read('locale').value,
+      preferences.read(storageKey).value,
       languages,
     );
   };

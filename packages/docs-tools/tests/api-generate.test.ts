@@ -72,7 +72,7 @@ async function fixture() {
     locales: ['en', 'zh-CN'],
     apiDirectory,
     manualDirectory: path.join(repositoryRoot, 'site/public/data/manual'),
-    translationWorkDirectory: path.join(
+    apiTranslationDirectory: path.join(
       repositoryRoot,
       'tmp/docs-tools/api-translation',
     ),
@@ -332,20 +332,6 @@ void test('builds the configured package version from the local workspace when v
       versions: { version: string }[];
     }[];
   };
-  const sources = JSON.parse(
-    await (await import('node:fs/promises')).readFile(
-      path.join(values.apiDirectory, 'version-sources.json'),
-      'utf8',
-    ),
-  ) as {
-    versions: {
-      version: string;
-      commit: string;
-      generatorVersion: string;
-      typeDocVersion: string;
-      typescriptVersion: string;
-    }[];
-  };
 
   assert.equal(buildCount, 1);
   assert.deepEqual(result.versionStatuses, [
@@ -353,21 +339,12 @@ void test('builds the configured package version from the local workspace when v
   ]);
   assert.equal(manifest.packages[0]?.current.packageVersion, '1.2.3');
   assert.equal(manifest.packages[0]?.versions[0]?.version, '1.2.3');
-  assert.deepEqual(
-    sources.versions.map(({ version, commit: sourceCommit, generatorVersion, typeDocVersion }) => ({
-      version,
-      commit: sourceCommit,
-      generatorVersion,
-      typeDocVersion,
-    })),
-    [{
-      version: '1.2.3',
-      commit,
-      generatorVersion: '0.0.9',
-      typeDocVersion: '0.28.20',
-    }],
+  await assert.rejects(
+    (await import('node:fs/promises')).readFile(
+      path.join(values.apiDirectory, 'version-sources.json'),
+    ),
+    { code: 'ENOENT' },
   );
-  assert.match(sources.versions[0]?.typescriptVersion ?? '', /^\d+\.\d+\.\d+$/u);
 });
 
 void test('requires fixed API versions through the mjs CLI', async t => {
@@ -405,7 +382,7 @@ void test('requires fixed API versions through the mjs CLI', async t => {
           },
         ],
       },
-      translationWorkDirectory: 'tmp/docs-tools/api-translation',
+      translationDirectory: 'tmp/docs-tools',
     })} as const;\n`,
   );
 

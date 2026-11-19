@@ -3,7 +3,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import { commonMessages, DocsSite } from '@galacean/docs-site';
-import type { DocsSitePage } from '@galacean/docs-site';
+import type {
+  DocsSitePage,
+  DocsSiteStorageKeyOverrides,
+} from '@galacean/docs-site';
 
 const locales = ['en', 'zh-CN'] as const;
 
@@ -21,6 +24,8 @@ function renderSite(
   includeAPI = true,
   manualDataURL?: string,
   customPages: readonly DocsSitePage<(typeof locales)[number]>[] = [],
+  getHomeHref?: (locale: (typeof locales)[number]) => string,
+  storageKeys?: DocsSiteStorageKeyOverrides,
 ) {
   const pages: DocsSitePage<(typeof locales)[number]>[] = [
     {
@@ -41,17 +46,16 @@ function renderSite(
       dataBaseURL={dataBaseURL}
       locales={locales}
       defaultLocale="zh-CN"
-      preferenceNamespace="docs-site-test"
       site={{
         brandLabel: 'Shared docs',
         brandMarkUrls: { light: '/brand-light.svg', dark: '/brand-dark.svg' },
-        historyKeyPrefix: 'docs-site-test',
+        ...(storageKeys === undefined ? {} : { storageKeys }),
+        ...(getHomeHref === undefined ? {} : { getHomeHref }),
         localeLabels: { en: 'English', 'zh-CN': '简体中文' },
         messages: locale => ({
           ...commonMessages[locale],
           manualIntro: 'Manual introduction',
         }),
-        manualSectionLabel: 'Documentation',
         ...(manualDataURL === undefined ? {} : { manualDataURL }),
         ...(includeAPI
           ? {
@@ -93,12 +97,103 @@ afterEach(() => {
 });
 
 describe('DocsSite routing', () => {
+  it('uses locale and theme defaults when only search history is configured', async () => {
+    const values = new Map([
+      ['locale', 'en'],
+      ['theme', 'dark'],
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+    };
+
+    vi.stubGlobal('localStorage', storage);
+    window.history.replaceState({}, '', '/');
+    renderSite('/', '/', false);
+
+    expect(await screen.findByText('home:en')).toBeDefined();
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Light' }));
+    expect(values.get('theme')).toBe('light');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+    fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
+    expect(await screen.findByText('home:zh-CN')).toBeDefined();
+    expect(values.get('locale')).toBe('zh-CN');
+  });
+
+  it('uses configured complete localStorage keys for locale and theme', async () => {
+    const values = new Map([
+      ['umi_locale', 'en'],
+      ['custom_theme', 'dark'],
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+    };
+
+    vi.stubGlobal('localStorage', storage);
+    window.history.replaceState({}, '', '/');
+    renderSite(
+      '/',
+      '/',
+      false,
+      undefined,
+      [],
+      undefined,
+      {
+        locale: 'umi_locale',
+        theme: 'custom_theme',
+        searchHistory: 'custom_search',
+      },
+    );
+
+    expect(await screen.findByText('home:en')).toBeDefined();
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+    fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
+    expect(await screen.findByText('home:zh-CN')).toBeDefined();
+    expect(values.get('umi_locale')).toBe('zh-CN');
+
+    fireEvent.click(screen.getByRole('button', { name: '主题' }));
+    fireEvent.click(screen.getByRole('option', { name: '亮色' }));
+    expect(values.get('custom_theme')).toBe('light');
+  });
+
   it('omits API navigation when API is not configured', async () => {
     window.history.replaceState({}, '', '/en/');
     renderSite('/', '/', false);
 
     expect(await screen.findByText('home:en')).toBeDefined();
     expect(screen.queryByRole('link', { name: 'API' })).toBeNull();
+  });
+
+  it('uses the configured home URL for the docs logo and page switcher', async () => {
+    window.history.replaceState({}, '', '/en/manual');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('navigation.json')
+          ? Response.json([])
+          : new Response('# Manual introduction', { status: 200 }),
+      ),
+    );
+
+    renderSite('/', '/', false, undefined, [], locale => `/start/${locale}/`);
+
+    const docsLogo = await screen.findByRole('link', { name: 'Shared docs' });
+
+    expect(docsLogo.getAttribute('href')).toBe('/start/en/');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch page' }));
+
+    const homeItem = screen.getByRole('menuitem', { name: 'Home' });
+
+    expect(homeItem.getAttribute('href')).toBe('/start/en/');
   });
 
   it('renders registered pages in the shared shell with localized titles', async () => {

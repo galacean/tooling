@@ -1,20 +1,21 @@
 ---
 name: manual-documentation-translation
-description: Translate synchronized documentation manuals between configured locales while preserving Markdown structure, code, identifiers, links, and review state.
+description: Translate configured Markdown and HTML manuals while preserving document structure, code, identifiers, links, and review state.
 ---
 
 # Manual Documentation Translation
 
-Use this Skill only for Markdown manual pages configured through the site's `manuals` collections. API reference snapshots use `api-documentation-translation` instead.
+Use this Skill only for manual pages configured through the site's `manual.collections`. It supports Markdown and HTML pages. API reference snapshots use `api-documentation-translation` instead.
 
 ## Locate the Source
 
-1. Identify the consuming repository's docs config. Use a path provided by the user or task; otherwise consult repository documentation and project scripts, then inspect candidate config files for locales, `manual.dataDirectory`, and `manual.collections`. If multiple configs match, ask which site/collection is in scope instead of guessing. Read the selected collection's source type and directory, plus any translation directories. Never read or print secrets from environment files.
-2. Use the collection's configured `source.directory` as the authored input. If it differs from `manual.dataDirectory`, do not edit generated output. If they share a directory, only edit entries marked `source: { type: 'local' }`; leave generated entries unchanged.
-3. In a local collection, source pages use `<source.directory>/<locale>/<slug>.md`. If no translation directory is configured, write the target locale under that same source directory. If `translations[targetLocale]` is configured, write to that directory using the configured route slug.
-4. Preserve heading levels, lists, tables, links, images, HTML blocks, code fences, inline code, placeholders, front matter, and file names. Do not translate API names, identifiers, commands, URLs, paths, protocol fields, or code examples.
-5. Compare existing target text with the source before changing it. Report source changes that need review; do not silently overwrite an existing translation or claim that it is current.
-6. Update localized navigation labels in the source `navigation.json` for local collections. For a configured translation directory, use its optional `navigation.json`, keyed by route slug, to override `title` and `group`:
+1. Identify the consuming repository's docs config. Inspect locales, `manual.collections`, and `translationDirectory`. If the task does not name a collection, inventory all collections and target locales before translating; do not stop after the first collection. Never read or print secrets from environment files.
+2. Use each collection's `source.locale` as its source language; the site-level `sourceLocale` applies to API docs and may differ. Check the source directory and existing generated/manual snapshots for already-authored target-language pages before translating. If a complete target-language page already exists, compare it with the current source, then copy/migrate it into the archive without translating again. Only translate missing pages or pages whose existing translation is outdated or incomplete. Report the reused, translated, and review-needed counts separately.
+3. Prioritize collections with missing target-language content. For Yuque collections, use an already-synced source-locale page from `manual.dataDirectory` when available; this is a local snapshot and does not require a remote request. If no local source snapshot exists, do not fetch Yuque unless the user authorizes it. Use Yuque `docId` as the archive key; for local Markdown use the route slug.
+4. Persist target pages under `<translationDirectory>/translation-cache/manual/<collection-key>/<target-locale>/`. Preserve the source format and extension: Markdown uses `<document-key>.md`; HTML uses `<document-key>.html`. Do not convert HTML documents to Markdown. Do not write translations into `manual.dataDirectory` or the source directory.
+5. For HTML, preserve the original element tree, order, and all attributes exactly. Translate only human-readable text-node strings; do not change tags, `id`, `class`, `style`, `href`, `src`, data attributes, image URLs, code, or markup. Keep the result as HTML. For Markdown, preserve heading levels, lists, tables, links, images, code fences, inline code, placeholders, front matter, and file names. Do not translate API names, identifiers, commands, URLs, paths, protocol fields, or code examples.
+6. Compare existing target text with the source before changing it. Report source changes that need review; do not silently overwrite an existing translation or claim that it is current.
+7. Update the archive locale's `navigation.json`, keyed by the same document key, to override `title` and `group`:
 
    ```json
    {
@@ -25,14 +26,14 @@ Use this Skill only for Markdown manual pages configured through the site's `man
    }
    ```
 
-7. Check internal links, anchors, image and attachment paths, code-fence balance, placeholders, and front matter. Keep external URLs unchanged.
-8. After editing, use the repository's documented command to sync manuals, then run any documented search/data generation and validation steps. Do not assume a particular command name or that the repository has a Makefile.
+8. Check internal links, anchors, image and attachment paths, code-fence balance, placeholders, front matter, and HTML structure. Keep external URLs unchanged.
+9. After editing, use the repository's documented command to sync manuals, then run any documented search/data generation and validation steps. Do not assume a particular command name or that the repository has a Makefile.
 
-For Yuque-backed collections, translate the synchronized source and configured translation directory. Refreshing Yuque source data is a separate sync operation and may contact Yuque; do not fetch remote content as part of translation without authorization. Never call machine-translation APIs.
+For Yuque-backed collections, use `docId` as the archive identity even if the route slug changes. If a Yuque document has no `docId`, use the configured namespace/slug mapping and report that renaming either value requires archive migration. Refreshing Yuque source data is a separate sync operation and may contact Yuque; do not fetch remote content as part of translation without authorization. Never call machine-translation APIs.
 
 ## Output Requirements
 
-- Keep one Markdown file per stable route slug and target locale.
+- Keep one archive file per stable document key and target locale, using `.md` or `.html` to match the source format.
 - Preserve source ordering and route slugs; translations must not rename routes.
 - Never include credentials or private document data in translation files or logs.
 - Report untranslated pages and source changes that need human review.

@@ -25,7 +25,7 @@ void test('loads TypeScript site config and resolves configured paths from repos
         icon: 'source',
       },
     ],
-    translationWorkDirectory: 'tmp/docs-tools/api-translation',
+    translationDirectory: 'tmp/docs-tools',
   } satisfies Record<string, unknown>;\n`,
   );
 
@@ -50,8 +50,16 @@ void test('loads TypeScript site config and resolves configured paths from repos
     path.join(config.repositoryRoot, 'site/generated/manual'),
   );
   assert.equal(
-    config.translationWorkDirectory,
+    config.translationDirectory,
+    path.join(config.repositoryRoot, 'tmp/docs-tools'),
+  );
+  assert.equal(
+    config.apiTranslationDirectory,
     path.join(config.repositoryRoot, 'tmp/docs-tools/api-translation'),
+  );
+  assert.equal(
+    config.translationCacheDirectory,
+    path.join(config.repositoryRoot, 'tmp/docs-tools/translation-cache'),
   );
 });
 
@@ -127,6 +135,69 @@ void test('loads inline api.versions configuration', async t => {
     repository: 'https://github.com/example/project.git',
     versions: ['1.2.3', '1.2.4'],
   });
+});
+
+void test('loads the shared translation and CDN config and rejects legacy fields', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-site-config-'));
+
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    path.join(root, 'site.config.json'),
+    JSON.stringify({
+      sourceLocale: 'en',
+      locales: ['en', 'zh-CN'],
+      api: {
+        dataDirectory: 'site/data/api',
+        generation: { scope: 'latest' },
+      },
+      manual: { dataDirectory: 'site/data/manual' },
+      translationDirectory: 'tmp/docs-tools',
+      cdn: { baseUrl: 'https://cdn.example.com/docs/' },
+    }),
+  );
+
+  const config = await loadSiteConfig('site.config.json', root);
+
+  assert.equal(
+    config.translationDirectory,
+    path.join(config.repositoryRoot, 'tmp/docs-tools'),
+  );
+  assert.equal(
+    config.apiTranslationDirectory,
+    path.join(config.repositoryRoot, 'tmp/docs-tools/api-translation'),
+  );
+  assert.equal(
+    config.translationCacheDirectory,
+    path.join(config.repositoryRoot, 'tmp/docs-tools/translation-cache'),
+  );
+  assert.equal(config.cdnBaseUrl, 'https://cdn.example.com/docs/');
+
+  await writeFile(
+    path.join(root, 'site.config.json'),
+    JSON.stringify({
+      sourceLocale: 'en',
+      locales: ['en'],
+      translationWorkDirectory: 'tmp/old',
+      cdn: { baseUrl: 'file:///tmp/docs' },
+    }),
+  );
+
+  await assert.rejects(
+    loadSiteConfig('site.config.json', root),
+    /translationWorkDirectory is no longer supported.*cdn\.baseUrl/u,
+  );
+  await writeFile(
+    path.join(root, 'site.config.json'),
+    JSON.stringify({
+      sourceLocale: 'en',
+      locales: ['en'],
+      api: { dataDirectory: 'site/data/api', generation: { scope: 'all' } },
+    }),
+  );
+  await assert.rejects(
+    loadSiteConfig('site.config.json', root),
+    /api\.generation\.scope must be latest/u,
+  );
 });
 
 void test('loads config without API or manual directories', async t => {
@@ -281,7 +352,6 @@ void test('loads Yuque and local manual collections with repository-relative pat
               slugs: ['draft'],
               titleContains: ['[private]'],
             },
-            translations: { en: 'site/manual-translations/product-guide/en' },
           },
           {
             key: 'selected',
@@ -323,13 +393,6 @@ void test('loads Yuque and local manual collections with repository-relative pat
   assert.equal(config.apiPackages?.[0]?.readme?.sourceLocale, 'en');
   assert.equal(config.manuals?.length, 3);
   assert.equal(config.manuals?.[0]?.source.type, 'yuque');
-  assert.equal(
-    config.manuals?.[0]?.translations?.['en'],
-    path.join(
-      config.repositoryRoot,
-      'site/manual-translations/product-guide/en',
-    ),
-  );
   assert.deepEqual(
     config.manuals?.[1]?.source.type === 'yuque' &&
       config.manuals[1].source.mode === 'documents'

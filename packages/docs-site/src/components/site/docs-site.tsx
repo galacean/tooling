@@ -19,11 +19,16 @@ import {
   withBase,
 } from '../../i18n';
 import { ThemeProvider } from '../../providers';
+import { resolveDocsSiteConfiguration } from './default-docs-site-config';
+import type {
+  DocsSiteConfiguration,
+  DocsSiteMessages,
+  ResolvedDocsSiteConfiguration,
+} from './default-docs-site-config';
 import { DocumentError } from '../shared';
 import type { IconName } from '../shared/icon';
 import { lazyComponent } from '../shared/lazy-component';
 import { SiteShell } from './site-shell';
-import type { ManualPageMessages } from '../manual';
 import type { CommonSiteMessages } from '../../i18n';
 
 const ManualRoute = lazyComponent(() =>
@@ -35,30 +40,13 @@ const ConfiguredAPIPage = lazyComponent(() =>
   ),
 );
 
-export type DocsSiteMessages = CommonSiteMessages &
-  Pick<ManualPageMessages, 'manualIntro'>;
-
-export interface DocsSiteConfiguration<TLocale extends string> {
-  brandLabel: string;
-  brandMarkUrls: Readonly<{ light: string; dark: string }>;
-  docsBrandMarkUrls?: Readonly<{ light: string; dark: string }>;
-  githubHref?: string;
-  historyKeyPrefix: string;
-  localeLabels: Readonly<Record<TLocale, string>>;
-  messages: (locale: TLocale) => DocsSiteMessages;
-  manualSectionLabel: string;
-  manualDataURL?: string;
-  api?: import('../api/configured-api-page').DocsSiteAPIConfiguration;
-  siteOrigin?: string;
-  getSearchDataURL?: (locale: TLocale) => string;
-}
+export type { DocsSiteConfiguration, DocsSiteMessages };
 
 export interface DocsSiteProps<TLocale extends string> {
   baseURL: string;
   dataBaseURL?: string;
   locales: readonly TLocale[];
   defaultLocale: TLocale;
-  preferenceNamespace: string;
   site: DocsSiteConfiguration<TLocale>;
   pages: readonly DocsSitePage<TLocale>[];
 }
@@ -111,17 +99,15 @@ function NotFound({
 
 function ConfiguredSiteShell<TLocale extends string>({
   baseURL,
-  dataBaseURL,
   locales,
   locale,
   site,
   pages,
 }: {
   baseURL: string;
-  dataBaseURL: string;
   locales: readonly TLocale[];
   locale: TLocale;
-  site: DocsSiteConfiguration<TLocale>;
+  site: ResolvedDocsSiteConfiguration<TLocale>;
   pages: readonly DocsSitePage<TLocale>[];
 }) {
   const location = useLocation();
@@ -131,9 +117,11 @@ function ConfiguredSiteShell<TLocale extends string>({
   const sitePage = pages.find(page => page.slug === (section ?? null));
   const pageKind =
     section === 'api' || section === 'manual' ? section : 'other';
-  const origin = site.siteOrigin ?? window.location.origin;
   const absoluteURL = (pathname: string) =>
-    new URL(withBase(pathname, normalizeBase(baseURL)), origin).href;
+    new URL(
+      withBase(pathname, normalizeBase(baseURL)),
+      site.siteOrigin,
+    ).href;
   const languageOptions = locales.map(value => ({
     value,
     label: site.localeLabels[value],
@@ -142,9 +130,7 @@ function ConfiguredSiteShell<TLocale extends string>({
     if (!isSupportedLocale(searchLocale, locales)) {
       throw new Error(`Unknown search locale: ${searchLocale}`);
     }
-    const url =
-      site.getSearchDataURL?.(searchLocale) ??
-      `${dataBaseURL}data/search/${searchLocale}.json`;
+    const url = site.getSearchDataURL(searchLocale);
 
     return parseSearch(await loadJSON(url), locales);
   };
@@ -181,15 +167,13 @@ function ConfiguredSiteShell<TLocale extends string>({
       messages={messages}
       brandLabel={site.brandLabel}
       brandMarkUrls={site.brandMarkUrls}
-      {...(site.docsBrandMarkUrls === undefined
-        ? {}
-        : { docsBrandMarkUrls: site.docsBrandMarkUrls })}
-      homeHref={localePath(locale)}
+      docsBrandMarkUrls={site.docsBrandMarkUrls}
+      homeHref={site.getHomeHref(locale)}
+      storageKeys={site.storageKeys}
       navigation={navigation}
       {...(site.githubHref === undefined
         ? {}
         : { githubHref: site.githubHref })}
-      historyKeyPrefix={site.historyKeyPrefix}
       pageKind={pageKind}
       pageTitle={
         pageKind === 'api'
@@ -233,18 +217,22 @@ function ConfiguredSiteShell<TLocale extends string>({
 
 export function DocsSite<TLocale extends string>({
   baseURL,
-  dataBaseURL = baseURL,
+  dataBaseURL,
   locales,
   defaultLocale,
-  preferenceNamespace,
   site,
   pages,
 }: DocsSiteProps<TLocale>) {
+  const resolvedSite = resolveDocsSiteConfiguration(site, baseURL, dataBaseURL);
   const [getPreferredLocale] = useState(() =>
-    createBrowserLocalePreference(locales, defaultLocale, preferenceNamespace),
+    createBrowserLocalePreference(
+      locales,
+      defaultLocale,
+      resolvedSite.storageKeys.locale,
+    ),
   );
   const basename = normalizeBase(baseURL).replace(/\/$/u, '') || '/';
-  const api = site.api;
+  const api = resolvedSite.api;
   const homePage = pages.find(page => page.slug === null);
 
   if (homePage === undefined) {
@@ -252,7 +240,9 @@ export function DocsSite<TLocale extends string>({
   }
 
   return (
-    <ThemeProvider namespace={preferenceNamespace}>
+    <ThemeProvider
+      themeStorageKey={resolvedSite.storageKeys.theme}
+    >
       <BrowserRouter basename={basename}>
         <Routes>
           <Route
@@ -266,10 +256,9 @@ export function DocsSite<TLocale extends string>({
               element={
                 <ConfiguredSiteShell
                   baseURL={baseURL}
-                  dataBaseURL={dataBaseURL}
                   locales={locales}
                   locale={locale}
-                  site={site}
+                  site={resolvedSite}
                   pages={pages}
                 ></ConfiguredSiteShell>
               }
@@ -283,11 +272,11 @@ export function DocsSite<TLocale extends string>({
                       path={path}
                       element={
                         <ConfiguredAPIPage
-                          baseURL={dataBaseURL}
+                          baseURL={resolvedSite.dataBaseURL}
                           locales={locales}
                           locale={locale}
-                          messages={site.messages(locale)}
-                          localeLabels={site.localeLabels}
+                          messages={resolvedSite.messages(locale)}
+                          localeLabels={resolvedSite.localeLabels}
                           api={api}
                         />
                       }
@@ -300,14 +289,11 @@ export function DocsSite<TLocale extends string>({
                   path={path}
                   element={
                     <ManualRoute
-                      baseURL={dataBaseURL}
-                      {...(site.manualDataURL === undefined
-                        ? {}
-                        : { manualDataURL: site.manualDataURL })}
+                      baseURL={resolvedSite.dataBaseURL}
+                      manualDataURL={resolvedSite.manualDataURL}
                       locales={locales}
                       locale={locale}
-                      sectionLabel={site.manualSectionLabel}
-                      messages={site.messages(locale)}
+                      messages={resolvedSite.messages(locale)}
                     />
                   }
                 />
@@ -324,7 +310,10 @@ export function DocsSite<TLocale extends string>({
               <Route
                 path="*"
                 element={
-                  <NotFound locale={locale} messages={site.messages(locale)} />
+                  <NotFound
+                    locale={locale}
+                    messages={resolvedSite.messages(locale)}
+                  />
                 }
               />
             </Route>
@@ -334,7 +323,7 @@ export function DocsSite<TLocale extends string>({
             element={
               <NotFound
                 locale={defaultLocale}
-                messages={site.messages(defaultLocale)}
+                messages={resolvedSite.messages(defaultLocale)}
               />
             }
           />

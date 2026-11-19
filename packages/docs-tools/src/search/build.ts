@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { convert } from 'html-to-text';
+import { pinyin } from 'pinyin-pro';
 import {
   indexReflections,
   getAPISymbolRouteSegment,
@@ -42,6 +43,28 @@ function searchableMarkdown(markdown: string): string {
     .replace(/[#>*`~_]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
+}
+
+function pinyinFields(value: string): {
+  pinyin?: string;
+  pinyinInitials?: string;
+} {
+  if (!/\p{Script=Han}/u.test(value)) {
+    return {};
+  }
+
+  const characters = Array.from(value);
+  const syllables = pinyin(value, { toneType: 'none', type: 'array' }).map(
+    syllable => syllable.toLowerCase(),
+  );
+
+  return {
+    pinyin: syllables.join('').replace(/[^a-z]/gu, ''),
+    pinyinInitials: syllables
+      .filter((_, index) => /\p{Script=Han}/u.test(characters[index] ?? ''))
+      .map(syllable => syllable[0] ?? '')
+      .join(''),
+  };
 }
 
 function commentText(
@@ -301,9 +324,30 @@ export async function buildSearchIndexes(
         : await buildManualResults(config, navigationValue, locale)),
     ];
 
+    const indexedResults = results.map(result => {
+      const fields = [result.name, result.summary, result.keywords];
+      const searchableText = fields
+        .filter(
+          (value, index) =>
+            value !== '' &&
+            !fields.some(
+              (other, otherIndex) =>
+                otherIndex !== index &&
+                other.includes(value) &&
+                (other.length > value.length || otherIndex < index),
+            ),
+        )
+        .join(' ');
+
+      return {
+        ...result,
+        ...pinyinFields(searchableText),
+      };
+    });
+
     await writeFile(
       path.join(outputDirectory, `${locale}.json`),
-      `${JSON.stringify(results)}\n`,
+      `${JSON.stringify(indexedResults)}\n`,
     );
     counts[locale] = results.length;
   }

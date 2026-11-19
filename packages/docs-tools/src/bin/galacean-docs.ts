@@ -4,12 +4,15 @@ import {
   cleanAPISnapshots,
   extractTranslationTasks,
   generateAPIDocumentation,
+  getAPIStatus,
+  migrateAPITranslations,
 } from '../api';
 import { loadSiteConfig } from '../config/site-config';
 import { buildPackageReadmes } from '../package-readmes/build';
 import { buildSearchIndexes } from '../search/build';
 import { buildStaticRoutes } from '../static-routes/build';
 import { syncManuals } from '../manual/sync';
+import { migrateManualTranslations } from '../manual/migrate-translations';
 import { syncBundledSkills } from '../skills/sync-bundled';
 import { createCommandLogger } from './command-logger';
 
@@ -17,7 +20,8 @@ const [group, action, ...args] = process.argv.slice(2);
 
 function usage(): void {
   console.info(
-    `Usage:\n  galacean-docs api generate --config <path> [package-key...]\n  galacean-docs api extract --config <path> <snapshot-path...>\n  galacean-docs api apply --config <path> <task-path> <translation-path> [...pairs]\n  galacean-docs api snapshots clean --config <path>\n  galacean-docs manual sync --config <path>\n  galacean-docs package-readmes build --config <path>\n  galacean-docs search build --config <path>\n  galacean-docs routes build --config <path>\n  galacean-docs skills sync [--check]`,
+    `Usage:\n  galacean-docs api generate --config <path> [--version <tag>] [--force] [package-key...]\n  galacean-docs api extract --config <path> [--version <tag>] [--locale <locale>] [snapshot-path...]\n  galacean-docs api apply --config <path> <task-path> <translation-path> [...pairs]\n  galacean-docs api status --config <path> [--version <tag>]\n  galacean-docs api snapshots clean --config <path>\n  galacean-docs manual sync --config <path>\n  galacean-docs package-readmes build --config <path>\n  galacean-docs search build --config <path>\n  galacean-docs routes build --config <path>\n  galacean-docs skills sync [--check]`,
+    `Usage:\n  galacean-docs api generate --config <path> [--version <tag>] [--force] [package-key...]\n  galacean-docs api extract --config <path> [--version <tag>] [--locale <locale>] [snapshot-path...]\n  galacean-docs api apply --config <path> <task-path> <translation-path> [...pairs]\n  galacean-docs api status --config <path> [--version <tag>]\n  galacean-docs api translations migrate --config <path> [--version <tag>]\n  galacean-docs api snapshots clean --config <path>\n  galacean-docs manual sync --config <path>\n  galacean-docs manual translations migrate --config <path> <collection> <locale> <legacy-dir> [...mappings]\n  galacean-docs package-readmes build --config <path>\n  galacean-docs search build --config <path>\n  galacean-docs routes build --config <path>\n  galacean-docs skills sync [--check]`,
   );
 }
 
@@ -35,32 +39,140 @@ function parseConfig(values: string[]): {
   return { config, remaining: values.slice(2) };
 }
 
+function parseGenerateOptions(values: string[]): {
+  packageKeys: string[];
+  version?: string;
+  force: boolean;
+} {
+  const packageKeys: string[] = [];
+  let version: string | undefined;
+  let force = false;
+
+  for (let index = 0; index < values.length; index += 1) {
+    const argument = values[index];
+
+    if (argument === '--version') {
+      const selectedVersion = values[index + 1];
+
+      if (selectedVersion === undefined || selectedVersion.startsWith('--')) {
+        throw new Error('Provide a version after --version');
+      }
+      if (version !== undefined) {
+        throw new Error('Provide --version only once');
+      }
+      version = selectedVersion;
+      index += 1;
+    } else if (argument === '--force') {
+      if (force === true) {
+        throw new Error('Provide --force only once');
+      }
+      force = true;
+    } else if (argument !== undefined && argument.startsWith('--')) {
+      throw new Error(`Unknown api generate option: ${argument}`);
+    } else if (argument !== undefined) {
+      packageKeys.push(argument);
+    }
+  }
+
+  return { packageKeys, ...(version === undefined ? {} : { version }), force };
+}
+
+function parseExtractOptions(values: string[]): {
+  targetFiles: string[];
+  version?: string;
+  locale?: string;
+} {
+  const targetFiles: string[] = [];
+  let version: string | undefined;
+  let locale: string | undefined;
+
+  for (let index = 0; index < values.length; index += 1) {
+    const argument = values[index];
+
+    if (argument === '--version' || argument === '--locale') {
+      const optionValue = values[index + 1];
+
+      if (optionValue === undefined || optionValue.startsWith('--')) {
+        throw new Error(`Provide a value after ${argument}`);
+      }
+      if (argument === '--version') {
+        if (version !== undefined) {
+          throw new Error('Provide --version only once');
+        }
+        version = optionValue;
+      } else {
+        if (locale !== undefined) {
+          throw new Error('Provide --locale only once');
+        }
+        locale = optionValue;
+      }
+      index += 1;
+    } else if (argument !== undefined && argument.startsWith('--')) {
+      throw new Error(`Unknown api extract option: ${argument}`);
+    } else if (argument !== undefined) {
+      targetFiles.push(argument);
+    }
+  }
+
+  if (targetFiles.length > 0 && (version !== undefined || locale !== undefined)) {
+    throw new Error('--version and --locale are only used without snapshot paths');
+  }
+
+  return {
+    targetFiles,
+    ...(version === undefined ? {} : { version }),
+    ...(locale === undefined ? {} : { locale }),
+  };
+}
+
+function parseStatusOptions(values: string[]): { version?: string } {
+  if (values.length === 0) {
+    return {};
+  }
+  if (
+    values.length !== 2 ||
+    values[0] !== '--version' ||
+    values[1] === undefined ||
+    values[1].startsWith('--')
+  ) {
+    throw new Error('api status accepts only --version <tag>');
+  }
+
+  return { version: values[1] };
+}
+
 if (group === '--help' || group === '-h') {
   usage();
 } else if (group === 'api' && action === 'extract') {
-  const { config: configFile, remaining: targetFiles } = parseConfig(args);
-
-  if (
-    targetFiles.length === 0 ||
-    targetFiles.some(argument => argument.startsWith('--'))
-  ) {
-    throw new Error('Provide one or more API snapshot paths after --config');
-  }
+  const { config: configFile, remaining } = parseConfig(args);
+  const { targetFiles, version, locale } = parseExtractOptions(remaining);
   const repositoryRoot = process.cwd();
   const config = await loadSiteConfig(configFile, repositoryRoot);
   const logger = createCommandLogger('api extract');
 
-  logger.info(`Extracting ${targetFiles.length} API snapshots`);
-  const tasks = await extractTranslationTasks(targetFiles, config);
+  logger.info(
+    targetFiles.length > 0
+      ? `Extracting ${targetFiles.length} API snapshots`
+      : `Selecting pending API translations${version === undefined ? ' for latest version' : ` for ${version}`}${locale === undefined ? '' : ` in ${locale}`}`,
+  );
+  const tasks = await extractTranslationTasks(targetFiles, config, {
+    ...(version === undefined ? {} : { version }),
+    ...(locale === undefined ? {} : { locale }),
+  });
 
   for (const task of tasks) {
     logger.success(
       `${task.taskPath}: ${task.fields} fields, ${task.packageKey}@${task.version} -> ${task.locale}`,
     );
   }
-  logger.success(`Created ${tasks.length} translation tasks`);
+  logger.success(
+    tasks.length === 0
+      ? 'No pending API translations'
+      : `Created ${tasks.length} translation tasks`,
+  );
 } else if (group === 'api' && action === 'generate') {
-  const { config: configFile, remaining: packageKeys } = parseConfig(args);
+  const { config: configFile, remaining } = parseConfig(args);
+  const { packageKeys, version, force } = parseGenerateOptions(remaining);
   const config = await loadSiteConfig(configFile, process.cwd());
   const logger = createCommandLogger('api generate');
 
@@ -77,11 +189,46 @@ if (group === '--help' || group === '-h') {
       logger.info(
         `${item.version}: ${item.status}${item.reason === undefined ? '' : ` (${item.reason})`}`,
       ),
+      { ...(version === undefined ? {} : { version }), force },
   );
 
   logger.success(`API: ${result.packages} packages; ${result.exports} exports`);
   for (const warning of result.warnings) {
     logger.warn(warning);
+  }
+} else if (group === 'api' && action === 'status') {
+  const { config: configFile, remaining } = parseConfig(args);
+  const { version } = parseStatusOptions(remaining);
+  const config = await loadSiteConfig(configFile, process.cwd());
+  const logger = createCommandLogger('api status');
+  const statuses = await getAPIStatus(config, version);
+
+  for (const item of statuses) {
+    logger.info(
+      `${item.version}: generation ${item.generation.status}${item.generation.status === 'invalid' ? ` (${item.generation.reason})` : ''}`,
+    );
+    for (const translation of item.translations) {
+      logger.info(
+        `  ${translation.packageKey}/${translation.locale}: ${translation.status}${translation.reason === undefined ? '' : ` (${translation.reason})`}`,
+      );
+    }
+  }
+  logger.success(`Reported ${statuses.length} API version statuses`);
+} else if (group === 'api' && action === 'translations') {
+  const [migrationAction, ...values] = args;
+
+  if (migrationAction !== 'migrate') {
+    throw new Error('Use api translations migrate');
+  }
+  const { config: configFile, remaining } = parseConfig(values);
+  const { version } = parseStatusOptions(remaining);
+  const config = await loadSiteConfig(configFile, process.cwd());
+  const logger = createCommandLogger('api translations migrate');
+  const result = await migrateAPITranslations(config, version);
+
+  logger.success(`Migrated ${result.migrated} API translation archives`);
+  for (const item of result.skipped) {
+    logger.warn(`${item.packageKey}@${item.version}/${item.locale}: ${item.reason}`);
   }
 } else if (group === 'api' && action === 'apply') {
   const { config: configFile, remaining: files } = parseConfig(args);
@@ -173,6 +320,11 @@ if (group === '--help' || group === '-h') {
 
   logger.info('Starting manual sync');
   const result = await syncManuals(config, globalThis.fetch, progress => {
+    if (progress.type === 'warning') {
+      logger.warn(progress.message);
+
+      return;
+    }
     if (progress.type === 'collection-ready') {
       logger.info(
         `Collection ${progress.collectionKey} (${progress.sourceType}): ${progress.total} files queued`,
@@ -202,6 +354,44 @@ if (group === '--help' || group === '-h') {
   logger.success(
     `Complete: ${result.documents} files across ${result.collections} collections`,
   );
+} else if (group === 'manual' && action === 'translations') {
+  const [migrationAction, ...values] = args;
+
+  if (migrationAction !== 'migrate') {
+    throw new Error('Use manual translations migrate');
+  }
+  const { config: configFile, remaining } = parseConfig(values);
+
+  if (remaining.length === 0 || remaining.length % 3 !== 0) {
+    throw new Error(
+      'Provide collection/locale/legacy-directory triples after --config',
+    );
+  }
+  const config = await loadSiteConfig(configFile, process.cwd());
+  const mappings = [];
+
+  for (let index = 0; index < remaining.length; index += 3) {
+    const collectionKey = remaining[index];
+    const locale = remaining[index + 1];
+    const legacyDirectory = remaining[index + 2];
+
+    if (
+      collectionKey === undefined ||
+      locale === undefined ||
+      legacyDirectory === undefined ||
+      [collectionKey, locale, legacyDirectory].some(value => value.startsWith('--'))
+    ) {
+      throw new Error('Invalid manual translation migration mapping');
+    }
+    mappings.push({ collectionKey, locale, legacyDirectory });
+  }
+  const logger = createCommandLogger('manual translations migrate');
+  const result = await migrateManualTranslations(config, mappings);
+
+  logger.success(`Migrated ${result.migrated} manual translations`);
+  if (result.skipped > 0) {
+    logger.warn(`Skipped ${result.skipped} empty, invalid, or existing translations`);
+  }
 } else if (group === 'package-readmes' && action === 'build') {
   const { config: configFile, remaining } = parseConfig(args);
 

@@ -34,7 +34,10 @@ async function fixture() {
       versions: ['1.2.3'],
     },
     manualDirectory: path.join(repositoryRoot, 'site/data/manual'),
-    translationWorkDirectory: path.join(repositoryRoot, 'tmp/docs-tools'),
+    apiTranslationDirectory: path.join(
+      repositoryRoot,
+      'tmp/docs-tools/api-translation',
+    ),
     apiPackages: packages.map(pkg => ({
       ...pkg,
       directory: path.join(repositoryRoot, 'packages', pkg.key),
@@ -102,23 +105,11 @@ async function fixture() {
     defaultVersion: 'current',
     packages: versionRecords,
   });
-  await writeJSON(path.join(apiDirectory, 'version-sources.json'), {
-    schemaVersion: 1,
-    versions: [
-      {
-        version,
-        commit,
-        generatorVersion: '0.0.8',
-        typeDocVersion: '0.28.20',
-        typescriptVersion: '5.9.3',
-      },
-    ],
-  });
 
   return { repositoryRoot, apiDirectory, config, version };
 }
 
-void test('marks a version missing when no manifest or source audit exists', async t => {
+void test('marks a version missing when no API manifest exists', async t => {
   const values = await fixture();
 
   t.onTestFinished(() =>
@@ -131,37 +122,12 @@ void test('marks a version missing when no manifest or source audit exists', asy
   });
 });
 
-void test('treats a source record without package entries as an uncommitted version', async t => {
+void test('marks a version missing when it is absent from the API manifest', async t => {
   const values = await fixture();
 
   t.onTestFinished(() =>
     rm(values.repositoryRoot, { recursive: true, force: true }),
   );
-  const sourcesPath = path.join(values.apiDirectory, 'version-sources.json');
-  const sources = JSON.parse(
-    await (await import('node:fs/promises')).readFile(sourcesPath, 'utf8'),
-  ) as {
-    versions: {
-      version: string;
-      commit: string;
-      generatorVersion: string;
-      typeDocVersion: string;
-      typescriptVersion: string;
-    }[];
-  };
-
-  sources.versions.push({
-    version: '1.2.4',
-    commit: 'c'.repeat(40),
-    generatorVersion: '0.0.8',
-    typeDocVersion: '0.28.20',
-    typescriptVersion: '5.9.3',
-  });
-  await (await import('node:fs/promises')).writeFile(
-    sourcesPath,
-    `${JSON.stringify(sources)}\n`,
-  );
-
   assert.deepEqual(await inspectAPIVersionState(values.config, '1.2.4'), {
     status: 'missing',
   });
@@ -176,14 +142,42 @@ void test('accepts a complete, hash-valid version shared by every package locale
 
   assert.deepEqual(await inspectAPIVersionState(values.config, values.version), {
     status: 'complete',
-    source: {
-      version: values.version,
-      commit: 'a'.repeat(40),
-      generatorVersion: '0.0.8',
-      typeDocVersion: '0.28.20',
-      typescriptVersion: '5.9.3',
-    },
   });
+});
+
+void test('rejects package versions that map to different commits', async t => {
+  const values = await fixture();
+
+  t.onTestFinished(() =>
+    rm(values.repositoryRoot, { recursive: true, force: true }),
+  );
+  const manifestPath = path.join(values.apiDirectory, 'manifest.json');
+  const manifest = JSON.parse(
+    await (await import('node:fs/promises')).readFile(manifestPath, 'utf8'),
+  ) as {
+    packages: {
+      versions: { version: string; commit: string }[];
+      current: { commit: string };
+    }[];
+  };
+  const secondPackage = manifest.packages[1];
+  const secondVersion = secondPackage?.versions.find(
+    item => item.version === values.version,
+  );
+
+  assert.ok(secondPackage);
+  assert.ok(secondVersion);
+  secondVersion.commit = 'c'.repeat(40);
+  secondPackage.current.commit = secondVersion.commit;
+  await (await import('node:fs/promises')).writeFile(
+    manifestPath,
+    `${JSON.stringify(manifest)}\n`,
+  );
+
+  const state = await inspectAPIVersionState(values.config, values.version);
+
+  assert.equal(state.status, 'invalid');
+  assert.match(state.reason, /commit does not match other API packages/u);
 });
 
 void test('accepts a complete version when configured packages are reordered', async t => {
@@ -202,11 +196,16 @@ void test('accepts a complete version when configured packages are reordered', a
 
 void test('skips all build dependencies for a complete configured version', async t => {
   const values = await fixture();
+  const legacySourcesPath = path.join(
+    values.apiDirectory,
+    'version-sources.json',
+  );
   let buildCalled = false;
 
   t.onTestFinished(() =>
     rm(values.repositoryRoot, { recursive: true, force: true }),
   );
+  await writeFile(legacySourcesPath, 'invalid legacy audit');
   values.config.apiVersions = {
     repository: 'https://github.com/example/project.git',
     versions: [values.version],
@@ -228,9 +227,95 @@ void test('skips all build dependencies for a complete configured version', asyn
   assert.deepEqual(result.versionStatuses, [
     { version: values.version, status: 'complete' },
   ]);
+  await assert.rejects(
+    (await import('node:fs/promises')).readFile(legacySourcesPath),
+    { code: 'ENOENT' },
+  );
 });
 
-void test('builds a missing version in staging and commits source audit before manifest', async t => {
+void test('defaults to the latest configured version and ignores missing history', async t => {
+  const values = await fixture();
+  let buildCalled = false;
+
+  t.onTestFinished(() =>
+    rm(values.repositoryRoot, { recursive: true, force: true }),
+  );
+  values.config.apiVersions = {
+    repository: 'https://github.com/example/project.git',
+    versions: ['1.2.2', values.version],
+  };
+
+  const result = await generateVersionedAPIDocumentation(
+    values.config,
+    values.config.apiPackages!.map(pkg => pkg.key),
+    async () => {
+      buildCalled = true;
+      throw new Error('missing history must not be built by default');
+    },
+  );
+
+  assert.equal(buildCalled, false);
+  assert.deepEqual(result.versionStatuses, [
+    { version: values.version, status: 'complete' },
+  ]);
+});
+
+void test('allows explicit generation of a configured historical version', async t => {
+  const values = await fixture();
+
+  t.onTestFinished(() =>
+    rm(values.repositoryRoot, { recursive: true, force: true }),
+  );
+  values.config.apiVersions = {
+    repository: 'https://github.com/example/project.git',
+    versions: ['1.2.2', values.version],
+  };
+
+  await assert.rejects(
+    generateVersionedAPIDocumentation(
+      values.config,
+      values.config.apiPackages!.map(pkg => pkg.key),
+      async (_config, version) => {
+        assert.equal(version, '1.2.2');
+        throw new Error('historical version selected');
+      },
+      undefined,
+      { version: '1.2.2' },
+    ),
+    /historical version selected/u,
+  );
+});
+
+void test('force reruns a complete selected version without weakening invalid-state checks', async t => {
+  const values = await fixture();
+  let buildCalled = false;
+
+  t.onTestFinished(() =>
+    rm(values.repositoryRoot, { recursive: true, force: true }),
+  );
+  values.config.apiVersions = {
+    repository: 'https://github.com/example/project.git',
+    versions: [values.version],
+  };
+
+  await assert.rejects(
+    generateVersionedAPIDocumentation(
+      values.config,
+      values.config.apiPackages!.map(pkg => pkg.key),
+      async () => {
+        buildCalled = true;
+        throw new Error('forced build reached');
+      },
+      undefined,
+      { force: true },
+    ),
+    /forced build reached/u,
+  );
+
+  assert.equal(buildCalled, true);
+});
+
+void test('builds a missing version in staging and commits the manifest', async t => {
   const values = await fixture();
   const version = '1.2.4';
   const commit = 'c'.repeat(40);
@@ -276,10 +361,8 @@ void test('builds a missing version in staging and commits source audit before m
           packages,
         },
         project,
-        typescriptVersion: '5.9.3',
       };
     },
-    '0.0.8',
     status => reportedStatuses.push(`${status.version}:${status.status}`),
   );
   const manifest = JSON.parse(
@@ -288,24 +371,17 @@ void test('builds a missing version in staging and commits source audit before m
       'utf8',
     ),
   ) as { packages: { current: { packageVersion: string } }[] };
-  const sources = JSON.parse(
-    await (await import('node:fs/promises')).readFile(
-      path.join(values.apiDirectory, 'version-sources.json'),
-      'utf8',
-    ),
-  ) as { versions: { version: string; commit: string }[] };
 
   assert.equal(buildCount, 1);
   assert.deepEqual(result.versionStatuses, [{ version, status: 'missing' }]);
   assert.deepEqual(reportedStatuses, [`${version}:missing`]);
   assert.ok(manifest.packages.every(pkg => pkg.current.packageVersion === version));
-  assert.deepEqual(sources.versions, [{
-    version,
-    commit,
-    generatorVersion: '0.0.8',
-    typeDocVersion: '0.28.20',
-    typescriptVersion: '5.9.3',
-  }]);
+  await assert.rejects(
+    (await import('node:fs/promises')).readFile(
+      path.join(values.apiDirectory, 'version-sources.json'),
+    ),
+    { code: 'ENOENT' },
+  );
 });
 
 void test('rejects a snapshot whose content does not match its address', async t => {
@@ -332,13 +408,8 @@ void test('rejects a snapshot whose content does not match its address', async t
 void test('leaves published API data unchanged when a missing tag build fails', async t => {
   const values = await fixture();
   const manifestPath = path.join(values.apiDirectory, 'manifest.json');
-  const sourcesPath = path.join(values.apiDirectory, 'version-sources.json');
   const manifestBefore = await (await import('node:fs/promises')).readFile(
     manifestPath,
-    'utf8',
-  );
-  const sourcesBefore = await (await import('node:fs/promises')).readFile(
-    sourcesPath,
     'utf8',
   );
 
@@ -357,11 +428,9 @@ void test('leaves published API data unchanged when a missing tag build fails', 
       async () => {
         throw new Error('tag unavailable');
       },
-      '0.0.8',
     ),
     /tag unavailable/u,
   );
 
   assert.equal(await (await import('node:fs/promises')).readFile(manifestPath, 'utf8'), manifestBefore);
-  assert.equal(await (await import('node:fs/promises')).readFile(sourcesPath, 'utf8'), sourcesBefore);
 });

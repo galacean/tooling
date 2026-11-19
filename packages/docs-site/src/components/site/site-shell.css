@@ -414,8 +414,16 @@
   bottom: 0;
   width: var(--docs-sidebar-collapse-region-width);
 }
+.docs-sidebar-resize-handle {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  touch-action: none;
+  cursor: ew-resize;
+}
 .docs-sidebar-collapse.icon-action {
   position: absolute;
+  z-index: 1;
   top: 146px;
   left: 50%;
   display: inline-grid;
@@ -444,6 +452,12 @@
 }
 .site-shell .docs-sidebar-collapse[aria-expanded='false'] {
   opacity: 1;
+}
+:root[data-sidebar-resizing='true'] .docs-layout,
+:root[data-sidebar-resizing='true'] .api-sidebar,
+:root[data-sidebar-resizing='true'] .docs-sidebar-head,
+:root[data-sidebar-resizing='true'] .docs-header-shell {
+  transition: none !important;
 }
 .docs-sidebar-collapse svg {
   width: 10px;

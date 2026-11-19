@@ -8,8 +8,8 @@ import type { DocsSiteConfig } from '../config/site-config';
 import { assembleAPIDocumentation } from './assemble';
 import type { APIDocumentationMetadata } from './assemble';
 import { getErrorCode, readJSON, readOptionalJSON } from './read-json';
-import { inspectAPIVersionState, readAPIVersionSources } from './versioned-state';
-import type { APIVersionSource, APIVersionState } from './versioned-state';
+import { inspectAPIVersionState } from './versioned-state';
+import type { APIVersionState } from './versioned-state';
 import {
   compareVersions,
   parseAPIVersionManifest,
@@ -18,7 +18,6 @@ import {
 export interface BuiltAPIVersion {
   metadata: APIDocumentationMetadata;
   project: Record<string, unknown>;
-  typescriptVersion: string;
 }
 
 export type APIVersionBuilder = (
@@ -37,6 +36,11 @@ export interface VersionedGenerationResult {
     status: APIVersionState['status'];
     reason?: string;
   }[];
+}
+
+export interface APIGenerationOptions {
+  version?: string;
+  force?: boolean;
 }
 
 async function listFiles(
@@ -107,8 +111,13 @@ async function publishImmutableFile(
 function latestVersion(manifest: APIManifest, versions: string[]): APIManifest {
   const currentVersion = [...versions].sort(compareVersions).at(-1);
 
-  if (currentVersion === undefined) {
-    throw new Error('API version manifest is empty');
+  if (
+    currentVersion === undefined ||
+    manifest.packages.some(pkg =>
+      !pkg.versions.some(item => item.version === currentVersion),
+    )
+  ) {
+    return manifest;
   }
   const packages = manifest.packages.map(pkg => {
     const latest = pkg.versions.find(item => item.version === currentVersion);
@@ -140,7 +149,6 @@ function validateBuiltVersion(
   if (
     !/^[a-f\d]{40,64}$/iu.test(built.metadata.commit) ||
     built.metadata.generatorVersion.length === 0 ||
-    built.typescriptVersion.length === 0 ||
     built.metadata.packages.length !== configuredPackages.length
   ) {
     throw new Error(`Invalid generated API metadata for ${version}`);
@@ -209,12 +217,12 @@ export async function generateVersionedAPIDocumentation(
   config: DocsSiteConfig,
   selectedPackageKeys: string[],
   buildVersion: APIVersionBuilder,
-  generatorVersion: string,
   reportStatus?: (status: {
     version: string;
     status: APIVersionState['status'];
     reason?: string;
   }) => void,
+  options: APIGenerationOptions = {},
 ): Promise<VersionedGenerationResult> {
   const packageKeys = config.apiPackages?.map(pkg => pkg.key) ?? [];
 
@@ -233,20 +241,27 @@ export async function generateVersionedAPIDocumentation(
     throw new Error('site config must declare api.versions for versioned API generation');
   }
   const versionManifest = parseAPIVersionManifest(config.apiVersions);
+  const versions = [...versionManifest.versions].sort(compareVersions);
+  const selectedVersion = options.version ?? versions.at(-1);
+
+  if (selectedVersion === undefined || !versions.includes(selectedVersion)) {
+    throw new Error(
+      `API version is not configured: ${selectedVersion ?? '(none)'}`,
+    );
+  }
   const currentVersion = await currentWorkspaceVersion(
     config,
     versionManifest.versions,
   );
-  const versions = [...versionManifest.versions].sort(compareVersions);
   const versionStates = await Promise.all(
-    versions.map(async version => {
+    [selectedVersion].map(async version => {
       try {
         const state = await inspectAPIVersionState(config, version);
 
         return {
           version,
           state:
-            version === currentVersion && state.status === 'complete'
+            options.force === true && state.status === 'complete'
               ? { status: 'missing' as const }
               : state,
         };
@@ -321,10 +336,26 @@ export async function generateVersionedAPIDocumentation(
         }
       }
       const stagedConfig = sourceRoot(config, stagedAPIDirectory);
-      const existingSources = await readAPIVersionSources(stagedConfig);
-      const sourceEntries = existingSources?.versions ?? [];
+      const stagedManifestPath = path.join(stagedAPIDirectory, 'manifest.json');
+      const previousManifestValue = await readOptionalJSON(stagedManifestPath);
+      const previousManifest = previousManifestValue === undefined
+        ? undefined
+        : parseAPIManifest(previousManifestValue);
+
+      await rm(path.join(stagedAPIDirectory, 'version-sources.json'), {
+        force: true,
+      });
 
       for (const { version, built } of builds) {
+        for (const pkg of previousManifest?.packages ?? []) {
+          const previous = pkg.versions.find(item => item.version === version);
+
+          if (previous !== undefined && previous.commit !== built.metadata.commit) {
+            throw new Error(
+              `API version ${version} already maps to a different commit`,
+            );
+          }
+        }
         const assembled = await assembleAPIDocumentation(
           built.project,
           built.metadata,
@@ -333,45 +364,13 @@ export async function generateVersionedAPIDocumentation(
         );
 
         warnings.push(...assembled.warnings);
-        const source: APIVersionSource = {
-          version,
-          commit: built.metadata.commit,
-          generatorVersion,
-          typeDocVersion: built.metadata.generatorVersion,
-          typescriptVersion: built.typescriptVersion,
-        };
-        const previousIndex = sourceEntries.findIndex(
-          item => item.version === version,
-        );
-
-        if (previousIndex >= 0) {
-          const previous = sourceEntries[previousIndex];
-
-          if (previous?.commit !== source.commit) {
-            throw new Error(
-              `API version ${version} already maps to a different commit`,
-            );
-          }
-          sourceEntries[previousIndex] = source;
-        } else {
-          sourceEntries.push(source);
-        }
       }
-      const sources = {
-        schemaVersion: 1,
-        versions: sourceEntries.sort((left, right) =>
-          compareVersions(left.version, right.version),
-        ),
-      };
-      const stagedManifestPath = path.join(stagedAPIDirectory, 'manifest.json');
       const stagedManifest = latestVersion(
         parseAPIManifest(await readJSON(stagedManifestPath)),
         versions,
       );
       const stagedFiles = await listFiles(stagedAPIDirectory);
-      const immutableFiles = stagedFiles.filter(
-        filename => filename !== 'manifest.json' && filename !== 'version-sources.json',
-      );
+      const immutableFiles = stagedFiles.filter(filename => filename !== 'manifest.json');
       const snapshots = immutableFiles.filter(filename =>
         filename.startsWith('snapshots' + path.sep),
       );
@@ -384,12 +383,9 @@ export async function generateVersionedAPIDocumentation(
         await assertNoSymlinkPath(config.repositoryRoot, targetPath);
         await publishImmutableFile(stagedPath, targetPath);
       }
-      const sourcesPath = path.join(config.apiDirectory, 'version-sources.json');
       const manifestPath = path.join(config.apiDirectory, 'manifest.json');
 
-      await assertNoSymlinkPath(config.repositoryRoot, sourcesPath);
       await assertNoSymlinkPath(config.repositoryRoot, manifestPath);
-      await writeAtomic(sourcesPath, `${JSON.stringify(sources, null, 2)}\n`);
       await writeAtomic(manifestPath, `${JSON.stringify(stagedManifest, null, 2)}\n`);
     } finally {
       await rm(stagingRoot, { recursive: true, force: true });
@@ -410,7 +406,12 @@ export async function generateVersionedAPIDocumentation(
     }
   }
 
-  const latest = [...versions].sort(compareVersions).at(-1);
+  const legacySourcesPath = path.join(config.apiDirectory, 'version-sources.json');
+
+  await assertNoSymlinkPath(config.repositoryRoot, legacySourcesPath);
+  await rm(legacySourcesPath, { force: true });
+
+  const latest = selectedVersion;
   const latestManifestValue = await readOptionalJSON(
     path.join(config.apiDirectory, 'manifest.json'),
   );
@@ -422,7 +423,7 @@ export async function generateVersionedAPIDocumentation(
     .reduce((count, entry) => count + entry.symbols.length, 0) ?? 0;
 
   const finalStates = await Promise.all(
-    versions.map(async version => ({
+    [selectedVersion].map(async version => ({
       version,
       state: await inspectAPIVersionState(config, version),
     })),

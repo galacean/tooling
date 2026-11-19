@@ -7,25 +7,11 @@ import type { DocsSiteConfig } from '../config/site-config';
 import { assertNoSymlinkPath } from '../config/site-config';
 import { readJSON, readOptionalJSON } from './read-json';
 import { resolveAPISnapshotReference } from './snapshot-reference';
-import { parseVersion } from './versions';
-
-export interface APIVersionSource {
-  version: string;
-  commit: string;
-  generatorVersion: string;
-  typeDocVersion: string;
-  typescriptVersion: string;
-}
-
-export interface APIVersionSources {
-  schemaVersion: 1;
-  versions: APIVersionSource[];
-}
 
 export type APIVersionState =
   | { status: 'missing' }
   | { status: 'invalid'; reason: string }
-  | { status: 'complete'; source: APIVersionSource };
+  | { status: 'complete' };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -33,42 +19,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
-}
-
-function parseVersionSources(value: unknown): APIVersionSources {
-  if (
-    !isRecord(value) ||
-    value['schemaVersion'] !== 1 ||
-    !Array.isArray(value['versions'])
-  ) {
-    throw new Error('Invalid API version sources manifest');
-  }
-  const seen = new Set<string>();
-  const versions = value['versions'].map((source, index) => {
-    if (
-      !isRecord(source) ||
-      typeof source['version'] !== 'string' ||
-      typeof source['commit'] !== 'string' ||
-      !/^[a-f\d]{40,64}$/iu.test(source['commit']) ||
-      typeof source['generatorVersion'] !== 'string' ||
-      source['generatorVersion'].length === 0 ||
-      typeof source['typeDocVersion'] !== 'string' ||
-      source['typeDocVersion'].length === 0 ||
-      typeof source['typescriptVersion'] !== 'string' ||
-      source['typescriptVersion'].length === 0
-    ) {
-      throw new Error(`Invalid API version source entry: versions[${index}]`);
-    }
-    parseVersion(source['version']);
-    if (seen.has(source['version'])) {
-      throw new Error(`Duplicate API version source: ${source['version']}`);
-    }
-    seen.add(source['version']);
-
-    return source as unknown as APIVersionSource;
-  });
-
-  return { schemaVersion: 1, versions };
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
@@ -105,15 +55,10 @@ export async function inspectAPIVersionState(
     return { status: 'invalid', reason: 'No API packages are configured' };
   }
   const manifestPath = path.join(config.apiDirectory, 'manifest.json');
-  const sourcesPath = path.join(config.apiDirectory, 'version-sources.json');
   let manifestValue: unknown;
-  let sourcesValue: unknown;
 
   try {
-    [manifestValue, sourcesValue] = await Promise.all([
-      readOptionalJSON(manifestPath),
-      readOptionalJSON(sourcesPath),
-    ]);
+    manifestValue = await readOptionalJSON(manifestPath);
   } catch (error) {
     return {
       status: 'invalid',
@@ -121,18 +66,13 @@ export async function inspectAPIVersionState(
     };
   }
 
-  if (manifestValue === undefined && sourcesValue === undefined) {
+  if (manifestValue === undefined) {
     return { status: 'missing' };
   }
   let manifest: APIManifest;
-  let sources: APIVersionSources;
 
   try {
-    if (manifestValue === undefined || sourcesValue === undefined) {
-      throw new Error('API manifest and version-sources.json must exist together');
-    }
     manifest = parseAPIManifest(manifestValue);
-    sources = parseVersionSources(sourcesValue);
   } catch (error) {
     return {
       status: 'invalid',
@@ -140,7 +80,6 @@ export async function inspectAPIVersionState(
     };
   }
 
-  const source = sources.versions.find(item => item.version === version);
   const presentPackages = manifest.packages.filter(pkg =>
     pkg.versions.some(item => item.version === version),
   );
@@ -148,10 +87,10 @@ export async function inspectAPIVersionState(
   if (presentPackages.length === 0) {
     return { status: 'missing' };
   }
-  if (source === undefined || presentPackages.length !== apiPackages.length) {
+  if (presentPackages.length !== apiPackages.length) {
     return {
       status: 'invalid',
-      reason: 'Version source audit or package set is incomplete',
+      reason: 'API version package set is incomplete',
     };
   }
   if (
@@ -169,16 +108,28 @@ export async function inspectAPIVersionState(
     };
   }
 
+  const firstPackage = apiPackages[0];
+  const sourceCommit = firstPackage === undefined
+    ? undefined
+    : versionFor(manifest, firstPackage.key, version)?.commit;
+
+  if (sourceCommit === undefined || !/^[a-f\d]{40,64}$/iu.test(sourceCommit)) {
+    return {
+      status: 'invalid',
+      reason: `${version} does not have a valid source commit`,
+    };
+  }
+
   const dataRoot = path.dirname(config.apiDirectory);
   let expectedSnapshotByLocale = new Map<string, string>();
 
   for (const apiPackage of apiPackages) {
     const item = versionFor(manifest, apiPackage.key, version);
 
-    if (item === undefined || item.commit !== source.commit) {
+    if (item === undefined || item.commit !== sourceCommit) {
       return {
         status: 'invalid',
-        reason: `${apiPackage.key}@${version} commit does not match version-sources.json`,
+        reason: `${apiPackage.key}@${version} commit does not match other API packages`,
       };
     }
     const locales = Object.keys(item.json).sort();
@@ -271,9 +222,10 @@ export async function inspectAPIVersionState(
         !isRecord(snapshot) ||
         snapshot['locale'] !== locale ||
         !isRecord(snapshot['apiSnapshot']) ||
-        snapshot['apiSnapshot']['commit'] !== source.commit ||
+        snapshot['apiSnapshot']['commit'] !== item.commit ||
         snapshot['apiSnapshot']['snapshot'] !== item.snapshot ||
-        snapshot['apiSnapshot']['generatorVersion'] !== source.typeDocVersion ||
+        typeof snapshot['apiSnapshot']['generatorVersion'] !== 'string' ||
+        snapshot['apiSnapshot']['generatorVersion'].length === 0 ||
         !isUnknownArray(snapshot['apiSnapshot']['packages']) ||
         !isStringRecord(item.json)
       ) {
@@ -319,15 +271,5 @@ export async function inspectAPIVersionState(
     }
   }
 
-  return { status: 'complete', source };
-}
-
-export async function readAPIVersionSources(
-  config: DocsSiteConfig,
-): Promise<APIVersionSources | undefined> {
-  const value = await readOptionalJSON(
-    path.join(config.apiDirectory, 'version-sources.json'),
-  );
-
-  return value === undefined ? undefined : parseVersionSources(value);
+  return { status: 'complete' };
 }

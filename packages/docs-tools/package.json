@@ -1,6 +1,6 @@
 {
   "name": "@galacean/docs-tools",
-  "version": "0.0.9",
+  "version": "0.0.11",
   "description": "Documentation generation tools for Galacean repositories",
   "type": "module",
   "files": [
@@ -22,6 +22,7 @@
     "@galacean/docs-site": "workspace:*",
     "html-to-text": "^10.0.1",
     "jsonc-parser": "^3.3.1",
+    "pinyin-pro": "^3.29.5",
     "semver": "^7.7.2",
     "tsx": "catalog:",
     "typedoc": "catalog:",

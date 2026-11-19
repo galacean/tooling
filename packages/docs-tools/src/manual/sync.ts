@@ -32,10 +32,14 @@ interface ManualPage {
   sourceLocale: string;
   content: string;
   format: 'markdown' | 'html';
-  translations: Record<
-    string,
-    { markdown: string; title?: string; group?: string }
-  >;
+  translations: Record<string, ManualTranslation>;
+}
+
+interface ManualTranslation {
+  content: string;
+  format: 'markdown' | 'html';
+  title?: string;
+  group?: string;
 }
 
 interface YuqueTocNode {
@@ -57,6 +61,10 @@ interface YuqueDocument {
 }
 
 export type ManualSyncProgress =
+  | {
+      type: 'warning';
+      message: string;
+    }
   | {
       type: 'collection-ready';
       collectionKey: string;
@@ -311,6 +319,44 @@ async function fetchDocument(
   return parseDocument(await requestJSON(url, token, fetcher), slug);
 }
 
+function replaceYuqueDocumentLinks(
+  markdown: string,
+  routeByDocument: Map<string, string>,
+): string {
+  const yuqueLinkPattern =
+    /https:\/\/(?:[^/\s"'<>]+\.)?yuque\.com\/([^/?#\s"'<>]+\/[^/?#\s"'<>]+)\/([^/?#\s"'<>)]*)(?:\?[^#\s"'<>)]*)?(#[^\s"'<>)]*)?/gu;
+
+  return markdown.replace(
+    yuqueLinkPattern,
+    (link, namespace: string, slug: string, hash = '') => {
+      const routeSlug = routeByDocument.get(`${namespace}/${slug}`);
+
+      return routeSlug === undefined ? link : `../${routeSlug}/${hash}`;
+    },
+  );
+}
+
+function replaceYuqueLinksInPages(pages: ManualPage[]): void {
+  const routeByDocument = new Map<string, string>();
+
+  for (const page of pages) {
+    const source = page.navigation.source;
+
+    if (source?.type === 'yuque') {
+      routeByDocument.set(
+        `${source.namespace}/${source.slug}`,
+        page.navigation.slug,
+      );
+    }
+  }
+  for (const page of pages) {
+    if (page.navigation.source?.type !== 'yuque' || page.format !== 'html') {
+      continue;
+    }
+    page.content = replaceYuqueDocumentLinks(page.content, routeByDocument);
+  }
+}
+
 function addPage(
   pages: ManualPage[],
   slugs: Set<string>,
@@ -339,24 +385,34 @@ function countFilesByGroup(
 
 async function loadTranslations(
   collection: ManualCollectionConfig,
-  slug: string,
-  repositoryRoot: string,
+  documentKey: string,
+  sourceFormat: ManualTranslation['format'],
+  config: DocsSiteConfig,
 ): Promise<ManualPage['translations']> {
   const translations: ManualPage['translations'] = {};
+  const collectionDirectory = path.join(
+    config.translationCacheDirectory ??
+      path.join(config.repositoryRoot, 'tmp/docs-tools/translation-cache'),
+    'manual',
+    collection.key,
+  );
 
-  for (const [locale, directory] of Object.entries(
-    collection.translations ?? {},
-  )) {
-    const markdownPath = path.join(directory, `${slug}.md`);
+  for (const locale of config.locales) {
+    if (locale === collection.source.locale) {
+      continue;
+    }
+    const directory = path.join(collectionDirectory, locale);
+    const extension = sourceFormat === 'html' ? 'html' : 'md';
+    const translationPath = path.join(directory, `${documentKey}.${extension}`);
 
     try {
-      await assertNoSymlinkPath(repositoryRoot, markdownPath);
-      const markdown = await readFile(markdownPath, 'utf8');
+      await assertNoSymlinkPath(config.repositoryRoot, translationPath);
+      const content = await readFile(translationPath, 'utf8');
 
-      if (markdown.trim() === '') {
-        throw new Error(`Empty manual translation: ${markdownPath}`);
+      if (content.trim() === '') {
+        throw new Error(`Empty manual translation: ${translationPath}`);
       }
-      translations[locale] = { markdown };
+      translations[locale] = { content, format: sourceFormat };
     } catch (error) {
       if (errorCode(error) !== 'ENOENT') {
         throw error;
@@ -365,15 +421,18 @@ async function loadTranslations(
     const metadataPath = path.join(directory, 'navigation.json');
 
     try {
-      await assertNoSymlinkPath(repositoryRoot, metadataPath);
+      await assertNoSymlinkPath(config.repositoryRoot, metadataPath);
       const metadata: unknown = parseJSON(
         await readFile(metadataPath, 'utf8'),
         metadataPath,
       );
-      const localized = isRecord(metadata) ? metadata[slug] : undefined;
+      const localized = isRecord(metadata) ? metadata[documentKey] : undefined;
 
       if (isRecord(localized)) {
-        const translation = translations[locale] ?? { markdown: '' };
+        const translation = translations[locale] ?? {
+          content: '',
+          format: sourceFormat,
+        };
 
         if (typeof localized['title'] === 'string') {
           translation.title = localized['title'];
@@ -391,6 +450,16 @@ async function loadTranslations(
   }
 
   return translations;
+}
+
+function manualTranslationKey(navigation: ManualNavigationItem): string {
+  if (navigation.source?.type === 'yuque') {
+    return navigation.source.docId === undefined
+      ? `source-${encodeURIComponent(navigation.source.namespace)}-${encodeURIComponent(navigation.source.slug)}`
+      : `doc-${encodeURIComponent(navigation.source.docId)}`;
+  }
+
+  return navigation.slug;
 }
 
 async function syncYuqueCollection(
@@ -566,6 +635,16 @@ async function syncYuqueCollection(
 
     const title = document.title;
     const updatedAt = document.updatedAt;
+    const documentId = document.id === undefined
+      ? sourceDoc.docId
+      : String(document.id);
+
+    if (documentId === undefined) {
+      onProgress?.({
+        type: 'warning',
+        message: `Yuque document ${sourceDoc.namespace}/${sourceDoc.slug} has no docId; its translation archive uses namespace/slug and must be migrated if either changes.`,
+      });
+    }
     const navigation: ManualNavigationItem = {
       slug: sourceDoc.routeSlug,
       title: Object.fromEntries(config.locales.map(locale => [locale, title])),
@@ -586,27 +665,24 @@ async function syncYuqueCollection(
         type: 'yuque',
         namespace: sourceDoc.namespace,
         slug: sourceDoc.slug,
-        ...(document.id === undefined
-          ? sourceDoc.docId === undefined
-            ? {}
-            : { docId: sourceDoc.docId }
-          : { docId: String(document.id) }),
+        ...(documentId === undefined ? {} : { docId: documentId }),
       },
     };
 
     const translations = await loadTranslations(
       collection,
-      sourceDoc.routeSlug,
-      config.repositoryRoot,
+      manualTranslationKey(navigation),
+      document.format,
+      config,
     );
 
     for (const locale of config.locales) {
       const translation = translations[locale];
 
-      navigation.format![locale] =
-        translation?.markdown !== undefined && translation.markdown.length > 0
-          ? 'markdown'
-          : document.format;
+      navigation.format![locale] = translation?.content !== undefined &&
+        translation.content.length > 0
+        ? translation.format
+        : document.format;
     }
     for (const [locale, translation] of Object.entries(translations)) {
       if (translation.title !== undefined) {
@@ -733,6 +809,34 @@ async function syncLocalCollection(
 
     await assertNoSymlinkPath(config.repositoryRoot, sourceMarkdownPath);
     const markdown = await readFile(sourceMarkdownPath, 'utf8');
+    const translations: ManualPage['translations'] = {};
+
+    for (const locale of config.locales) {
+      if (locale === collection.source.locale) {
+        continue;
+      }
+      const localizedMarkdownPath = path.join(
+        collection.source.directory,
+        locale,
+        `${slug}.md`,
+      );
+
+      await assertNoSymlinkPath(config.repositoryRoot, localizedMarkdownPath);
+      try {
+        translations[locale] = {
+          content: await readFile(localizedMarkdownPath, 'utf8'),
+          format: 'markdown',
+        };
+      } catch (error) {
+        if (errorCode(error) !== 'ENOENT') {
+          throw error;
+        }
+        throw new Error(
+          `Missing local manual for ${collection.key}/${locale}/${slug}`,
+          { cause: error },
+        );
+      }
+    }
     const navigation: ManualNavigationItem = {
       slug: safeRouteSlug(collection.routePrefix, slug),
       title: Object.fromEntries(
@@ -768,46 +872,7 @@ async function syncLocalCollection(
         : {}),
       source: { type: 'local' },
     };
-    const translations = await loadTranslations(
-      collection,
-      navigation.slug,
-      config.repositoryRoot,
-    );
 
-    for (const [locale, translation] of Object.entries(translations)) {
-      if (translation.title !== undefined) {
-        navigation.title[locale] = translation.title;
-      }
-      if (translation.group !== undefined) {
-        navigation.group[locale] = translation.group;
-      }
-    }
-
-    for (const locale of config.locales) {
-      if (
-        locale === collection.source.locale ||
-        translations[locale]?.markdown !== undefined
-      ) {
-        continue;
-      }
-      try {
-        const translationPath = path.join(
-          collection.source.directory,
-          locale,
-          `${slug}.md`,
-        );
-
-        await assertNoSymlinkPath(config.repositoryRoot, translationPath);
-        translations[locale] = {
-          ...translations[locale],
-          markdown: await readFile(translationPath, 'utf8'),
-        };
-      } catch (error) {
-        if (errorCode(error) !== 'ENOENT') {
-          throw error;
-        }
-      }
-    }
     addPage(pages, slugs, {
       navigation,
       sourceLocale: collection.source.locale,
@@ -903,17 +968,17 @@ async function writeManualData(
       for (const locale of config.locales) {
         const translation = page.translations[locale];
         const hasTranslation =
-          translation?.markdown !== undefined &&
-          translation.markdown.length > 0;
+          translation?.content !== undefined &&
+          translation.content.length > 0;
         const format =
           locale !== page.sourceLocale && hasTranslation
-            ? 'markdown'
+            ? translation.format
             : page.format;
         const content =
           locale === page.sourceLocale
             ? page.content
             : hasTranslation
-              ? translation.markdown
+              ? translation.content
               : page.content;
         const localeDirectory = path.join(temporaryDirectory, locale);
         const extension = format === 'html' ? 'html' : 'md';
@@ -985,6 +1050,7 @@ export async function syncManuals(
         onProgress,
       ));
   }
+  replaceYuqueLinksInPages(pages);
   await writeManualData(config, pages);
 
   return { collections: config.manuals.length, documents };

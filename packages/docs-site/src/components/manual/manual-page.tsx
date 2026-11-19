@@ -63,7 +63,6 @@ export interface ManualPageProps {
   onTitleChange?: (title: string) => void;
   onSidebarCollapsed?: (collapsed: boolean) => void;
   messages: ManualPageMessages;
-  sectionLabel: string;
   homeHref: string;
   getPageHref: (slug?: string) => string;
   loadNavigation: (locale: string) => Promise<ManualNavigationPage[]>;

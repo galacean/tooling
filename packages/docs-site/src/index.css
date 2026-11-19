@@ -5,6 +5,7 @@
 @import './components/shared/select-control.css';
 @import './components/shared/document-error.css';
 @import './components/shared/document-loading.css';
+@import './components/shared/image-viewer.css';
 @import './components/search/search-panel.css';
 @import './components/site/site-shell.css';
 @import './components/manual/manual-page.css';

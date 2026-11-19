@@ -19,6 +19,7 @@ import { readJSON } from './read-json';
 import { cleanAPISnapshots } from './snapshot-cleanup';
 import { readAPISnapshot } from './snapshot-reference';
 import { sourceProject } from './snapshot';
+import { writeAPITranslationArchive } from './translation-archive';
 
 interface TranslationTaskField {
   key: string;
@@ -67,6 +68,7 @@ interface ApplyOutput {
   packageKey: string;
   version: string;
   locale: string;
+  sourceHash: string;
   apiSnapshot: Record<string, unknown>;
   source: Record<string, unknown>;
   translations: Record<string, string>;
@@ -78,7 +80,7 @@ type ApplyConfig = Pick<
   | 'sourceLocale'
   | 'locales'
   | 'apiDirectory'
-  | 'translationWorkDirectory'
+  | 'apiTranslationDirectory'
 >;
 
 function isWithin(parent: string, child: string): boolean {
@@ -360,8 +362,8 @@ export async function applyTranslationPairsWithRename(
     throw new Error('Provide task/translation file pairs');
   }
   const workRoot = path.resolve(
-    config.repositoryRoot,
-    config.translationWorkDirectory,
+    config.apiTranslationDirectory ??
+      path.join(config.repositoryRoot, 'tmp/docs-tools/api-translation'),
   );
   const outputs: ApplyOutput[] = [];
   const targets = new Set<string>();
@@ -445,6 +447,7 @@ export async function applyTranslationPairsWithRename(
       packageKey: input.packageKey,
       version: input.version,
       locale: input.locale,
+      sourceHash: input.sourceHash,
       apiSnapshot: input.apiSnapshot,
       source: input.project,
       translations: translation.translations,
@@ -681,6 +684,18 @@ export async function applyTranslationPairsWithRename(
   const staged: StagedFile[] = [];
 
   try {
+    for (const output of outputs) {
+      await writeAPITranslationArchive(
+        config,
+        {
+          locale: output.locale,
+          version: output.version,
+          sourceHash: output.sourceHash,
+          translations: output.translations,
+        },
+        output.packageKey,
+      );
+    }
     for (const [filename, contents] of snapshots) {
       await mkdir(path.dirname(filename), { recursive: true });
       await assertNoSymlinkPath(config.repositoryRoot, filename);

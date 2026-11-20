@@ -6,7 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { test, vi } from 'vitest';
 import {
-  loadSiteConfig,
+  loadDocsProjectConfig,
   migrateManualTranslations,
   syncManuals,
 } from '@galacean/docs-tools';
@@ -40,7 +40,7 @@ async function loadConfig(
     }),
   );
 
-  return loadSiteConfig(path.basename(filename), root);
+  return loadDocsProjectConfig(path.basename(filename), root);
 }
 
 function yuqueDocument(slug: string, title: string) {

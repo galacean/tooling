@@ -6,9 +6,9 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const tsxCli = require.resolve('tsx/cli');
+const tsxCLI = require.resolve('tsx/cli');
 const entrypoint = resolve(dirname(fileURLToPath(import.meta.url)), '../src/bin/galacean-docs.ts');
-const result = spawnSync(process.execPath, [tsxCli, entrypoint, ...process.argv.slice(2)], {
+const result = spawnSync(process.execPath, [tsxCLI, entrypoint, ...process.argv.slice(2)], {
   stdio: 'inherit',
 });
 

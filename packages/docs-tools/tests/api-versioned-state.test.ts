@@ -9,7 +9,7 @@ import {
   generateVersionedAPIDocumentation,
   inspectAPIVersionState,
 } from '@galacean/docs-tools';
-import type { DocsSiteConfig } from '@galacean/docs-tools';
+import type { ResolvedDocsBuildConfig } from '@galacean/docs-tools';
 
 async function fixture() {
   const repositoryRoot = await mkdtemp(
@@ -23,7 +23,7 @@ async function fixture() {
     { key: 'first', name: '@example/first' },
     { key: 'second', name: '@example/second' },
   ];
-  const config: DocsSiteConfig = {
+  const config: ResolvedDocsBuildConfig = {
     repositoryRoot,
     configPath: path.join(repositoryRoot, 'site/docs.config.json'),
     sourceLocale: 'en',

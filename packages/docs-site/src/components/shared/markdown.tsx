@@ -14,16 +14,21 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import json from 'highlight.js/lib/languages/json';
 import bash from 'highlight.js/lib/languages/bash';
 import { Link, useLocation } from 'react-router-dom';
+import { commonMessages } from '../../i18n/messages';
 import { CopyButton } from './copy-button';
 import { ImageViewer } from './image-viewer';
-import type { ImageViewerImage } from './image-viewer';
+import type { ImageViewerImage, ImageViewerMessages } from './image-viewer';
+
+export type MarkdownMessages = ImageViewerMessages & Pick<
+  typeof commonMessages.en, 'code' | 'copy' | 'copied' | 'copyFailed'
+>;
 
 const getContentImages = (root: HTMLElement) =>
   Array.from(root.querySelectorAll('img')).filter(
     image => image.currentSrc !== '' || image.getAttribute('src') !== null,
   );
 
-function useImageViewer() {
+function useImageViewer(messages: ImageViewerMessages) {
   const [opened, setOpened] = useState<{
     images: ImageViewerImage[];
     initialIndex: number;
@@ -66,6 +71,7 @@ function useImageViewer() {
   const viewer =
     opened === undefined ? null : (
       <ImageViewer
+        messages={messages}
         images={opened.images}
         initialIndex={opened.initialIndex}
         returnFocusTo={opened.returnFocusTo}
@@ -106,11 +112,13 @@ function headingText(children: ReactNode): string {
 
 function CodeBlock({
   children,
+  codeLabel,
   copyLabel,
   copied,
   copyFailed,
 }: {
   children: ReactNode;
+  codeLabel: string;
   copyLabel: string;
   copied: string;
   copyFailed: string;
@@ -132,7 +140,7 @@ function CodeBlock({
   return (
     <div className="code-block" ref={block}>
       <div className="code-head">
-        <span>CODE</span>
+        <span>{codeLabel}</span>
         <CopyButton
           value={() => block.current?.querySelector('code')?.textContent ?? ''}
           label={copyLabel}
@@ -147,14 +155,16 @@ function CodeBlock({
 
 export function MarkdownContent({
   text,
+  messages: messageOverrides,
   resolveLink,
-  copyLabel = 'Copy',
-  copied = 'Copied',
-  copyFailed = 'Copy failed',
+  copyLabel,
+  copied,
+  copyFailed,
   afterFirstHeading,
   resolveImage,
 }: {
   text: string;
+  messages?: Partial<MarkdownMessages>;
   resolveLink?: (url: string) => string;
   copyLabel?: string;
   copied?: string;
@@ -163,7 +173,8 @@ export function MarkdownContent({
   resolveImage?: (url: string) => string;
 }) {
   const location = useLocation();
-  const { showImage, viewer } = useImageViewer();
+  const messages = { ...commonMessages.en, ...messageOverrides };
+  const { showImage, viewer } = useImageViewer(messages);
   let headingInserted = false;
 
   return (
@@ -221,9 +232,10 @@ export function MarkdownContent({
           ),
           pre: ({ children }) => (
             <CodeBlock
-              copyLabel={copyLabel}
-              copied={copied}
-              copyFailed={copyFailed}
+              codeLabel={messages.code}
+              copyLabel={copyLabel ?? messages.copy}
+              copied={copied ?? messages.copied}
+              copyFailed={copyFailed ?? messages.copyFailed}
             >
               {children}
             </CodeBlock>
@@ -301,11 +313,14 @@ function replaceYuqueVideoPlaceholders(root: HTMLElement) {
 
 export const HTMLDocumentContent = memo(function HTMLDocumentContent({
   html,
+  messages: messageOverrides,
 }: {
   html: string;
+  messages?: Partial<ImageViewerMessages>;
 }) {
   const container = useRef<HTMLDivElement>(null);
-  const { showImage, viewer } = useImageViewer();
+  const messages = { ...commonMessages.en, ...messageOverrides };
+  const { showImage, viewer } = useImageViewer(messages);
 
   useEffect(() => {
     const root = container.current;

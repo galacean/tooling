@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Application, ReflectionKind } from 'typedoc';
 import type { JSONOutput } from 'typedoc';
 import ts from 'typescript';
-import type { APIPackageConfig, DocsSiteConfig } from '../config/site-config';
+import type { APIPackageConfig, ResolvedDocsBuildConfig } from '../config/types';
 import { readJSON } from './read-json';
 import type { APIDocumentationPackage } from './assemble';
 import { contentHash } from './translations';
@@ -47,7 +47,7 @@ export interface APIGenerationDependencies {
   ) => Promise<void>;
   getCommit: (repositoryRoot: string) => string;
   convert: (
-    config: DocsSiteConfig,
+    config: ResolvedDocsBuildConfig,
     commit: string,
   ) => Promise<JSONOutput.ProjectReflection>;
   generatorVersion: () => Promise<string>;
@@ -221,7 +221,7 @@ function resolveReflection(
 }
 
 export function buildAPIDocumentationPackages(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   manifests: Map<string, { name: string; version: string }>,
   project: JSONOutput.ProjectReflection,
 ): APIDocumentationPackage[] {
@@ -344,18 +344,18 @@ export function externalizeTypeDocDependencies(
   const symbolIdMap = isRecord(project.symbolIdMap)
     ? project.symbolIdMap as Record<string, JSONOutput.ReflectionSymbolId>
     : {};
-  const externalUrls = new Map<number, string>();
+  const externalURLs = new Map<number, string>();
 
   for (const id of externalIds) {
     const symbol = symbolIdMap[String(id)];
     const url = externalPackageURL(symbol?.packageName);
 
     if (url !== undefined) {
-      externalUrls.set(id, url);
+      externalURLs.set(id, url);
     }
   }
   for (const id of publicExternalIds) {
-    if (!externalUrls.has(id)) {
+    if (!externalURLs.has(id)) {
       const reflection = reflections.get(id);
 
       throw new Error(
@@ -394,7 +394,7 @@ export function externalizeTypeDocDependencies(
       typeof value['target'] === 'number' &&
       externalIds.has(value['target'])
     ) {
-      const url = externalUrls.get(value['target']) ?? externalPackageURL(value['package']);
+      const url = externalURLs.get(value['target']) ?? externalPackageURL(value['package']);
 
       return {
         ...value,
@@ -408,7 +408,7 @@ export function externalizeTypeDocDependencies(
       if (!publicExternalIds.has(value['id'])) {
         return undefined;
       }
-      const url = externalUrls.get(value['id']);
+      const url = externalURLs.get(value['id']);
 
       if (url === undefined) {
         throw new Error(`Missing external URL for public reflection: ${String(value['name'])}`);
@@ -712,7 +712,7 @@ function mergeTypeDocProjects(
 }
 
 async function convertTypeDoc(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   commit: string,
 ): Promise<JSONOutput.ProjectReflection> {
   const sourceLinkTemplate = config.sourceLinkTemplate?.replaceAll(
@@ -786,9 +786,9 @@ async function typeDocVersion(): Promise<string> {
 }
 
 function versionedPackageConfig(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   sourceRoot: string,
-): DocsSiteConfig {
+): ResolvedDocsBuildConfig {
   const packages = config.apiPackages?.map(packageConfig => {
     const packageRelative = path.relative(
       config.repositoryRoot,
@@ -821,7 +821,7 @@ function versionedPackageConfig(
 }
 
 async function buildVersionAtTag(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   repository: string,
   dependencies: APIGenerationDependencies,
@@ -925,7 +925,7 @@ async function buildVersionAtTag(
 }
 
 async function buildVersionAtCurrent(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   dependencies: APIGenerationDependencies,
 ): Promise<Awaited<ReturnType<APIVersionBuilder>>> {
@@ -987,7 +987,7 @@ const defaultDependencies: APIGenerationDependencies = {
 };
 
 export async function generateAPIDocumentation(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   selectedPackageKeys?: string[],
   dependencies: APIGenerationDependencies = defaultDependencies,
   reportVersionStatus?: (status: {

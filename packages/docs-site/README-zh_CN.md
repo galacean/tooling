@@ -2,51 +2,63 @@
 
 [English](README.md)
 
-双语 API 与手册文档站点使用的 React 运行时。
+双语 API 与手册文档站点的 React 运行时，提供搜索、主题和语言切换。
 
 ## 安装
-
-在消费站点的 React 应用中安装本包及其 peer dependencies：
 
 ```sh
 pnpm add @galacean/docs-site react react-dom react-markdown react-router-dom remark-gfm highlight.js
 ```
 
-## 使用
+## 快速开始
 
-从 `@galacean/docs-site` 导入 `DocsSite` 和配置类型，并且只需加载一次 `@galacean/docs-site/index.css`。将 `DocsSite` 挂载在应用根部；它会创建自己的 `BrowserRouter`。
+```tsx
+import { DocsSite, createMessageCatalog } from '@galacean/docs-site';
+import type { DocsSiteOptions } from '@galacean/docs-site';
+import '@galacean/docs-site/index.css';
 
-调用方提供站点品牌、支持语言、本地化文案、API 数据配置和 `pages` 注册表。页面包含 `slug`、`render(locale)`；除首页外还需提供本地化的 `title(locale)`。首页的 `slug` 为 `null`。产品页面内容和字体样式由应用维护。
+const { locales, messages } = createMessageCatalog(['en', 'zh-CN'], {
+  en: { manualIntro: 'Guides for this project.' },
+  'zh-CN': { manualIntro: '项目使用指南。' },
+});
+type Locale = (typeof locales)[number];
 
-`DocsSite` 的 `baseURL`、`locales`、`defaultLocale`、`site`、`pages`，以及 `site.brandLabel`、`brandMarkUrls`、`localeLabels`、`messages` 仍为必填配置。
+const config: DocsSiteOptions<Locale> = {
+  baseURL: '/docs/',
+  locales,
+  defaultLocale: 'en',
+  brandLabel: 'Project',
+  brandMarkURLs: { light: '/logo.svg', dark: '/logo-dark.svg' },
+  localeLabels: { en: 'English', 'zh-CN': '简体中文' },
+  messages,
+  manual: true,
+};
 
-`DocsSite` 和 `site` 的可选配置会在站点入口统一应用默认值：
-
-- `dataBaseURL` 默认等于 `baseURL`。
-- `site.docsBrandMarkUrls` 默认等于 `site.brandMarkUrls`。
-- `site.getHomeHref(locale)` 默认返回当前语言首页路径。
-- `site.storageKeys` 默认使用 `locale`、`theme` 和 `search-history`；搜索历史会追加语言后缀，例如 `search-history:zh-CN`。
-- `site.siteOrigin` 默认使用 `window.location.origin`。
-- `site.manualDataURL` 默认是 `${dataBaseURL}data/manual/`。
-- `site.getSearchDataURL(locale)` 默认返回 `${dataBaseURL}data/search/${locale}.json`。
-- `site.api` 和 `site.githubHref` 是可选功能；省略时不显示 API 导航或 GitHub 链接。
-
-需要覆盖部分默认值时，只提供要修改的字段：
-
-```ts
-storageKeys: {
-	locale: 'umi_locale',
-	theme: 'ui_theme',
-	searchHistory: 'docs-search',
-},
-getHomeHref: locale => `/docs/${locale}/`,
+export default function App() {
+  return (
+    <DocsSite
+      config={config}
+      pages={[{ slug: null, render: locale => <h1>{messages(locale).home}</h1> }]}
+    />
+  );
+}
 ```
 
-API 和手册数据以静态文件形式发布；发布路径可通过 `manualDataURL` 和 `getSearchDataURL` 覆盖默认值。
+`DocsSite` 自带 `BrowserRouter`，应挂载在其他 Router 之外。在应用入口加载一次样式。
 
-## 导出内容
+- 首页使用 `slug: null`，普通页面还需提供各语言的 `title`。使用 `bindDocsSitePages` 时，首页渲染函数使用键 `/`，普通页面使用各自的 slug。如果没有名为 `home` 的页面，首页也可使用键 `home`。
+- `manual`：`true` 使用默认数据目录，`false` 关闭手册，`{ dataURL }` 指定独立目录。
+- `api`：提供 `DocsSiteAPIOptions<Locale>` 后开启 API 页面。
+- `homeHref`：统一指定「首页」「返回首页」及品牌链接的目标地址，默认 `/`。路由路径会添加 `baseURL` 前缀，绝对 URL 可指向其他站点。CLI 配置传入同一值即可统一静态 404 页的首页链接。
+- `dataBaseURL`：位于 `data/` 之前的发布前缀，默认使用 `baseURL`。业务选择本地或 CDN 地址，并将生成数据发布到该位置。
 
-本包还导出 `CopyButton`、`Icon`、`SearchPanel`、`useTheme`、文案目录工具、API/手册数据客户端、路由工具和组件 barrel。`SearchPanel` 不依赖路由上下文，调用方传入本地化文案、`loadItems` 函数和 `navigate` 回调即可使用。路由与站点框架组件需要 React Router 上下文。
+完整选项见[配置类型](src/config/types.ts)。文档生成设置放在 CLI 的 `docs.config` 文件中，运行时配置显式传给 `DocsSite`。
+
+## 多语言
+
+`createMessageCatalog` 合并公共中英文文案与业务文案，同名键由业务覆盖。公共界面文案统一维护在 [en.json](src/i18n/en.json) 和 [zh-CN.json](src/i18n/zh-CN.json)。
+
+独立组件也支持传入本地化文案。`MarkdownContent` 和 `HTMLDocumentContent` 未提供的文案键使用公共英文默认值。
 
 ## 开发
 

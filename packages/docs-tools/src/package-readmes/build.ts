@@ -1,13 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseAPIManifest } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { assertNoSymlinkPath } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { readJSON } from '../api/read-json';
 import { hasPackageReadme, readPackageReadme } from './read';
 
 export async function buildPackageReadmes(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
 ): Promise<Record<string, number>> {
   const manifestPath = path.join(config.apiDirectory, 'manifest.json');
 

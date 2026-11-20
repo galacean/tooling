@@ -3,8 +3,8 @@ import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import path from 'node:path';
 import { isRecord, parseAPIManifest, parseProject } from '@galacean/docs-site';
 import type { APIManifest, APIVersion } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { assertNoSymlinkPath, isSafeRelativePath, isWithin } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { loadTranslationInput } from './extract';
 import {
   buildTranslationSource,
@@ -75,35 +75,13 @@ interface ApplyOutput {
 }
 
 type ApplyConfig = Pick<
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
   | 'repositoryRoot'
   | 'sourceLocale'
   | 'locales'
   | 'apiDirectory'
   | 'apiTranslationDirectory'
 >;
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-}
-
-function isSafeRelativePath(value: string): boolean {
-  return (
-    value.length > 0 &&
-    !path.isAbsolute(value) &&
-    !value.includes('\\') &&
-    value
-      .split(/[\\/]/u)
-      .every(segment => segment !== '' && segment !== '.' && segment !== '..')
-  );
-}
 
 function isTaskField(value: unknown): value is TranslationTaskField {
   return (
@@ -214,7 +192,7 @@ function resolveManifestSnapshot(
   }
   const filename = path.resolve(dataRoot, relativePath);
 
-  if (!isWithin(dataRoot, filename)) {
+  if (!isWithin(dataRoot, filename, 'descendant')) {
     throw new Error(
       `API snapshot path leaves the data directory: ${relativePath}`,
     );
@@ -377,9 +355,9 @@ export async function applyTranslationPairsWithRename(
     const runDirectory = path.dirname(taskPath);
 
     if (
-      !isWithin(workRoot, taskPath) ||
+      !isWithin(workRoot, taskPath, 'descendant') ||
       path.dirname(translationPath) !== runDirectory ||
-      !isWithin(runDirectory, translationPath)
+      !isWithin(runDirectory, translationPath, 'descendant')
     ) {
       throw new Error(
         `Task and translation files must share a run directory inside ${workRoot}`,
@@ -407,7 +385,7 @@ export async function applyTranslationPairsWithRename(
       taskValue.targetPath,
     );
 
-    if (!isWithin(config.apiDirectory, absoluteTarget)) {
+    if (!isWithin(config.apiDirectory, absoluteTarget, 'descendant')) {
       throw new Error(
         `API target path leaves the configured API directory: ${taskValue.targetPath}`,
       );

@@ -1,9 +1,8 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { writeFileAtomically } from '../atomic-write';
-import type { DocsSiteConfig } from '../config/site-config';
-import { assertNoSymlinkPath } from '../config/site-config';
-import { isSafePathSegment } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
+import { assertNoSymlinkPath, isSafePathSegment } from '../path-validation';
 import { parseVersion } from './versions';
 
 export interface APITranslationArchive {
@@ -14,7 +13,7 @@ export interface APITranslationArchive {
 }
 
 function archivePath(
-  config: Pick<DocsSiteConfig, 'repositoryRoot' | 'translationCacheDirectory'>,
+  config: Pick<ResolvedDocsBuildConfig, 'repositoryRoot' | 'translationCacheDirectory'>,
   packageKey: string,
   version: string,
   locale: string,
@@ -60,7 +59,7 @@ function parseArchive(value: unknown, filename: string): APITranslationArchive {
 }
 
 export async function readAPITranslationArchive(
-  config: Pick<DocsSiteConfig, 'repositoryRoot' | 'translationCacheDirectory'>,
+  config: Pick<ResolvedDocsBuildConfig, 'repositoryRoot' | 'translationCacheDirectory'>,
   packageKey: string,
   version: string,
   locale: string,
@@ -91,7 +90,7 @@ export async function readAPITranslationArchive(
 }
 
 export async function writeAPITranslationArchive(
-  config: Pick<DocsSiteConfig, 'repositoryRoot' | 'translationCacheDirectory'>,
+  config: Pick<ResolvedDocsBuildConfig, 'repositoryRoot' | 'translationCacheDirectory'>,
   archive: APITranslationArchive,
   packageKey: string,
 ): Promise<string> {

@@ -5,10 +5,10 @@ import {
   isRecord,
   parseAPIManifest,
 } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig, SitePageConfig } from '../config/site-config';
+import { getErrorCode } from '../fs-errors';
+import { assertNoSymlinkPath, isSafePathSegment, isWithin } from '../path-validation';
+import type { ResolvedDocsBuildConfig, SitePageConfig } from '../config/types';
 import { isManualNavigation } from '../manual/navigation';
-import { isSafePathSegment } from '../path-validation';
 import { readJSON } from '../api/read-json';
 
 interface StaticRoute {
@@ -19,25 +19,6 @@ interface StaticRoute {
 interface StaticRouteOptions {
   base?: string;
   origin?: string;
-}
-
-function errorCode(error: unknown): string | undefined {
-  return error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-    ? error.code
-    : undefined;
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 function isSearchLinkArray(value: unknown): value is { url: string }[] {
@@ -110,7 +91,7 @@ async function directoryBytes(directory: string): Promise<number> {
 }
 
 export async function buildStaticRoutes(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   { base: baseValue, origin }: StaticRouteOptions = {},
 ): Promise<{ routes: number; bytes: number; base: string }> {
   if (config.siteName === undefined) {
@@ -240,14 +221,17 @@ export async function buildStaticRoutes(
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, 'index.html'), html);
   }
-  const home = `${base}${config.locales[0] ?? config.sourceLocale}/`;
+  const homeHref = config.homeHref ?? '/';
+  const home = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(homeHref)
+    ? homeHref
+    : `${base}${homeHref.replace(/^\//u, '')}`;
 
   await writeFile(
     path.join(dist, '404.html'),
     `<!doctype html><html lang="en"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><title>404 · ${escapeHTML(config.siteName)}</title>
   <link rel="icon" href="${base}favicon.svg"></head><body style="font-family:system-ui;padding:48px">
-  <h1>404 · Page not found</h1><p><a href="${home}">Home</a></p></body></html>\n`,
+  <h1>404 · Page not found</h1><p><a href="${escapeHTML(home)}">Home</a></p></body></html>\n`,
   );
   await writeFile(path.join(dist, '.nojekyll'), '');
   await writeFile(
@@ -340,7 +324,7 @@ export async function buildStaticRoutes(
         try {
           metadata = await stat(assetPath);
         } catch (error) {
-          if (errorCode(error) === 'ENOENT') {
+          if (getErrorCode(error) === 'ENOENT') {
             throw new Error(
               `Manual asset does not exist: ${locale}/${manual.slug} -> ${target}`,
               { cause: error },

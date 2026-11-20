@@ -34,6 +34,7 @@ import {
 } from '@remixicon/react';
 
 const icons = {
+  github: RiGithubFill,
   search: RiSearchLine,
   menu: RiMenuLine,
   more: RiMore2Line,
@@ -68,7 +69,7 @@ const icons = {
   zoomOut: RiZoomOutLine,
 } as const;
 
-export type IconName = keyof typeof icons | 'github';
+export type IconName = keyof typeof icons;
 
 export function Icon({
   name,
@@ -79,7 +80,7 @@ export function Icon({
 > & {
   name: IconName;
 }) {
-  const IconComponent = name === 'github' ? RiGithubFill : icons[name];
+  const IconComponent = icons[name];
 
   return (
     <IconComponent

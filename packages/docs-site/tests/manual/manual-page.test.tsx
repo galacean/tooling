@@ -16,9 +16,10 @@ import type {
   ManualNavigationPage,
 } from '../../src/components/manual/manual-page';
 import { buildManualTocTree } from '../../src/components/manual/manual-toc';
+import { commonMessages } from '../../src/i18n/messages';
 
 const messages = {
-  home: 'Home',
+  ...commonMessages.en,
   manual: 'Manual',
   manualIntro: 'Manual introduction',
   loading: 'Loading',
@@ -65,7 +66,6 @@ function renderManualPage(
         {...(onTitleChange === undefined ? {} : { onTitleChange })}
         {...(onSidebarCollapsed === undefined ? {} : { onSidebarCollapsed })}
         messages={messages}
-        homeHref="/en/"
         getPageHref={slug => `/en/manual/${slug ?? ''}`}
         loadNavigation={async () => pages}
         loadOverview={async () => documentOverride}
@@ -82,6 +82,57 @@ afterEach(() => {
 });
 
 describe('ManualPage navigation', () => {
+  it.each(['en', 'zh-CN'])('uses configured manual labels for %s', async locale => {
+    const labels = {
+      ...messages,
+      mobileDirectory: 'Custom directory',
+      contents: 'Custom outline',
+      locateCurrentPage: 'Custom locate',
+      collapseAll: 'Custom collapse all',
+      expandAll: 'Custom expand all',
+      hideOutline: 'Custom hide outline',
+      expandOutline: 'Custom show outline',
+      collapseDirectory: 'Custom collapse directory',
+      expandDirectory: 'Custom expand directory',
+      collapseMenu: 'Custom collapse menu',
+      expandMenu: 'Custom expand menu',
+      collapse: 'Custom collapse',
+      expand: 'Custom expand',
+      top: 'Custom top',
+    };
+    const { container } = render(
+      <MemoryRouter initialEntries={[`/${locale}/manual/intro`]}>
+        <ManualPage
+          locale={locale}
+          slug="intro"
+          messages={labels}
+          getPageHref={slug => `/${locale}/manual/${slug ?? ''}`}
+          loadNavigation={async () => navigationPages}
+          loadOverview={loadOverview}
+          loadPage={loadOverview}
+        />
+      </MemoryRouter>,
+    );
+
+    const sidebar = await screen.findByRole('navigation', { name: 'Custom directory' });
+    const group = within(sidebar).getByRole('button', { name: 'Custom collapse menu Getting Started' });
+
+    fireEvent.click(group);
+    expect(within(sidebar).getByRole('button', { name: 'Custom expand menu Getting Started' })).toBeDefined();
+    await screen.findByRole('button', { name: 'Custom collapse Intro' });
+    const toc = container.querySelector<HTMLElement>('.manual-toc')!;
+
+    expect(within(toc).getByText('Custom outline', { selector: 'strong' })).toBeDefined();
+    expect(within(toc).getByRole('button', { name: 'Custom collapse Intro' })).toBeDefined();
+    fireEvent.click(within(toc).getByRole('button', { name: 'Custom hide outline' }));
+    expect(within(toc).getByRole('button', { name: 'Custom show outline' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Custom collapse directory' }));
+    expect(screen.getByRole('button', { name: 'Custom expand directory' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Custom top' })).toBeDefined();
+    expect(screen.getAllByRole('button', { name: 'Custom locate' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Custom collapse all' }).length).toBeGreaterThan(0);
+  });
+
   it('reserves the same disclosure slot for leaf and parent outline rows', async () => {
     renderManualPage(undefined, navigationPages, undefined, undefined, {
       text: '',
@@ -401,7 +452,6 @@ describe('ManualPage navigation', () => {
           slug={slug}
           onTitleChange={onTitleChange}
           messages={messages}
-          homeHref="/en/"
           getPageHref={value => `/en/manual/${value ?? ''}`}
           loadNavigation={async () => transitionPages}
           loadOverview={loadOverview}

@@ -1,5 +1,6 @@
 export * from './api';
-export * from './config/site-config';
+export * from './config/load-project-config';
+export type * from './config/types';
 export * from './manual/sync';
 export * from './manual/migrate-translations';
 export * from './package-readmes/build';

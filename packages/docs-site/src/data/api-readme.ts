@@ -1,3 +1,4 @@
+import { withTrailingSlash } from '../config/urls';
 import { isRecord } from './typedoc-project';
 
 export interface APIReadmeData<TLocale extends string> {
@@ -22,7 +23,7 @@ export async function loadAPIReadmeData<TLocale extends string>(
   if (!/^[a-z0-9-]+$/u.test(packageKey)) {
     throw new Error(`Invalid API package key: ${packageKey}`);
   }
-  const base = baseURL.endsWith('/') ? baseURL : `${baseURL}/`;
+  const base = withTrailingSlash(baseURL);
   const result = await loadJSON(
     `${base}data/package-readmes/${packageKey}/${locale}.json`,
   );

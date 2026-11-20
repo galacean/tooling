@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseSearch, searchResults } from '@galacean/docs-site';
+import { commonMessages, parseSearch, searchResults } from '@galacean/docs-site';
 import type { SearchResult } from '@galacean/docs-site';
 import { SearchPanel } from '../../src/components/search/search-panel';
 import type {
@@ -111,7 +111,7 @@ describe('shared SearchPanel', () => {
     const props: SearchPanelProps = {
       locale: 'en',
       brandLabel: 'Example Docs',
-      brandMarkUrl: '/brand.svg',
+      brandMarkURL: '/brand.svg',
       historyKey: 'example:site:search:en',
       messages,
       loadItems: async () => items,
@@ -143,6 +143,7 @@ describe('shared SiteShell', () => {
           { value: 'ja', label: 'Japanese' },
         ],
         messages: {
+          ...commonMessages.en,
           ...messages,
           menu: 'Menu',
           theme: 'Theme',
@@ -152,7 +153,7 @@ describe('shared SiteShell', () => {
           language: 'Language',
         },
         brandLabel: 'Example Docs',
-        brandMarkUrls: {
+        brandMarkURLs: {
           light: '/example/mark-light.svg',
           dark: '/example/mark-dark.svg',
         },

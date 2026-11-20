@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseAPIManifest } from '@galacean/docs-site';
 import type { APIManifest } from '@galacean/docs-site';
-import type { DocsSiteConfig } from '../config/site-config';
-import { assertNoSymlinkPath } from '../config/site-config';
+import type { ResolvedDocsBuildConfig } from '../config/types';
+import { assertNoSymlinkPath, isWithin } from '../path-validation';
 import { readJSON, readOptionalJSON } from './read-json';
 import { resolveAPISnapshotReference } from './snapshot-reference';
 
@@ -35,18 +35,8 @@ function versionFor(
     ?.versions.find(item => item.version === version);
 }
 
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-}
-
 export async function inspectAPIVersionState(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
 ): Promise<APIVersionState> {
   const apiPackages = config.apiPackages;

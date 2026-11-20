@@ -3,7 +3,68 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'vitest';
-import { loadSiteConfig } from '@galacean/docs-tools';
+import { loadDocsProjectConfig } from '@galacean/docs-tools';
+
+void test('loads the shared home destination and rejects invalid values', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-home-config-'));
+
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  for (const homeHref of ['/', '/start/', 'https://example.com/']) {
+    await writeFile(path.join(root, 'docs.config.json'), JSON.stringify({
+      sourceLocale: 'en', locales: ['en'], homeHref,
+    }));
+    const config = await loadDocsProjectConfig('docs.config.json', root);
+
+    assert.equal(config.homeHref, homeHref);
+  }
+  for (const homeHref of [42, null, '', '   ']) {
+    await writeFile(path.join(root, 'docs.config.json'), JSON.stringify({
+      sourceLocale: 'en', locales: ['en'], homeHref,
+    }));
+    await assert.rejects(loadDocsProjectConfig('docs.config.json', root), /homeHref must be a non-empty string/u);
+  }
+});
+
+void test('preserves optional data environment prefixes', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-data-environments-'));
+
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  for (const dataBaseURLs of [{}, { development: '/docs-preview' }, { production: '/assets/docs' }]) {
+    await writeFile(path.join(root, 'docs.config.json'), JSON.stringify({
+      sourceLocale: 'en', locales: ['en'], dataBaseUrls: dataBaseURLs,
+    }));
+    const config = await loadDocsProjectConfig('docs.config.json', root);
+
+    assert.deepEqual(config.dataBaseURLs, dataBaseURLs);
+  }
+
+});
+
+void test('rejects empty locales and conflicting page routes', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-project-validation-'));
+
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  for (const input of [
+    { sourceLocale: 'en', locales: [] },
+    { sourceLocale: 'en', locales: ['en'], pages: [{ slug: 'manual', title: { en: 'Manual' } }] },
+  ]) {
+    await writeFile(path.join(root, 'docs.config.json'), JSON.stringify(input));
+    await assert.rejects(loadDocsProjectConfig('docs.config.json', root), /Invalid docs site config/u);
+  }
+});
+
+void test('rejects whitespace-only page titles in each configured locale', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-project-page-title-'));
+
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, 'docs.config.json'), JSON.stringify({
+    sourceLocale: 'en',
+    locales: ['en', 'zh-CN'],
+    pages: [{ slug: 'about', title: { en: 'About', 'zh-CN': '   ' } }],
+  }));
+
+  await assert.rejects(loadDocsProjectConfig('docs.config.json', root), /title\.zh-CN must be a non-empty string/u);
+});
 
 void test('loads TypeScript site config and resolves configured paths from repository root', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'docs-site-config-'));
@@ -29,7 +90,7 @@ void test('loads TypeScript site config and resolves configured paths from repos
   } satisfies Record<string, unknown>;\n`,
   );
 
-  const config = await loadSiteConfig('site/site.config.ts', root);
+  const config = await loadDocsProjectConfig('site/site.config.ts', root);
 
   assert.equal(config.sourceLocale, 'zh-CN');
   assert.deepEqual(config.locales, ['zh-CN', 'en']);
@@ -76,7 +137,7 @@ void test('loads site config without API configuration', async t => {
     }),
   );
 
-  const config = await loadSiteConfig('site.config.json', root);
+  const config = await loadDocsProjectConfig('site.config.json', root);
 
   assert.equal(config.apiConfigured, false);
   assert.equal(
@@ -102,7 +163,7 @@ void test('loads API-only config without a manual directory', async t => {
     }),
   );
 
-  const config = await loadSiteConfig('site.config.json', root);
+  const config = await loadDocsProjectConfig('site.config.json', root);
 
   assert.equal(config.apiConfigured, true);
   assert.equal(config.manualConfigured, false);
@@ -129,7 +190,7 @@ void test('loads inline api.versions configuration', async t => {
     }),
   );
 
-  const config = await loadSiteConfig('site.config.json', root);
+  const config = await loadDocsProjectConfig('site.config.json', root);
 
   assert.deepEqual(config.apiVersions, {
     repository: 'https://github.com/example/project.git',
@@ -137,7 +198,7 @@ void test('loads inline api.versions configuration', async t => {
   });
 });
 
-void test('loads the shared translation and CDN config and rejects legacy fields', async t => {
+void test('loads the shared translation and data URL config and rejects legacy fields', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'docs-site-config-'));
 
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
@@ -152,11 +213,11 @@ void test('loads the shared translation and CDN config and rejects legacy fields
       },
       manual: { dataDirectory: 'site/data/manual' },
       translationDirectory: 'tmp/docs-tools',
-      cdn: { baseUrl: 'https://cdn.example.com/docs/' },
+      dataBaseUrls: { production: 'https://cdn.example.com/docs', development: 'https://dev.example.com/docs' },
     }),
   );
 
-  const config = await loadSiteConfig('site.config.json', root);
+  const config = await loadDocsProjectConfig('site.config.json', root);
 
   assert.equal(
     config.translationDirectory,
@@ -170,7 +231,7 @@ void test('loads the shared translation and CDN config and rejects legacy fields
     config.translationCacheDirectory,
     path.join(config.repositoryRoot, 'tmp/docs-tools/translation-cache'),
   );
-  assert.equal(config.cdnBaseUrl, 'https://cdn.example.com/docs/');
+  assert.deepEqual(config.dataBaseURLs, { production: 'https://cdn.example.com/docs', development: 'https://dev.example.com/docs' });
 
   await writeFile(
     path.join(root, 'site.config.json'),
@@ -178,13 +239,13 @@ void test('loads the shared translation and CDN config and rejects legacy fields
       sourceLocale: 'en',
       locales: ['en'],
       translationWorkDirectory: 'tmp/old',
-      cdn: { baseUrl: 'file:///tmp/docs' },
+      dataBaseUrls: { production: 123 },
     }),
   );
 
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
-    /translationWorkDirectory is no longer supported.*cdn\.baseUrl/u,
+    loadDocsProjectConfig('site.config.json', root),
+    /translationWorkDirectory is no longer supported.*dataBaseUrls/u,
   );
   await writeFile(
     path.join(root, 'site.config.json'),
@@ -195,7 +256,7 @@ void test('loads the shared translation and CDN config and rejects legacy fields
     }),
   );
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /api\.generation\.scope must be latest/u,
   );
 });
@@ -209,7 +270,7 @@ void test('loads config without API or manual directories', async t => {
     JSON.stringify({ sourceLocale: 'en', locales: ['en'] }),
   );
 
-  const config = await loadSiteConfig('site.config.json', root);
+  const config = await loadDocsProjectConfig('site.config.json', root);
 
   assert.equal(config.apiConfigured, false);
   assert.equal(config.manualConfigured, false);
@@ -237,11 +298,11 @@ void test('rejects config and data paths that escape the repository root', async
     }),
   );
   await assert.rejects(
-    loadSiteConfig('../outside.json', root),
+    loadDocsProjectConfig('../outside.json', root),
     /inside the repository/u,
   );
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /stay inside the repository/u,
   );
   await writeFile(
@@ -254,7 +315,7 @@ void test('rejects config and data paths that escape the repository root', async
     }),
   );
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /stay inside the repository/u,
   );
   await writeFile(
@@ -267,7 +328,7 @@ void test('rejects config and data paths that escape the repository root', async
     }),
   );
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /manual\.dataDirectory must be a string/u,
   );
 });
@@ -292,7 +353,7 @@ void test('rejects symlinked API directories', async t => {
   );
 
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /Symlink paths are not allowed/u,
   );
 });
@@ -384,7 +445,7 @@ void test('loads Yuque and local manual collections with repository-relative pat
     }),
   );
 
-  const config = await loadSiteConfig('site.config.json', root);
+  const config = await loadDocsProjectConfig('site.config.json', root);
 
   assert.equal(
     config.apiPackages?.[0]?.readme?.files['en'],
@@ -426,7 +487,7 @@ void test('rejects legacy top-level API and manual fields', async t => {
   );
 
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /packageReadmes must be configured under api/u,
   );
 
@@ -443,7 +504,7 @@ void test('rejects legacy top-level API and manual fields', async t => {
   );
 
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /api\.packageReadmes must be configured under api\.packages/u,
   );
 });
@@ -495,7 +556,7 @@ void test('rejects invalid Yuque credentials, selectors, route slugs, and duplic
   );
 
   await assert.rejects(
-    loadSiteConfig('site.config.json', root),
+    loadDocsProjectConfig('site.config.json', root),
     /Invalid docs site config.*manual\.collections/u,
   );
 });

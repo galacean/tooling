@@ -1,24 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isRecord } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
+import { assertNoSymlinkPath, isWithin } from '../path-validation';
 import { parseJSON } from './read-json';
 
 export interface LoadedAPISnapshot {
   value: unknown;
   text: string;
   resolvedPath: string;
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 export function resolveAPISnapshotReference(
@@ -46,7 +35,7 @@ export function resolveAPISnapshotReference(
   }
   const filename = path.resolve(dataRoot, relativePath);
 
-  if (!isWithin(dataRoot, filename)) {
+  if (!isWithin(dataRoot, filename, 'descendant')) {
     throw new Error(`API snapshot reference leaves the data directory: ${relativePath}`);
   }
 

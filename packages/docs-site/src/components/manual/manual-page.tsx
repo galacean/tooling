@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ManualHeading } from '../../manual';
+import type { MarkdownMessages } from '../shared/markdown';
 import {
   BackToTopButton,
   DocumentError,
@@ -36,8 +37,7 @@ export interface ManualDocument {
   lastModified?: string;
 }
 
-export interface ManualPageMessages {
-  home: string;
+export interface ManualPageMessages extends Partial<MarkdownMessages> {
   manual: string;
   manualIntro: string;
   loading: string;
@@ -47,10 +47,19 @@ export interface ManualPageMessages {
   previous: string;
   next: string;
   contents: string;
-  top?: string;
+  top: string;
   mobileDirectory: string;
-  expandMenu?: string;
-  collapseMenu?: string;
+  locateCurrentPage: string;
+  collapseAll: string;
+  expandAll: string;
+  hideOutline: string;
+  expandOutline: string;
+  collapseDirectory: string;
+  expandDirectory: string;
+  expandMenu: string;
+  collapseMenu: string;
+  expand: string;
+  collapse: string;
   lastUpdated: string;
   copy: string;
   copied: string;
@@ -63,7 +72,6 @@ export interface ManualPageProps {
   onTitleChange?: (title: string) => void;
   onSidebarCollapsed?: (collapsed: boolean) => void;
   messages: ManualPageMessages;
-  homeHref: string;
   getPageHref: (slug?: string) => string;
   loadNavigation: (locale: string) => Promise<ManualNavigationPage[]>;
   loadOverview: (locale: string) => Promise<ManualDocument>;
@@ -173,23 +181,6 @@ export function ManualPage({
   const isTocFullyCollapsed =
     tocExpansionStates.length > 0 &&
     tocExpansionStates.every(isExpanded => !isExpanded);
-  const actionLabels = locale.startsWith('zh')
-    ? {
-        locate: '定位当前文档',
-        collapseAll: '全部折叠',
-        expandAll: '全部展开',
-        hideOutline: '隐藏大纲',
-        expandOutline: '展开大纲',
-      }
-    : {
-        locate: 'Locate current page',
-        collapseAll: 'Collapse all',
-        expandAll: 'Expand all',
-        hideOutline: 'Hide outline',
-        expandOutline: 'Show outline',
-      };
-  const directoryLabel = locale.startsWith('zh') ? '目录' : t.mobileDirectory;
-  const tocLabel = locale.startsWith('zh') ? '大纲' : t.contents;
   const parsedLastModified =
     displayedContent?.lastModified === undefined
       ? undefined
@@ -225,29 +216,23 @@ export function ManualPage({
     expansionStates.length > 0 &&
     expansionStates.every(isExpanded => !isExpanded);
   const navigationToggleLabel = isNavigationFullyCollapsed
-    ? actionLabels.expandAll
-    : actionLabels.collapseAll;
-  const sidebarToggleLabel = locale.startsWith('zh')
-    ? isSidebarCollapsed
-      ? '展开目录'
-      : '收起目录'
-    : isSidebarCollapsed
-      ? 'Expand directory'
-      : 'Collapse directory';
-  const backToTopLabel =
-    t.top ?? (locale.startsWith('zh') ? '回到顶部' : 'Back to top');
+    ? t.expandAll
+    : t.collapseAll;
+  const sidebarToggleLabel = isSidebarCollapsed
+    ? t.expandDirectory
+    : t.collapseDirectory;
   const renderTocHeading = () => (
     <div className="manual-toc-heading">
-      <strong>{tocLabel}</strong>
+      <strong>{t.contents}</strong>
       <div className="manual-toc-actions">
         <button
           type="button"
           className="manual-toc-action"
           aria-label={
-            isTocHidden ? actionLabels.expandOutline : actionLabels.hideOutline
+            isTocHidden ? t.expandOutline : t.hideOutline
           }
           title={
-            isTocHidden ? actionLabels.expandOutline : actionLabels.hideOutline
+            isTocHidden ? t.expandOutline : t.hideOutline
           }
           onClick={event => {
             const shouldHide = !isTocHidden;
@@ -266,13 +251,13 @@ export function ManualPage({
             className="manual-toc-action"
             aria-label={
               isTocFullyCollapsed
-                ? actionLabels.expandAll
-                : actionLabels.collapseAll
+                ? t.expandAll
+                : t.collapseAll
             }
             title={
               isTocFullyCollapsed
-                ? actionLabels.expandAll
-                : actionLabels.collapseAll
+                ? t.expandAll
+                : t.collapseAll
             }
             aria-pressed={isTocFullyCollapsed}
             onClick={toggleTocExpansion}
@@ -328,19 +313,10 @@ export function ManualPage({
       ),
     );
   };
-  const getToggleLabel = (expanded: boolean, title: string) => {
-    const fallback = locale.startsWith('zh')
-      ? expanded
-        ? '收起菜单'
-        : '展开菜单'
-      : expanded
-        ? 'Collapse menu'
-        : 'Expand menu';
-
-    return `${expanded ? (t.collapseMenu ?? fallback) : (t.expandMenu ?? fallback)} ${title}`;
-  };
+  const getToggleLabel = (expanded: boolean, title: string) =>
+    `${expanded ? t.collapseMenu : t.expandMenu} ${title}`;
   const getTocToggleLabel = (expanded: boolean, title: string) =>
-    `${locale.startsWith('zh') ? (expanded ? '收起' : '展开') : expanded ? 'Collapse' : 'Expand'} ${title}`;
+    `${expanded ? t.collapse : t.expand} ${title}`;
   const renderNavigationItems = (
     items: ManualNavigationNode[],
     className = '',
@@ -702,14 +678,14 @@ export function ManualPage({
     >
       {slug !== undefined && (
         <details className="mobile-directory">
-          <summary>{directoryLabel}</summary>
+          <summary>{t.mobileDirectory}</summary>
           <nav>
             <div className="mobile-directory-actions">
               <button
                 type="button"
                 className="manual-sidebar-action"
-                aria-label={actionLabels.locate}
-                title={actionLabels.locate}
+                aria-label={t.locateCurrentPage}
+                title={t.locateCurrentPage}
                 onClick={locateCurrentPage}
               >
                 <ManualActionIcon name="locate" />
@@ -735,15 +711,15 @@ export function ManualPage({
         <div className="manual-sidebar-label">
           <div className="manual-sidebar-label-title">
             <Icon name="directory" className="manual-sidebar-label-icon" />
-            <span>{directoryLabel}</span>
+            <span>{t.mobileDirectory}</span>
           </div>
           <div className="manual-sidebar-actions">
             {slug !== undefined ? (
               <button
                 type="button"
                 className="manual-sidebar-action"
-                aria-label={actionLabels.locate}
-                title={actionLabels.locate}
+                aria-label={t.locateCurrentPage}
+                title={t.locateCurrentPage}
                 onClick={locateCurrentPage}
               >
                 <ManualActionIcon name="locate" />
@@ -771,7 +747,7 @@ export function ManualPage({
         <nav
           className="manual-sidebar-nav docs-scroll-area"
           ref={sidebarRef}
-          aria-label={directoryLabel}
+          aria-label={t.mobileDirectory}
         >
           {groups.map(group => renderNavigationGroup(group))}
         </nav>
@@ -803,6 +779,7 @@ export function ManualPage({
                 <DocumentLoading label={t.loading} />
               ) : (
                 <MarkdownContent
+                  messages={t}
                   text={overviewContent.text}
                   copyLabel={t.copy}
                   copied={t.copied}
@@ -829,10 +806,11 @@ export function ManualPage({
                   {!/<h1(?:\s|>)/iu.test(displayedContent.text) && (
                     <h1>{displayedPageTitle}</h1>
                   )}
-                  <HTMLDocumentContent html={displayedContent.text} />
+                  <HTMLDocumentContent html={displayedContent.text} messages={t} />
                 </>
               ) : (
                 <MarkdownContent
+                  messages={t}
                   text={displayedContent.text}
                   copyLabel={t.copy}
                   copied={t.copied}
@@ -867,13 +845,13 @@ export function ManualPage({
           )}
         </div>
       </article>
-      <BackToTopButton label={backToTopLabel} scrollRef={articleRef} />
+      <BackToTopButton label={t.top} scrollRef={articleRef} />
       {tocTree.length > 0 && (
         <aside
           className={`manual-toc docs-scroll-area${isTocOpen ? ' is-open' : ''}${
             isTocHidden ? ' is-hidden' : ''
           }${isTocHoverSuppressed ? ' is-hover-suppressed' : ''}`}
-          aria-label={tocLabel}
+          aria-label={t.contents}
           onPointerEnter={() => setIsTocHoverSuppressed(false)}
           onPointerLeave={() => setIsTocHoverSuppressed(false)}
           onWheel={event => {
@@ -923,7 +901,7 @@ export function ManualPage({
                 <button
                   type="button"
                   className="manual-toc-trigger"
-                  aria-label={getTocToggleLabel(isTocOpen, tocLabel)}
+                  aria-label={getTocToggleLabel(isTocOpen, t.contents)}
                   aria-expanded={isTocOpen}
                   aria-controls="manual-toc-panel"
                   onClick={event => {
@@ -941,7 +919,7 @@ export function ManualPage({
                     style={{ width: 16, height: 16 }}
                   />
                   <span className="manual-toc-trigger-label" aria-hidden="true">
-                    {tocLabel}
+                    {t.contents}
                   </span>
                 </button>
               )}

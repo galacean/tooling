@@ -6,7 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'vitest';
 import type { TestContext } from 'vitest';
-import { buildStaticRoutes } from '@galacean/docs-tools';
+import { buildStaticRoutes, loadDocsProjectConfig } from '@galacean/docs-tools';
 
 const execFileAsync = promisify(execFile);
 
@@ -119,10 +119,37 @@ void test('builds localized deep links and validates a subpath artifact', async 
     /hreflang="zh-CN" href="https:\/\/example\.test\/docs\/zh-CN\//u,
   );
   assert.match(notFound, /Fixture Docs/u);
+  assert.match(notFound, /<a href="\/docs\/">Home<\/a>/u);
   assert.equal(
     await readFile(path.join(values.distDirectory, '.nojekyll'), 'utf8'),
     '',
   );
+});
+
+void test('uses the shared home destination in the static 404 page', async t => {
+  const values = await fixture(t);
+  const configPath = path.join(values.repositoryRoot, 'docs.config.json');
+
+  for (const [homeHref, expected] of [
+    ['/start/', '/docs/start/'],
+    ['https://example.com/?from=docs&lang=en', 'https://example.com/?from=docs&amp;lang=en'],
+    ['//example.com/', '//example.com/'],
+  ]) {
+    await writeFile(configPath, JSON.stringify({
+      siteName: 'Fixture Docs',
+      sourceLocale: 'en',
+      locales: ['en', 'zh-CN'],
+      api: { dataDirectory: 'site/public/data/api' },
+      manual: { dataDirectory: 'site/manual-content' },
+      homeHref,
+    }));
+    const config = await loadDocsProjectConfig('docs.config.json', values.repositoryRoot);
+
+    await buildStaticRoutes(config, { base: '/docs/' });
+    const notFound = await readFile(path.join(values.distDirectory, '404.html'), 'utf8');
+
+    assert.ok(notFound.includes(`<a href="${expected}">Home</a>`));
+  }
 });
 
 void test('builds localized custom site pages with titles and static routes', async t => {

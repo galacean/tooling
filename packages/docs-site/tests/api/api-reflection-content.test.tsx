@@ -69,10 +69,10 @@ describe('shared API reflection content', () => {
   it('renders external and unresolved references without a preview panel', () => {
     const markup = renderToStaticMarkup(
       <>
-        <APITypeReference text="URL" externalUrl="https://example.test/URL" />
+        <APITypeReference text="URL" externalURL="https://example.test/URL" />
         <APITypeReference
           text="External"
-          externalUrl="https://example.test/External"
+          externalURL="https://example.test/External"
           target={{
             name: 'External',
             href: '/local/External/',

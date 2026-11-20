@@ -1,3 +1,4 @@
+import { withTrailingSlash } from '../config/urls';
 import { loadJSON } from '../data';
 
 export interface ManualNavigationItem<TLocale extends string> {
@@ -134,13 +135,9 @@ export function createManualContentClient<TLocale extends string>({
   locales,
   fetcher: providedFetcher,
 }: ManualContentOptions<TLocale>): ManualContentClient<TLocale> {
-  const base = baseURL.endsWith('/') ? baseURL : `${baseURL}/`;
+  const base = withTrailingSlash(baseURL);
   const manualBaseURL =
-    manualDataURL === undefined
-      ? `${base}data/manual/`
-      : manualDataURL.endsWith('/')
-        ? manualDataURL
-        : `${manualDataURL}/`;
+    withTrailingSlash(manualDataURL ?? `${base}data/manual/`);
   const fetcher: typeof fetch =
     providedFetcher ?? ((...args) => globalThis.fetch(...args));
   let cachedNavigation: Promise<ManualNavigationItem<TLocale>[]> | undefined;

@@ -3,8 +3,8 @@ import { cp, link, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } fr
 import path from 'node:path';
 import { parseAPIManifest } from '@galacean/docs-site';
 import type { APIManifest } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { assertNoSymlinkPath } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { assembleAPIDocumentation } from './assemble';
 import type { APIDocumentationMetadata } from './assemble';
 import { getErrorCode, readJSON, readOptionalJSON } from './read-json';
@@ -21,7 +21,7 @@ export interface BuiltAPIVersion {
 }
 
 export type APIVersionBuilder = (
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   repository: string,
   source: 'tag' | 'current',
@@ -140,7 +140,7 @@ function latestVersion(manifest: APIManifest, versions: string[]): APIManifest {
 }
 
 function validateBuiltVersion(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   built: BuiltAPIVersion,
 ): void {
@@ -170,7 +170,7 @@ function validateBuiltVersion(
   }
 }
 
-function sourceRoot(config: DocsSiteConfig, apiDirectory: string): DocsSiteConfig {
+function sourceRoot(config: ResolvedDocsBuildConfig, apiDirectory: string): ResolvedDocsBuildConfig {
   return { ...config, apiDirectory };
 }
 
@@ -179,7 +179,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function currentWorkspaceVersion(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   configuredVersions: string[],
 ): Promise<string | undefined> {
   const packages = config.apiPackages ?? [];
@@ -214,7 +214,7 @@ async function currentWorkspaceVersion(
 }
 
 export async function generateVersionedAPIDocumentation(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   selectedPackageKeys: string[],
   buildVersion: APIVersionBuilder,
   reportStatus?: (status: {

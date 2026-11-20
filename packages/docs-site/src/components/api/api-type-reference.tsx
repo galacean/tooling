@@ -20,7 +20,7 @@ export interface APITypeReferenceTarget {
 
 export interface APITypeReferenceProps {
   text: string;
-  externalUrl?: string;
+  externalURL?: string;
   unresolvedTitle?: string;
   generic?: boolean;
   target?: APITypeReferenceTarget;
@@ -28,7 +28,7 @@ export interface APITypeReferenceProps {
 
 export function APITypeReference({
   text,
-  externalUrl,
+  externalURL,
   unresolvedTitle,
   generic = false,
   target,
@@ -61,7 +61,7 @@ export function APITypeReference({
   };
 
   useEffect(() => {
-    if (!open || externalUrl !== undefined || target === undefined) {
+    if (!open || externalURL !== undefined || target === undefined) {
       return;
     }
 
@@ -107,15 +107,15 @@ export function APITypeReference({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [open, externalUrl, target]);
+  }, [open, externalURL, target]);
 
   useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
-  if (externalUrl !== undefined) {
+  if (externalURL !== undefined) {
     return (
       <a
         className="signature-type"
-        href={externalUrl}
+        href={externalURL}
         target="_blank"
         rel="noreferrer"
       >

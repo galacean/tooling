@@ -111,6 +111,7 @@ export function APIReferenceRoute<
       }
       renderPackageReadme={(packageKey, _packageKeys, pageLocale) => (
         <APIPackageReadme
+          contentMessages={t}
           packageKey={packageKey}
           locale={parseLocale(pageLocale)}
           loadReadme={(key, readmeLocale) =>

@@ -19,6 +19,7 @@ import {
 import type { APIManifest } from '@galacean/docs-site';
 import { APISymbolMenu } from '../../src/components/api/api-navigation';
 import { APIReferencePage } from '../../src/components/api/api-reference-page';
+import { commonMessages } from '../../src/i18n/messages';
 
 const entry = {
   key: 'root',
@@ -49,6 +50,7 @@ const manifest: APIManifest = {
   ],
 };
 const messages = {
+  ...commonMessages.en,
   api: 'API',
   version: 'Version',
   apiPackage: 'Package',
@@ -66,6 +68,8 @@ const messages = {
 function renderPage(
   loadManifest = vi.fn(async () => manifest),
   initialEntry = '/en/api/example',
+  pageMessages = messages,
+  locale = 'en',
 ) {
   const loadAPI = vi.fn(async () => ({
     index: { byId: new Map<number, object>([[10, {}]]) },
@@ -77,8 +81,8 @@ function renderPage(
   };
   const apiPage = (
     <APIReferencePage
-      locale="en"
-      messages={messages}
+      locale={locale}
+      messages={pageMessages}
       loadManifest={loadManifest}
       loadAPI={loadAPI}
       getAPIHref={locale => `/${locale}/api`}
@@ -137,6 +141,19 @@ afterEach(() => {
 });
 
 describe('APIReferencePage', () => {
+  it.each(['en', 'zh-CN'])('uses configured sidebar labels for %s', async locale => {
+    renderPage(vi.fn(async () => manifest), `/${locale}/api/example`, {
+      ...messages,
+      collapseSidebar: 'Custom collapse sidebar',
+      expandSidebar: 'Custom expand sidebar',
+    }, locale);
+
+    const collapse = await screen.findByRole('button', { name: 'Custom collapse sidebar' });
+
+    fireEvent.click(collapse);
+    expect(screen.getByRole('button', { name: 'Custom expand sidebar' })).toBeDefined();
+  });
+
   it('shows a labeled loading state while the manifest is pending', () => {
     const loadManifest = vi.fn(() => new Promise<APIManifest>(() => {}));
 

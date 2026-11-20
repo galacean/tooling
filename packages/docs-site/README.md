@@ -2,51 +2,63 @@
 
 [简体中文](README-zh_CN.md)
 
-Shared React runtime for bilingual API and manual documentation sites.
+React runtime for bilingual API and manual documentation sites, with search, themes, and language switching.
 
 ## Install
-
-Install the package and its peer dependencies in the consuming React application:
 
 ```sh
 pnpm add @galacean/docs-site react react-dom react-markdown react-router-dom remark-gfm highlight.js
 ```
 
-## Use
+## Quick start
 
-Import `DocsSite` and its configuration types from `@galacean/docs-site`, and load `@galacean/docs-site/index.css` once. Mount `DocsSite` at the application root; it creates its own `BrowserRouter`.
+```tsx
+import { DocsSite, createMessageCatalog } from '@galacean/docs-site';
+import type { DocsSiteOptions } from '@galacean/docs-site';
+import '@galacean/docs-site/index.css';
 
-Provide the site brand, locales, localized messages, API data settings, and a `pages` registry. A page has a `slug`, a `render(locale)` callback, and a localized `title(locale)` except for the homepage, whose slug is `null`. Product page content and typography remain application-owned.
+const { locales, messages } = createMessageCatalog(['en', 'zh-CN'], {
+  en: { manualIntro: 'Guides for this project.' },
+  'zh-CN': { manualIntro: '项目使用指南。' },
+});
+type Locale = (typeof locales)[number];
 
-`DocsSite` requires `baseURL`, `locales`, `defaultLocale`, `site`, and `pages`; `site.brandLabel`, `brandMarkUrls`, `localeLabels`, and `messages` are also required.
+const config: DocsSiteOptions<Locale> = {
+  baseURL: '/docs/',
+  locales,
+  defaultLocale: 'en',
+  brandLabel: 'Project',
+  brandMarkURLs: { light: '/logo.svg', dark: '/logo-dark.svg' },
+  localeLabels: { en: 'English', 'zh-CN': '简体中文' },
+  messages,
+  manual: true,
+};
 
-Optional `DocsSite` and `site` settings receive defaults once at the site entry point:
-
-- `dataBaseURL` defaults to `baseURL`.
-- `site.docsBrandMarkUrls` defaults to `site.brandMarkUrls`.
-- `site.getHomeHref(locale)` defaults to the current locale's home path.
-- `site.storageKeys` defaults to `locale`, `theme`, and the `search-history` prefix; the locale is appended to search history, for example `search-history:en`.
-- `site.siteOrigin` defaults to `window.location.origin`.
-- `site.manualDataURL` defaults to `${dataBaseURL}data/manual/`.
-- `site.getSearchDataURL(locale)` defaults to `${dataBaseURL}data/search/${locale}.json`.
-- `site.api` and `site.githubHref` enable optional features; omitting them hides API navigation or the GitHub link.
-
-Override only the values that need customization:
-
-```ts
-storageKeys: {
-	locale: 'umi_locale',
-	theme: 'ui_theme',
-	searchHistory: 'docs-search',
-},
-getHomeHref: locale => `/docs/${locale}/`,
+export default function App() {
+  return (
+    <DocsSite
+      config={config}
+      pages={[{ slug: null, render: locale => <h1>{messages(locale).home}</h1> }]}
+    />
+  );
+}
 ```
 
-API and manual data are served as static files. Override their published paths with `manualDataURL` and `getSearchDataURL`.
+`DocsSite` creates its own `BrowserRouter`; mount it outside another router. Load the stylesheet once at the application entry.
 
-## Exports
+- Use `slug: null` for the homepage and give named pages a `title` for each locale. With `bindDocsSitePages`, use the renderer key `/` for the homepage and each named page's slug for its renderer. The homepage also accepts `home` when no page has that slug.
+- `manual`: `true` uses the default data directory, `false` disables manuals, and `{ dataURL }` sets a separate directory.
+- `api`: supply `DocsSiteAPIOptions<Locale>` to enable API pages.
+- `homeHref`: the single destination for Home, Back to home, and brand links, defaulting to `/`. Route paths use `baseURL`; absolute URLs link to another site. Pass the same value to the CLI configuration for its static 404 page.
+- `dataBaseURL`: the published prefix before `data/`, defaulting to `baseURL`. Select a local or CDN prefix in the application and deploy the generated data there.
 
-The package also exports `CopyButton`, `Icon`, `SearchPanel`, `useTheme`, message catalog helpers, API and manual data clients, route helpers, and component barrels. `SearchPanel` can be used without a router when given localized messages, a `loadItems` function, and a `navigate` callback. Route and shell components need a React Router context.
+See [configuration types](src/config/types.ts) for all options. Generation settings belong to the CLI's `docs.config` file; pass runtime options explicitly to `DocsSite`.
+
+## Messages
+
+`createMessageCatalog` merges common English and Chinese messages with product messages; product keys override common keys. Maintain common UI messages in [en.json](src/i18n/en.json) and [zh-CN.json](src/i18n/zh-CN.json).
+
+Standalone components accept localized messages too. `MarkdownContent` and `HTMLDocumentContent` use the common English messages for omitted keys.
 
 ## Development
 

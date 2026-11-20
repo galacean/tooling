@@ -1,3 +1,4 @@
+import { withTrailingSlash } from '../config/urls';
 import { getAPISymbolRouteSegment, parseAPIManifest } from './api-manifest';
 import type {
   APIManifest,
@@ -48,7 +49,7 @@ export function createAPIDocumentationClient<TLocale extends string, TData>({
   TLocale,
   TData
 > {
-  const base = baseURL.endsWith('/') ? baseURL : `${baseURL}/`;
+  const base = withTrailingSlash(baseURL);
   const fetcher: typeof fetch =
     providedFetcher ?? ((...args) => globalThis.fetch(...args));
   let cachedManifest: Promise<APIManifest> | undefined;

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { assertNoSymlinkPath } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 
 export interface PackageReadmeContent {
   text: string;
@@ -8,7 +8,7 @@ export interface PackageReadmeContent {
 }
 
 export function hasPackageReadme(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   packageKey: string,
 ): boolean {
   return (
@@ -20,7 +20,7 @@ export function hasPackageReadme(
 }
 
 export async function readPackageReadme(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   packageKey: string,
   locale: string,
 ): Promise<PackageReadmeContent> {

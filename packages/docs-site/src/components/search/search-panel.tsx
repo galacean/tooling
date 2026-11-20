@@ -8,6 +8,7 @@ export interface SearchPanelMessages {
   close: string;
   searchPlaceholder: string;
   manualSearchPlaceholder: string;
+  apiSearchPlaceholder?: string;
   storageError: string;
   loading: string;
   loadError: string;
@@ -25,10 +26,11 @@ export interface SearchPanelMessages {
 export interface SearchPanelProps {
   locale: string;
   brandLabel: string;
-  brandMarkUrl: string;
+  brandMarkURL: string;
   historyKey: string;
   messages: SearchPanelMessages;
   includeAPI?: boolean;
+  includeManual?: boolean;
   loadItems: (locale: string) => Promise<SearchResult[]>;
   navigate: (url: string) => void;
   close: () => void;
@@ -51,10 +53,11 @@ function Highlight({ text, query }: { text: string; query: string }) {
 export function SearchPanel({
   locale,
   brandLabel,
-  brandMarkUrl,
+  brandMarkURL,
   historyKey,
   messages: t,
   includeAPI = true,
+  includeManual = true,
   loadItems,
   navigate,
   close,
@@ -104,9 +107,9 @@ export function SearchPanel({
 
       if (!cancelled) {
         setItems(
-          includeAPI
+          includeAPI && includeManual
             ? results
-            : results.filter(item => item.category === 'manual'),
+            : results.filter(item => item.category === 'api' ? includeAPI : includeManual),
         );
       }
     })()
@@ -124,7 +127,7 @@ export function SearchPanel({
     return () => {
       cancelled = true;
     };
-  }, [locale, attempt, loadItems, includeAPI]);
+  }, [locale, attempt, loadItems, includeAPI, includeManual]);
   useEffect(() => {
     const element = dialog.current;
 
@@ -153,9 +156,12 @@ export function SearchPanel({
     }
   };
   const results = searchResults(items, debounced);
-  const categories = includeAPI
-    ? (['manual', 'api'] as const)
-    : (['manual'] as const);
+  const categories = (['manual', 'api'] as const).filter(category =>
+    category === 'manual' ? includeManual : includeAPI,
+  );
+  const placeholder = includeManual
+    ? (includeAPI ? t.searchPlaceholder : t.manualSearchPlaceholder)
+    : (t.apiSearchPlaceholder ?? t.search);
 
   return (
     <dialog
@@ -174,7 +180,7 @@ export function SearchPanel({
     >
       <header className="site-search-header">
         <div className="site-search-heading">
-          <img src={brandMarkUrl} alt="" aria-hidden="true" />
+          <img src={brandMarkURL} alt="" aria-hidden="true" />
           <div>
             <span className="site-search-eyebrow">
               {brandLabel.toUpperCase()} / {locale.toUpperCase()}
@@ -198,12 +204,8 @@ export function SearchPanel({
           ref={input}
           type="search"
           value={query}
-          placeholder={
-            includeAPI ? t.searchPlaceholder : t.manualSearchPlaceholder
-          }
-          aria-label={
-            includeAPI ? t.searchPlaceholder : t.manualSearchPlaceholder
-          }
+          placeholder={placeholder}
+          aria-label={placeholder}
           onChange={event => setQuery(event.target.value)}
         />
       </label>
@@ -345,10 +347,12 @@ export function SearchPanel({
             {t.api}
           </span>
         )}
-        <span>
-          <Icon name="book" />
-          {t.manual}
-        </span>
+        {includeManual && (
+          <span>
+            <Icon name="book" />
+            {t.manual}
+          </span>
+        )}
       </footer>
     </dialog>
   );

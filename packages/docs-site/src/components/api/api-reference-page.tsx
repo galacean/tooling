@@ -321,15 +321,7 @@ export function APIReferencePage<
 
   return (
     <APIReferenceLayout
-      messages={{
-        ...t,
-        collapseSidebar:
-          t.collapseSidebar ??
-          (locale.startsWith('zh') ? '收起侧栏' : 'Collapse sidebar'),
-        expandSidebar:
-          t.expandSidebar ??
-          (locale.startsWith('zh') ? '展开侧栏' : 'Expand sidebar'),
-      }}
+      messages={t}
       collapsed={collapsed}
       onToggleCollapsed={() => setCollapsed(value => !value)}
       drawerOpen={drawer}

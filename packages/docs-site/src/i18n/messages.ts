@@ -10,12 +10,23 @@ export type CommonSiteMessageKey = keyof typeof english;
 export type CommonSiteMessages = Record<CommonSiteMessageKey, string>;
 
 export function createMessageCatalog<
-  TLocale extends keyof typeof commonMessages,
-  TProductMessages extends Record<TLocale, Record<string, string>>,
->(locales: readonly TLocale[], productMessages: TProductMessages) {
+  TConfiguredLocale extends string,
+  TProductMessages extends Record<string, Record<string, string>>,
+>(locales: readonly TConfiguredLocale[], productMessages: TProductMessages) {
+  type TLocale = TConfiguredLocale & keyof typeof commonMessages & keyof TProductMessages;
+
+  const configuredLocales = locales.filter((locale): locale is TLocale =>
+    Object.hasOwn(commonMessages, locale) && Object.hasOwn(productMessages, locale),
+  );
+
+  if (configuredLocales.length !== locales.length) {
+    throw new Error('Every configured locale must have common and product messages');
+  }
+
   return {
+    locales: configuredLocales,
     isLocale: (value: unknown): value is TLocale =>
-      isSupportedLocale(value, locales),
+      isSupportedLocale(value, configuredLocales),
     messages: (locale: TLocale) => ({
       ...commonMessages[locale],
       ...productMessages[locale],

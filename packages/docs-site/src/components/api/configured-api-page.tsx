@@ -6,20 +6,13 @@ import {
   resolveAPIReadmeLink,
 } from '../../data';
 import type { APIReadmeLinkOptions, TypeDocAPIDocumentationData } from '../../data';
-import type { DocsSiteMessages } from '../site/docs-site';
+import type { DocsSiteAPIOptions, DocsSiteMessages } from '../../config/types';
 import { APIReferenceRoute } from './api-reference-route';
 
 type TypeDocClient = ReturnType<
   typeof createTypeDocAPIDocumentationClient<string>
 >;
 const apiClients = new Map<string, TypeDocClient>();
-
-export interface DocsSiteAPIConfiguration {
-  sourceLinkTemplate: string;
-  rawAssetURLTemplate: string;
-  symbolCountLabelTemplates: Readonly<Record<string, string>>;
-  packageReadmes: Record<string, Partial<Record<string, string>>>;
-}
 
 function renderSourceURL (
   template: string,
@@ -48,21 +41,21 @@ function getTypeDocClient (
 }
 
 export function ConfiguredAPIPage ({
-  baseURL,
+  dataBaseURL,
   locales,
   locale,
   messages,
   localeLabels,
   api,
 }: {
-  baseURL: string;
+  dataBaseURL: string;
   locales: readonly string[];
   locale: string;
   messages: DocsSiteMessages;
   localeLabels: Readonly<Record<string, string>>;
-  api: DocsSiteAPIConfiguration;
+  api: DocsSiteAPIOptions;
 }) {
-  const client = getTypeDocClient(baseURL, locales);
+  const client = getTypeDocClient(dataBaseURL, locales);
   const isLocale = (value: unknown): value is string =>
     locales.some(locale => locale === value);
   const getRepositoryFileURL = (revision: string, filePath = '') =>
@@ -103,7 +96,7 @@ export function ConfiguredAPIPage ({
       loadAPI={client.loadAPI}
       symbolCountLabel={symbolCountLabel}
       loadReadme={(packageKey, readmeLocale) =>
-        loadAPIReadmeData(packageKey, readmeLocale, baseURL, loadJSON, isLocale)
+        loadAPIReadmeData(packageKey, readmeLocale, dataBaseURL, loadJSON, isLocale)
       }
       resolveReadmeLink={(packageKey, href) =>
         resolveAPIReadmeLink(packageKey, href, readmeLinkOptions)

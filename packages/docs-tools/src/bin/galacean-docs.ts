@@ -7,7 +7,7 @@ import {
   getAPIStatus,
   migrateAPITranslations,
 } from '../api';
-import { loadSiteConfig } from '../config/site-config';
+import { loadDocsProjectConfig } from '../config/load-project-config';
 import { buildPackageReadmes } from '../package-readmes/build';
 import { buildSearchIndexes } from '../search/build';
 import { buildStaticRoutes } from '../static-routes/build';
@@ -147,7 +147,7 @@ if (group === '--help' || group === '-h') {
   const { config: configFile, remaining } = parseConfig(args);
   const { targetFiles, version, locale } = parseExtractOptions(remaining);
   const repositoryRoot = process.cwd();
-  const config = await loadSiteConfig(configFile, repositoryRoot);
+  const config = await loadDocsProjectConfig(configFile, repositoryRoot);
   const logger = createCommandLogger('api extract');
 
   logger.info(
@@ -173,7 +173,7 @@ if (group === '--help' || group === '-h') {
 } else if (group === 'api' && action === 'generate') {
   const { config: configFile, remaining } = parseConfig(args);
   const { packageKeys, version, force } = parseGenerateOptions(remaining);
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('api generate');
 
   logger.info(
@@ -199,7 +199,7 @@ if (group === '--help' || group === '-h') {
 } else if (group === 'api' && action === 'status') {
   const { config: configFile, remaining } = parseConfig(args);
   const { version } = parseStatusOptions(remaining);
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('api status');
   const statuses = await getAPIStatus(config, version);
 
@@ -222,7 +222,7 @@ if (group === '--help' || group === '-h') {
   }
   const { config: configFile, remaining } = parseConfig(values);
   const { version } = parseStatusOptions(remaining);
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('api translations migrate');
   const result = await migrateAPITranslations(config, version);
 
@@ -243,7 +243,7 @@ if (group === '--help' || group === '-h') {
     );
   }
   const repositoryRoot = process.cwd();
-  const config = await loadSiteConfig(configFile, repositoryRoot);
+  const config = await loadDocsProjectConfig(configFile, repositoryRoot);
   const pairs = [];
 
   for (let index = 0; index < files.length; index += 2) {
@@ -275,7 +275,7 @@ if (group === '--help' || group === '-h') {
   if (remaining.length > 0) {
     throw new Error('api snapshots clean does not accept additional arguments');
   }
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('api snapshots clean');
 
   logger.info('Cleaning orphan API snapshots');
@@ -300,7 +300,7 @@ if (group === '--help' || group === '-h') {
   if (remaining.length > 0) {
     throw new Error('search build does not accept additional arguments');
   }
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('search build');
 
   logger.info('Building localized search indexes');
@@ -315,7 +315,7 @@ if (group === '--help' || group === '-h') {
   if (remaining.length > 0) {
     throw new Error('manual sync does not accept additional arguments');
   }
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('manual sync');
 
   logger.info('Starting manual sync');
@@ -367,7 +367,7 @@ if (group === '--help' || group === '-h') {
       'Provide collection/locale/legacy-directory triples after --config',
     );
   }
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const mappings = [];
 
   for (let index = 0; index < remaining.length; index += 3) {
@@ -400,7 +400,7 @@ if (group === '--help' || group === '-h') {
       'package-readmes build does not accept additional arguments',
     );
   }
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('package-readmes build');
 
   logger.info('Building package README data');
@@ -415,7 +415,7 @@ if (group === '--help' || group === '-h') {
   if (remaining.length > 0) {
     throw new Error('routes build does not accept additional arguments');
   }
-  const config = await loadSiteConfig(configFile, process.cwd());
+  const config = await loadDocsProjectConfig(configFile, process.cwd());
   const logger = createCommandLogger('routes build');
   const base = process.env['SITE_BASE_PATH'];
   const origin = process.env['VITE_SITE_ORIGIN'];

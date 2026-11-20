@@ -1,6 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { parseTree } from 'jsonc-parser';
 import type { Node } from 'jsonc-parser';
+import { getErrorCode } from '../fs-errors';
+
+export { getErrorCode } from '../fs-errors';
 
 function parseJSONValue(text: string): unknown {
   return JSON.parse(text) as unknown;
@@ -47,15 +50,6 @@ export function parseJSON<T = unknown>(
 
 export async function readJSON<T = unknown>(filename: string): Promise<T> {
   return parseJSON<T>(await readFile(filename, 'utf8'), filename);
-}
-
-export function getErrorCode(error: unknown): string | undefined {
-  return error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-    ? error.code
-    : undefined;
 }
 
 export async function readOptionalJSON<T = unknown>(

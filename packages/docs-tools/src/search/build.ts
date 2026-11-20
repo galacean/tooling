@@ -10,23 +10,14 @@ import {
   parseProject,
 } from '@galacean/docs-site';
 import type { APIManifest, SearchResult } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { getErrorCode } from '../fs-errors';
+import { assertNoSymlinkPath, isSafePathSegment } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { readJSON } from '../api/read-json';
 import { readAPISnapshot } from '../api/snapshot-reference';
 import { isManualNavigation } from '../manual/navigation';
 import type { ManualNavigationItem } from '../manual/navigation';
-import { isSafePathSegment } from '../path-validation';
 import { hasPackageReadme, readPackageReadme } from '../package-readmes/read';
-
-function errorCode(error: unknown): string | undefined {
-  return error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-    ? error.code
-    : undefined;
-}
 
 function typeKeywords(value: unknown): string[] {
   if (value === null || typeof value !== 'object') {
@@ -99,7 +90,7 @@ function commentText(
 }
 
 async function buildAPIResults(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   manifest: APIManifest,
   locale: string,
 ): Promise<SearchResult[]> {
@@ -191,7 +182,7 @@ async function buildAPIResults(
 }
 
 async function buildReadmeResults(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   manifest: APIManifest,
   locale: string,
 ): Promise<SearchResult[]> {
@@ -229,7 +220,7 @@ async function buildReadmeResults(
 }
 
 async function buildManualResults(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   navigation: ManualNavigationItem[],
   locale: string,
 ): Promise<SearchResult[]> {
@@ -277,7 +268,7 @@ async function buildManualResults(
 }
 
 export async function buildSearchIndexes(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
 ): Promise<Record<string, number>> {
   const dataRoot = path.dirname(
     config.apiConfigured === false
@@ -295,7 +286,7 @@ export async function buildSearchIndexes(
     try {
       manifest = parseAPIManifest(await readJSON(manifestPath));
     } catch (error) {
-      if (errorCode(error) !== 'ENOENT' || config.apiPackages !== undefined) {
+      if (getErrorCode(error) !== 'ENOENT' || config.apiPackages !== undefined) {
         throw error;
       }
     }

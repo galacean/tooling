@@ -7,11 +7,12 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
-import { assertNoSymlinkPath } from '../config/site-config';
+import { getErrorCode } from '../fs-errors';
+import { assertNoSymlinkPath } from '../path-validation';
 import type {
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
   ManualCollectionConfig,
-} from '../config/site-config';
+} from '../config/types';
 import { isSafeSlug } from '../config/validation';
 import { parseJSON } from '../api/read-json';
 
@@ -88,15 +89,6 @@ type ManualSyncProgressHandler = (progress: ManualSyncProgress) => void;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function errorCode(error: unknown): string | undefined {
-  return error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-    ? error.code
-    : undefined;
 }
 
 function unwrapData(value: unknown): unknown {
@@ -387,7 +379,7 @@ async function loadTranslations(
   collection: ManualCollectionConfig,
   documentKey: string,
   sourceFormat: ManualTranslation['format'],
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
 ): Promise<ManualPage['translations']> {
   const translations: ManualPage['translations'] = {};
   const collectionDirectory = path.join(
@@ -414,7 +406,7 @@ async function loadTranslations(
       }
       translations[locale] = { content, format: sourceFormat };
     } catch (error) {
-      if (errorCode(error) !== 'ENOENT') {
+      if (getErrorCode(error) !== 'ENOENT') {
         throw error;
       }
     }
@@ -443,7 +435,7 @@ async function loadTranslations(
         translations[locale] = translation;
       }
     } catch (error) {
-      if (errorCode(error) !== 'ENOENT') {
+      if (getErrorCode(error) !== 'ENOENT') {
         throw error;
       }
     }
@@ -464,7 +456,7 @@ function manualTranslationKey(navigation: ManualNavigationItem): string {
 
 async function syncYuqueCollection(
   collection: ManualCollectionConfig,
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   fetcher: typeof fetch,
   pages: ManualPage[],
   slugs: Set<string>,
@@ -720,7 +712,7 @@ async function syncYuqueCollection(
 
 async function syncLocalCollection(
   collection: ManualCollectionConfig,
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   pages: ManualPage[],
   slugs: Set<string>,
   onProgress?: ManualSyncProgressHandler,
@@ -828,7 +820,7 @@ async function syncLocalCollection(
           format: 'markdown',
         };
       } catch (error) {
-        if (errorCode(error) !== 'ENOENT') {
+        if (getErrorCode(error) !== 'ENOENT') {
           throw error;
         }
         throw new Error(
@@ -897,7 +889,7 @@ async function syncLocalCollection(
 }
 
 async function readManualOverview(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   locale: string,
 ): Promise<Buffer | undefined> {
   for (const collection of config.manuals ?? []) {
@@ -914,7 +906,7 @@ async function readManualOverview(
     try {
       return await readFile(sourcePath);
     } catch (error) {
-      if (errorCode(error) !== 'ENOENT') {
+      if (getErrorCode(error) !== 'ENOENT') {
         throw error;
       }
     }
@@ -925,7 +917,7 @@ async function readManualOverview(
   try {
     return await readFile(existingPath);
   } catch (error) {
-    if (errorCode(error) !== 'ENOENT') {
+    if (getErrorCode(error) !== 'ENOENT') {
       throw error;
     }
   }
@@ -934,7 +926,7 @@ async function readManualOverview(
 }
 
 async function writeManualData(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   pages: ManualPage[],
 ): Promise<void> {
   const targetDirectory = config.manualDirectory;
@@ -996,7 +988,7 @@ async function writeManualData(
       await lstat(targetDirectory);
       existing = true;
     } catch (error) {
-      if (errorCode(error) !== 'ENOENT') {
+      if (getErrorCode(error) !== 'ENOENT') {
         throw error;
       }
     }
@@ -1021,7 +1013,7 @@ async function writeManualData(
 }
 
 export async function syncManuals(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   fetcher: typeof fetch = globalThis.fetch,
   onProgress?: ManualSyncProgressHandler,
 ): Promise<{ collections: number; documents: number }> {

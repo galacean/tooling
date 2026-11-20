@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { Icon, MarkdownContent } from '../shared';
+import type { MarkdownMessages } from '../shared/markdown';
 
 export interface APICommentProps {
   text: string | undefined;
   locale: string;
   sourceLocale: string | undefined;
   getLocaleLabel: (locale: string) => string;
-  messages: {
+  messages: Partial<MarkdownMessages> & {
     noDescription: string;
     original: string;
     copy: string;
@@ -35,6 +36,7 @@ export function APIComment({
   return (
     <div className="api-comment">
       <MarkdownContent
+        messages={t}
         text={text}
         copyLabel={t.copy}
         copied={t.copied}

@@ -3,13 +3,13 @@ import { lstat, readFile, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { isRecord, parseAPIManifest } from '@galacean/docs-site';
 import type { APIManifest } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { assertNoSymlinkPath, isWithin } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { getErrorCode, parseJSON, readJSON } from './read-json';
 import { resolveAPISnapshotReference } from './snapshot-reference';
 
 type SnapshotCleanupConfig = Pick<
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
   'repositoryRoot' | 'apiDirectory'
 >;
 
@@ -23,16 +23,6 @@ export interface APISnapshotCleanupResult {
   orphaned: APISnapshotFile[];
   skipped: { path: string; reason: string }[];
   deleted: string[];
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 function relativeDataPath(dataRoot: string, filename: string): string {

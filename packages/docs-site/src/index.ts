@@ -1,5 +1,6 @@
 import './index.css';
 
+export * from './config';
 export * from './data';
 export * from './i18n';
 export * from './manual';

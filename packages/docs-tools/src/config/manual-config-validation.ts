@@ -1,9 +1,5 @@
 import { isSafeRelativePath } from '../path-validation';
-import { isSafeSlug } from './validation';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
+import { isRecord, isSafeSlug } from './validation';
 
 function isValidNamespace(value: string): boolean {
   return (

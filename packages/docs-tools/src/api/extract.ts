@@ -2,9 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isRecord, parseAPIManifest, parseProject } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
-import { isSafeRelativePath } from '../path-validation';
+import { assertNoSymlinkPath, isSafeRelativePath, isWithin } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { readAPITranslationArchive } from './translation-archive';
 import { readJSON } from './read-json';
 import { sourceProject } from './snapshot';
@@ -18,7 +17,7 @@ import { compareVersions, parseVersion } from './versions';
 import { readAPISnapshot } from './snapshot-reference';
 
 type ExtractConfig = Pick<
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
   | 'repositoryRoot'
   | 'sourceLocale'
   | 'locales'
@@ -60,17 +59,6 @@ export interface ExtractOptions {
   locale?: string;
 }
 
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-}
-
 function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
@@ -87,7 +75,7 @@ export async function loadTranslationInput(
   );
 
   if (
-    !isWithin(config.apiDirectory, targetPath) ||
+    !isWithin(config.apiDirectory, targetPath, 'descendant') ||
     segments.length !== 3 ||
     localeMatch?.[1] === undefined ||
     segments[0] === undefined ||

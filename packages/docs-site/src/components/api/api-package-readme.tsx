@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DocumentError, DocumentLoading, MarkdownContent } from '../shared';
+import type { MarkdownMessages } from '../shared/markdown';
 
 export interface APIPackageReadmeProps<TLocale extends string = string> {
+  contentMessages?: Partial<MarkdownMessages>;
   packageKey: string;
   locale: TLocale;
   loadReadme: (
@@ -22,6 +24,7 @@ export interface APIPackageReadmeProps<TLocale extends string = string> {
 }
 
 export function APIPackageReadme<TLocale extends string>({
+  contentMessages,
   packageKey,
   locale,
   loadReadme,
@@ -178,6 +181,7 @@ export function APIPackageReadme<TLocale extends string>({
       )}
       <div className="docs-reading-content">
         <MarkdownContent
+          {...(contentMessages === undefined ? {} : { messages: contentMessages })}
           text={content.text}
           copyLabel={copyLabel}
           copied={copiedLabel}

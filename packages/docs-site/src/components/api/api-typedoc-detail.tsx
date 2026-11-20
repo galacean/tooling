@@ -20,12 +20,8 @@ export interface APITypeDocContext<
   locale: TLocale;
 }
 
-export interface APITypeDocDetailMessages
-  extends APIReflectionDetailMessages,
-  Pick<
-    APICommentProps['messages'],
-    'noDescription' | 'original' | 'copy' | 'copied' | 'copyFailed'
-  > {
+export type APITypeDocDetailMessages = APIReflectionDetailMessages &
+  APICommentProps['messages'] & {
   definition: string;
   sourceType: string;
   source: string;
@@ -73,7 +69,7 @@ export function APITypeDocDetail<
     return (
       <APITypeReference
         text={String(reflectionRecord['name'])}
-        externalUrl={reflectionRecord['externalUrl']}
+        externalURL={reflectionRecord['externalUrl']}
       />
     );
   }
@@ -132,7 +128,7 @@ export function APITypeDocDetail<
         <APITypeReference
           key={key}
           text={text}
-          externalUrl={reference.externalUrl}
+          externalURL={reference.externalUrl}
         />
       );
     }
@@ -152,7 +148,7 @@ export function APITypeDocDetail<
           text={text}
           {...(reference.externalUrl === undefined
             ? {}
-            : { externalUrl: reference.externalUrl })}
+            : { externalURL: reference.externalUrl })}
           unresolvedTitle={`${t.sourceType}: ${reference.package ?? ''} ${reference.qualifiedName ?? reference.name
             }`}
         />
@@ -180,7 +176,7 @@ export function APITypeDocDetail<
         text={text}
         {...(reference.externalUrl === undefined
           ? {}
-          : { externalUrl: reference.externalUrl })}
+          : { externalURL: reference.externalUrl })}
         generic={reference.refersToTypeParameter === true}
         target={{
           name: targetValue.name,

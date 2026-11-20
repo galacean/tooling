@@ -13,7 +13,7 @@ import {
 import type {
   APIDocumentationPackage,
   APIGenerationDependencies,
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
 } from '@galacean/docs-tools';
 
 const execFileAsync = promisify(execFile);
@@ -65,7 +65,7 @@ async function fixture() {
       },
     }),
   );
-  const config: DocsSiteConfig = {
+  const config: ResolvedDocsBuildConfig = {
     repositoryRoot,
     configPath: path.join(repositoryRoot, 'site/site.config.ts'),
     sourceLocale: 'en',

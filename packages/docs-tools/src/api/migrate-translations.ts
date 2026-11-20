@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { parseAPIManifest } from '@galacean/docs-site';
-import type { DocsSiteConfig } from '../config/site-config';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { loadTranslationInput } from './extract';
 import { readJSON } from './read-json';
 import { readAPITranslationArchive, writeAPITranslationArchive } from './translation-archive';
@@ -17,7 +17,7 @@ export interface APITranslationMigrationResult {
 }
 
 export async function migrateAPITranslations(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   selectedVersion?: string,
 ): Promise<APITranslationMigrationResult> {
   if (config.apiVersions === undefined) {

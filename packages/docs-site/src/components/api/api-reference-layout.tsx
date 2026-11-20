@@ -8,8 +8,8 @@ export interface APIReferenceLayoutProps {
     menu: string;
     close: string;
     top: string;
-    collapseSidebar?: string;
-    expandSidebar?: string;
+    collapseSidebar: string;
+    expandSidebar: string;
   };
   renderNavigation: (close: () => void) => ReactNode;
   toolbar: ReactNode;
@@ -61,11 +61,7 @@ export function APIReferenceLayout({
         {renderNavigation(() => onDrawerChange(false))}
       </aside>
       <DocsSidebarCollapse
-        label={
-          collapsed
-            ? (t.expandSidebar ?? t.menu)
-            : (t.collapseSidebar ?? t.menu)
-        }
+        label={collapsed ? t.expandSidebar : t.collapseSidebar}
         expanded={!collapsed}
         controlsId="api-sidebar"
         className="docs-sidebar-collapse-region--api"

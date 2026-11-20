@@ -18,13 +18,79 @@ import {
 } from '../../src/components/manual/manual-page';
 import type { ManualPageProps } from '../../src/components/manual/manual-page';
 import { Icon } from '../../src/components/shared/icon';
+import { ImageViewer } from '../../src/components/shared/image-viewer';
 import {
   HTMLDocumentContent,
   MarkdownContent,
 } from '../../src/components/shared/markdown';
 import { SelectControl } from '../../src/components/shared/select-control';
+import { commonMessages } from '../../src/i18n/messages';
 
 describe('shared MarkdownContent', () => {
+  it('provides English controls when ImageViewer is mounted directly', () => {
+    const { unmount } = render(<ImageViewer
+      images={[{ src: '/preview.png', alt: 'Preview', title: '', width: 100, height: 100 }]}
+      initialIndex={0}
+      onClose={() => undefined}
+    />);
+
+    expect(screen.getByRole('dialog', { name: 'Image viewer' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Close image viewer' })).toBeDefined();
+    unmount();
+  });
+
+  it.each(['markdown', 'html'])('localizes %s image viewers and applies message updates', format => {
+    const renderContent = (messages: typeof commonMessages.en) => (
+      <MemoryRouter>
+        {format === 'markdown' ? (
+          <MarkdownContent
+            text="![Preview](https://images.example.test/preview.png)"
+            messages={messages}
+          />
+        ) : (
+          <HTMLDocumentContent
+            html='<img src="https://images.example.test/preview.png" alt="Preview">'
+            messages={messages}
+          />
+        )}
+      </MemoryRouter>
+    );
+    const { container, rerender, unmount } = render(renderContent(commonMessages['zh-CN']));
+
+    fireEvent.click(container.querySelector('img')!);
+    const viewer = screen.getByRole('dialog', { name: '图片预览' });
+
+    expect(viewer.querySelector('.image-viewer-toolbar')?.getAttribute('aria-label')).toBe('图片操作');
+    for (const [label, title] of [
+      ['关闭图片预览', '关闭（Esc）'],
+      ['上一张图片', '上一张图片（左方向键）'],
+      ['下一张图片', '下一张图片（右方向键）'],
+      ['缩小', '缩小（-）'],
+      ['放大', '放大（+）'],
+      ['查看图片原始尺寸', '原始尺寸（1:1）'],
+      ['图片适应屏幕', '适应屏幕'],
+    ] as const) {
+      expect(within(viewer).getByRole('button', { name: label }).getAttribute('title')).toBe(title);
+    }
+    rerender(renderContent({ ...commonMessages.en, zoomIn: 'Custom zoom' }));
+    expect(screen.getByRole('dialog', { name: 'Image viewer' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Custom zoom' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Close image viewer' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    unmount();
+  });
+
+  it('uses configured code and copy labels', () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <MarkdownContent text={'```ts\nconst value = 1;\n```'} messages={commonMessages['zh-CN']} />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain('<span>代码</span>');
+    expect(markup).toContain('aria-label="复制"');
+  });
+
   it('opens Markdown and Yuque HTML images in a navigable viewer', async () => {
     const { container } = render(
       createElement(
@@ -588,7 +654,6 @@ describe('shared ManualPage', () => {
     const props: ManualPageProps = {
       locale: 'zh-CN',
       slug: 'parent',
-      homeHref: '/',
       getPageHref: slug => `/guide/${slug ?? ''}`,
       loadNavigation: async () => [
         { slug: 'parent', title: 'Parent', group: 'Basics' },
@@ -606,7 +671,7 @@ describe('shared ManualPage', () => {
         ],
       }),
       messages: {
-        home: 'Home',
+        ...commonMessages['zh-CN'],
         manual: 'Guide',
         manualIntro: 'Introduction',
         loading: 'Loading',
@@ -702,13 +767,12 @@ describe('shared ManualPage', () => {
     const props: ManualPageProps = {
       locale: 'fr',
       slug: 'introduction',
-      homeHref: '/fr/',
       getPageHref: slug => `/fr/guide/${slug ?? ''}`,
       loadNavigation,
       loadOverview: async () => ({ text: '', headings: [] }),
       loadPage: async () => ({ text: '', headings: [] }),
       messages: {
-        home: 'Home',
+        ...commonMessages.en,
         manual: 'Guide',
         manualIntro: 'Introduction',
         loading: 'Loading',

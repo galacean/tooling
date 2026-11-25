@@ -13,6 +13,8 @@ import hljs from 'highlight.js/lib/core';
 import typescript from 'highlight.js/lib/languages/typescript';
 import json from 'highlight.js/lib/languages/json';
 import bash from 'highlight.js/lib/languages/bash';
+import plaintext from 'highlight.js/lib/languages/plaintext';
+import xml from 'highlight.js/lib/languages/xml';
 import { Link, useLocation } from 'react-router-dom';
 import { commonMessages } from '../../i18n/messages';
 import { CopyButton } from './copy-button';
@@ -86,6 +88,27 @@ hljs.registerLanguage('ts', typescript);
 hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('json', json);
 hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('plaintext', plaintext);
+hljs.registerLanguage('xml', xml);
+
+function highlightCodeBlock(code: HTMLElement) {
+  if (code.dataset['highlighted'] !== undefined) {
+    return;
+  }
+  const classes = `${code.className} ${code.parentElement?.className ?? ''}`;
+  const language = /\blang(?:uage)?-([\w-]+)\b/i.exec(classes)?.[1];
+
+  if (language !== undefined) {
+    if (/^no-?highlight$/i.test(language)) {
+      return;
+    }
+    if (hljs.getLanguage(language) === undefined) {
+      // Put the fallback first while retaining the document's original language class.
+      code.className = `language-plaintext ${code.className}`;
+    }
+  }
+  hljs.highlightElement(code);
+}
 
 export function headingId(value: string): string {
   return value
@@ -128,12 +151,8 @@ function CodeBlock({
   useEffect(() => {
     const code = block.current?.querySelector<HTMLElement>('pre code');
 
-    if (
-      code !== null &&
-      code !== undefined &&
-      code.dataset['highlighted'] === undefined
-    ) {
-      hljs.highlightElement(code);
+    if (code !== null && code !== undefined) {
+      highlightCodeBlock(code);
     }
   });
 
@@ -335,11 +354,7 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
           heading.id = headingId(heading.textContent ?? '');
         }
       });
-    root.querySelectorAll<HTMLElement>('pre code').forEach(element => {
-      if (element.dataset['highlighted'] === undefined) {
-        hljs.highlightElement(element);
-      }
-    });
+    root.querySelectorAll<HTMLElement>('pre code').forEach(highlightCodeBlock);
   }, [html]);
 
   return (

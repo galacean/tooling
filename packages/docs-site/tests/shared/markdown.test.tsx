@@ -91,6 +91,65 @@ describe('shared MarkdownContent', () => {
     expect(markup).toContain('aria-label="复制"');
   });
 
+  it.each(['markdown', 'html'].flatMap(format =>
+    ['text', 'txt', 'plaintext', 'html', 'xml', 'unknown-language'].map(language => ({ format, language })),
+  ))('renders $format $language code without language warnings', ({ format, language }) => {
+    const source = 'const value = "<Widget>&value</Widget>";';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { container, unmount } = render(createElement(
+      MemoryRouter,
+      null,
+      format === 'markdown'
+        ? createElement(MarkdownContent, { text: `\`\`\`${language}\n${source}\n\`\`\`` })
+        : createElement(HTMLDocumentContent, {
+          html: `<pre><code class="language-${language}">` +
+            'const value = "&lt;Widget&gt;&amp;value&lt;/Widget&gt;";\n</code></pre>',
+        }),
+    ));
+
+    try {
+      const code = container.querySelector('pre code');
+
+      expect(code?.textContent).toBe(`${source}\n`);
+      expect(code?.classList.contains('hljs')).toBe(true);
+      expect(code?.getAttribute('data-highlighted')).toBe('yes');
+      if (language === 'html' || language === 'xml') {
+        expect(code?.querySelector('.hljs-tag')).not.toBeNull();
+      } else {
+        expect(code?.children).toHaveLength(0);
+      }
+      expect(log).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      unmount();
+      log.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it.each(['markdown', 'html'])('keeps explicit highlighting opt-outs in %s', format => {
+    const { container, unmount } = render(createElement(
+      MemoryRouter,
+      null,
+      format === 'markdown'
+        ? createElement(MarkdownContent, { text: '```nohighlight\nconst value = 1;\n```' })
+        : createElement(HTMLDocumentContent, {
+          html: '<pre><code class="no-highlight">const value = 1;\n</code></pre>',
+        }),
+    ));
+
+    try {
+      const code = container.querySelector('pre code');
+
+      expect(code?.textContent).toBe('const value = 1;\n');
+      expect(code?.classList.contains('hljs')).toBe(false);
+      expect(code?.children).toHaveLength(0);
+    } finally {
+      unmount();
+    }
+  });
+
   it('opens Markdown and Yuque HTML images in a navigable viewer', async () => {
     const { container } = render(
       createElement(

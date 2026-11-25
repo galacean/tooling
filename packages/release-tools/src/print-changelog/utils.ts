@@ -43,10 +43,10 @@ export function queryWithJSDOM(html: string): PullRequestDetails {
   const dom = new JSDOM(html);
   const { document } = dom.window;
   const titleElement = document.querySelector(
-    '[data-component="PH_Title"] .markdown-title',
+    '[data-component="PH_Title"] [data-component="Text"]',
   );
   const authorElement = document.querySelector(
-    '.pull-discussion-timeline>.js-discussion .TimelineItem .author',
+    '[id^="pullrequest-"] .timeline-comment-header .author',
   );
 
   if (!titleElement || !authorElement) {
@@ -56,7 +56,7 @@ export function queryWithJSDOM(html: string): PullRequestDetails {
   }
 
   const descriptions = [
-    ...document.querySelectorAll('.comment-body>ul:first-child li'),
+    ...document.querySelectorAll('[id^="pullrequest-"] .comment-body > ul li'),
   ].map(element => element.textContent?.trim() ?? '');
 
   return {

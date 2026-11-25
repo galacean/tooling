@@ -746,6 +746,8 @@ async function convertTypeDoc(
       tsconfig: packageConfig.tsconfig,
       readme: 'none',
       basePath: config.repositoryRoot,
+      // TypeDoc also uses displayBasePath to root source URLs when Git is disabled.
+      displayBasePath: config.repositoryRoot,
       gitRevision: commit,
       disableGit: true,
       ...(sourceLinkTemplate === undefined ? {} : { sourceLinkTemplate }),

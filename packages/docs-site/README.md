@@ -60,6 +60,21 @@ See [configuration types](src/config/types.ts) for all options. Generation setti
 
 Standalone components accept localized messages too. `MarkdownContent` and `HTMLDocumentContent` use the common English messages for omitted keys.
 
+## Code highlighting
+
+Markdown and HTML code blocks support TypeScript, JSON, Bash, plain text (`text`, `txt`, `plaintext`),
+and HTML/XML. Unknown explicit languages render as plain text without language warnings. Explicit
+`nohighlight` and `no-highlight` markers disable highlighting; blocks without a language keep automatic detection.
+
+Applications can register additional languages with `highlight.js/lib/core` before rendering the site:
+
+```ts
+import hljs from 'highlight.js/lib/core';
+import glsl from 'highlight.js/lib/languages/glsl';
+
+hljs.registerLanguage('glsl', glsl);
+```
+
 ## Development
 
 ```sh

@@ -60,6 +60,21 @@ export default function App() {
 
 独立组件也支持传入本地化文案。`MarkdownContent` 和 `HTMLDocumentContent` 未提供的文案键使用公共英文默认值。
 
+## 代码高亮
+
+Markdown 和 HTML 代码块支持 TypeScript、JSON、Bash、纯文本（`text`、`txt`、`plaintext`）和
+HTML/XML。显式指定的未知语言按纯文本显示，不产生语言缺失警告。显式的 `nohighlight` 和
+`no-highlight` 标记禁用高亮；没有指定语言的代码块保留自动检测。
+
+应用可以在渲染站点前通过 `highlight.js/lib/core` 注册额外语言：
+
+```ts
+import hljs from 'highlight.js/lib/core';
+import glsl from 'highlight.js/lib/languages/glsl';
+
+hljs.registerLanguage('glsl', glsl);
+```
+
 ## 开发
 
 ```sh

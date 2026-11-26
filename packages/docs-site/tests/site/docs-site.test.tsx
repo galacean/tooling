@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { commonMessages, DocsSite } from '@galacean/docs-site';
 import type {
   DocsSitePage,
@@ -421,4 +421,36 @@ describe('DocsSite routing', () => {
     expect(await screen.findByText('Page not found')).toBeDefined();
     expect(fetcher).toHaveBeenCalledOnce();
   });
+});
+
+it('updates custom page metadata on navigation and normalizes canonical URLs', async () => {
+  window.history.replaceState({}, '', '/docs/en/about?tab=preview');
+  const alternate = document.createElement('link');
+
+  alternate.rel = 'alternate';
+  alternate.hreflang = 'fr';
+  alternate.href = 'https://example.test/fr/about/';
+  document.head.append(alternate);
+  renderSite('/docs/', '/docs/', false, undefined, [
+    {
+      slug: 'about', title: { en: 'About', 'zh-CN': '关于' },
+      seo: { description: { en: 'About this example project.' } },
+      render: () => <Link to="/en/next">Next page</Link>,
+    },
+    { slug: 'next', title: { en: 'Next', 'zh-CN': '下一页' }, render: () => <h1>Next page</h1> },
+  ]);
+
+  await waitFor(() => expect(document.title).toBe('About | Shared docs'));
+  expect(document.querySelector('meta[name="description"]')?.getAttribute('content'))
+    .toBe('About this example project.');
+  expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href'))
+    .toBe(`${window.location.origin}/docs/en/about/`);
+  expect(document.querySelector('link[hreflang="fr"]')).toBeNull();
+  fireEvent.click(screen.getByRole('link', { name: 'Next page' }));
+  await screen.findByRole('heading', { name: 'Next page' });
+  expect(document.title).toBe('Next | Shared docs');
+  expect(document.querySelector('meta[name="description"]')?.getAttribute('content'))
+    .toBe('Documentation and reference for Next.');
+  expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href'))
+    .toBe(`${window.location.origin}/docs/en/next/`);
 });

@@ -526,7 +526,7 @@ describe('shared MarkdownContent', () => {
     const html = renderToStaticMarkup(
       createElement(
         MemoryRouter,
-        null,
+        { basename: '/docs', initialEntries: ['/docs/en/manual/intro/?tab=code'] },
         createElement(MarkdownContent, {
           text: '## `extractLottieFromZip(zipData)`\n\n[Jump](#extractlottiefromzipzipdata)',
         }),
@@ -536,7 +536,7 @@ describe('shared MarkdownContent', () => {
     expect(html).toContain(
       '<h2 id="extractlottiefromzipzipdata"><code>extractLottieFromZip(zipData)</code></h2>',
     );
-    expect(html).toContain('<a href="/#extractlottiefromzipzipdata">Jump</a>');
+    expect(html).toMatch(/<a href="\/docs\/en\/manual\/intro\/\?tab=code#extractlottiefromzipzipdata"[^>]*>Jump<\/a>/u);
   });
 
   it('wraps Markdown tables in a horizontal overflow container', () => {

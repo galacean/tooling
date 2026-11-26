@@ -475,13 +475,13 @@ describe('SiteShell preferences', () => {
   it('syncs the current manual title to the browser tab', async () => {
     renderSite({ initialEntry: '/en/manual/first' });
 
-    await waitFor(() => expect(document.title).toBe('first'));
+    await waitFor(() => expect(document.title).toBe('first | Example Docs'));
   });
 
-  it('omits the brand suffix from API document titles', async () => {
+  it('includes the brand suffix in API document titles', async () => {
     renderSite({ initialEntry: '/en/api' });
 
-    await waitFor(() => expect(document.title).toBe('API'));
+    await waitFor(() => expect(document.title).toBe('API | Example Docs'));
   });
 
   it('switches the brand mark with the resolved theme', async () => {

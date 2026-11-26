@@ -13,17 +13,24 @@ import hljs from 'highlight.js/lib/core';
 import typescript from 'highlight.js/lib/languages/typescript';
 import json from 'highlight.js/lib/languages/json';
 import bash from 'highlight.js/lib/languages/bash';
+import plaintext from 'highlight.js/lib/languages/plaintext';
+import xml from 'highlight.js/lib/languages/xml';
 import { Link, useLocation } from 'react-router-dom';
+import { commonMessages } from '../../i18n/messages';
 import { CopyButton } from './copy-button';
 import { ImageViewer } from './image-viewer';
-import type { ImageViewerImage } from './image-viewer';
+import type { ImageViewerImage, ImageViewerMessages } from './image-viewer';
+
+export type MarkdownMessages = ImageViewerMessages & Pick<
+  typeof commonMessages.en, 'code' | 'copy' | 'copied' | 'copyFailed'
+>;
 
 const getContentImages = (root: HTMLElement) =>
   Array.from(root.querySelectorAll('img')).filter(
     image => image.currentSrc !== '' || image.getAttribute('src') !== null,
   );
 
-function useImageViewer() {
+function useImageViewer(messages: ImageViewerMessages) {
   const [opened, setOpened] = useState<{
     images: ImageViewerImage[];
     initialIndex: number;
@@ -66,6 +73,7 @@ function useImageViewer() {
   const viewer =
     opened === undefined ? null : (
       <ImageViewer
+        messages={messages}
         images={opened.images}
         initialIndex={opened.initialIndex}
         returnFocusTo={opened.returnFocusTo}
@@ -80,6 +88,27 @@ hljs.registerLanguage('ts', typescript);
 hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('json', json);
 hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('plaintext', plaintext);
+hljs.registerLanguage('xml', xml);
+
+function highlightCodeBlock(code: HTMLElement) {
+  if (code.dataset['highlighted'] !== undefined) {
+    return;
+  }
+  const classes = `${code.className} ${code.parentElement?.className ?? ''}`;
+  const language = /\blang(?:uage)?-([\w-]+)\b/i.exec(classes)?.[1];
+
+  if (language !== undefined) {
+    if (/^no-?highlight$/i.test(language)) {
+      return;
+    }
+    if (hljs.getLanguage(language) === undefined) {
+      // Put the fallback first while retaining the document's original language class.
+      code.className = `language-plaintext ${code.className}`;
+    }
+  }
+  hljs.highlightElement(code);
+}
 
 export function headingId(value: string): string {
   return value
@@ -106,11 +135,13 @@ function headingText(children: ReactNode): string {
 
 function CodeBlock({
   children,
+  codeLabel,
   copyLabel,
   copied,
   copyFailed,
 }: {
   children: ReactNode;
+  codeLabel: string;
   copyLabel: string;
   copied: string;
   copyFailed: string;
@@ -120,19 +151,15 @@ function CodeBlock({
   useEffect(() => {
     const code = block.current?.querySelector<HTMLElement>('pre code');
 
-    if (
-      code !== null &&
-      code !== undefined &&
-      code.dataset['highlighted'] === undefined
-    ) {
-      hljs.highlightElement(code);
+    if (code !== null && code !== undefined) {
+      highlightCodeBlock(code);
     }
   });
 
   return (
     <div className="code-block" ref={block}>
       <div className="code-head">
-        <span>CODE</span>
+        <span>{codeLabel}</span>
         <CopyButton
           value={() => block.current?.querySelector('code')?.textContent ?? ''}
           label={copyLabel}
@@ -147,14 +174,16 @@ function CodeBlock({
 
 export function MarkdownContent({
   text,
+  messages: messageOverrides,
   resolveLink,
-  copyLabel = 'Copy',
-  copied = 'Copied',
-  copyFailed = 'Copy failed',
+  copyLabel,
+  copied,
+  copyFailed,
   afterFirstHeading,
   resolveImage,
 }: {
   text: string;
+  messages?: Partial<MarkdownMessages>;
   resolveLink?: (url: string) => string;
   copyLabel?: string;
   copied?: string;
@@ -163,7 +192,8 @@ export function MarkdownContent({
   resolveImage?: (url: string) => string;
 }) {
   const location = useLocation();
-  const { showImage, viewer } = useImageViewer();
+  const messages = { ...commonMessages.en, ...messageOverrides };
+  const { showImage, viewer } = useImageViewer(messages);
   let headingInserted = false;
 
   return (
@@ -221,9 +251,10 @@ export function MarkdownContent({
           ),
           pre: ({ children }) => (
             <CodeBlock
-              copyLabel={copyLabel}
-              copied={copied}
-              copyFailed={copyFailed}
+              codeLabel={messages.code}
+              copyLabel={copyLabel ?? messages.copy}
+              copied={copied ?? messages.copied}
+              copyFailed={copyFailed ?? messages.copyFailed}
             >
               {children}
             </CodeBlock>
@@ -231,13 +262,6 @@ export function MarkdownContent({
           a: ({ href, children }) => {
             const url = resolveLink?.(href ?? '') ?? href ?? '';
 
-            if (url.startsWith('#')) {
-              return (
-                <a href={`${location.pathname}${location.search}${url}`}>
-                  {children}
-                </a>
-              );
-            }
             if (/^(?:https?:|mailto:|tel:|\/\/)/u.test(url)) {
               return (
                 <a href={url} target="_blank" rel="noreferrer">
@@ -247,7 +271,7 @@ export function MarkdownContent({
             }
             const logical = new URL(
               url,
-              `https://local.invalid${location.pathname}`,
+              `https://local.invalid${location.pathname}${location.search}`,
             );
 
             return (
@@ -301,11 +325,14 @@ function replaceYuqueVideoPlaceholders(root: HTMLElement) {
 
 export const HTMLDocumentContent = memo(function HTMLDocumentContent({
   html,
+  messages: messageOverrides,
 }: {
   html: string;
+  messages?: Partial<ImageViewerMessages>;
 }) {
   const container = useRef<HTMLDivElement>(null);
-  const { showImage, viewer } = useImageViewer();
+  const messages = { ...commonMessages.en, ...messageOverrides };
+  const { showImage, viewer } = useImageViewer(messages);
 
   useEffect(() => {
     const root = container.current;
@@ -320,11 +347,7 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
           heading.id = headingId(heading.textContent ?? '');
         }
       });
-    root.querySelectorAll<HTMLElement>('pre code').forEach(element => {
-      if (element.dataset['highlighted'] === undefined) {
-        hljs.highlightElement(element);
-      }
-    });
+    root.querySelectorAll<HTMLElement>('pre code').forEach(highlightCodeBlock);
   }, [html]);
 
   return (

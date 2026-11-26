@@ -1,5 +1,6 @@
 import { isRecord } from '../data';
 import Fuse from 'fuse.js';
+import { normalizeSearchText, searchCharacterCount } from '../i18n/search-text';
 
 export interface SearchResult {
   category: 'api' | 'manual';
@@ -49,13 +50,20 @@ export function parseSearch(
   return value as SearchResult[];
 }
 
-const indexes = new WeakMap<SearchResult[], Fuse<SearchResult>>();
+type IndexedResult = SearchResult & { original: SearchResult };
+const indexes = new WeakMap<SearchResult[], Fuse<IndexedResult>>();
 
-function searchIndex(items: SearchResult[]): Fuse<SearchResult> {
+function searchIndex(items: SearchResult[]): Fuse<IndexedResult> {
   let index = indexes.get(items);
 
   if (index === undefined) {
-    index = new Fuse(items, {
+    const folded = items.map(item => ({ ...item, original: item,
+      name: normalizeSearchText(item.name, item.sourceLocale),
+      summary: normalizeSearchText(item.summary, item.sourceLocale),
+      keywords: normalizeSearchText(item.keywords, item.sourceLocale),
+    }));
+
+    index = new Fuse(folded, {
       ignoreLocation: true,
       threshold: 0.32,
       minMatchCharLength: 2,
@@ -77,15 +85,16 @@ function searchIndex(items: SearchResult[]): Fuse<SearchResult> {
 export function searchResults(
   items: SearchResult[],
   query: string,
+  locale = 'en',
 ): SearchResult[] {
-  const term = query.normalize('NFKC').trim();
+  const term = normalizeSearchText(query, locale).trim();
 
-  if (Array.from(term).length < 2) {
+  if (searchCharacterCount(term, locale) < 2) {
     return [];
   }
 
-  const terms = (term.match(/[\p{Script=Han}]+|[\p{L}\p{N}]+/gu) ?? []).filter(
-    value => Array.from(value).length >= 2,
+  const terms = (term.match(/[\p{L}\p{N}\p{M}]+/gu) ?? []).filter(
+    value => searchCharacterCount(value, locale) >= 2,
   );
 
   if (terms.length === 0) {
@@ -100,12 +109,12 @@ export function searchResults(
   }
 
   const scores = new Map(
-    fuse.search(firstTerm).map(result => [result.item, result.score ?? 1]),
+    fuse.search(firstTerm).map(result => [result.item.original, result.score ?? 1]),
   );
 
   for (const searchTerm of remainingTerms) {
     const termScores = new Map(
-      fuse.search(searchTerm).map(result => [result.item, result.score ?? 1]),
+      fuse.search(searchTerm).map(result => [result.item.original, result.score ?? 1]),
     );
 
     for (const [item, score] of scores) {

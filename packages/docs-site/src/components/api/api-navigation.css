@@ -25,7 +25,7 @@
   padding: 6px 10px;
   min-width: 0;
   overflow: hidden;
-  border-left: 2px solid transparent;
+  border-inline-start: 2px solid transparent;
   color: var(--site-ink);
   font-size: var(--site-doc-nav-size);
   line-height: 1.5;
@@ -45,7 +45,7 @@
   background: var(--site-wash);
 }
 .api-menu-item.selected {
-  border-left-color: transparent;
+  border-inline-start-color: transparent;
   color: var(--site-ink);
   background: var(--site-wash);
   font-weight: 600;
@@ -133,7 +133,7 @@
 .api-inherited-toggle span::after {
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 13px;
   height: 13px;
   border-radius: 50%;

@@ -12,7 +12,7 @@ import type {
 import type { SiteShellOutletContext } from '../site/site-shell';
 
 export interface ManualRouteProps<TLocale extends string> {
-  baseURL: string;
+  dataBaseURL: string;
   manualDataURL?: string;
   locales: readonly TLocale[];
   locale: TLocale;
@@ -26,18 +26,18 @@ interface ManualRouteLoaders {
 }
 
 export function ManualRoute<TLocale extends string>({
-  baseURL,
+  dataBaseURL,
   manualDataURL,
   locales,
   locale,
   messages,
 }: ManualRouteProps<TLocale>) {
   const { slug } = useParams();
-  const { setManualPageTitle, setManualSidebarCollapsed } =
+  const { setManualPageTitle, setManualSidebarCollapsed, setContentLocales } =
     useOutletContext<SiteShellOutletContext>();
   const [client] = useState(() =>
     createManualContentClient({
-      baseURL,
+      baseURL: dataBaseURL,
       ...(manualDataURL === undefined ? {} : { manualDataURL }),
       locales,
     }),
@@ -50,8 +50,8 @@ export function ManualRoute<TLocale extends string>({
       slug={slug}
       messages={messages}
       onTitleChange={setManualPageTitle}
+      onContentLocalesChange={setContentLocales}
       onSidebarCollapsed={setManualSidebarCollapsed}
-      homeHref={localePath(locale)}
       getPageHref={value =>
         localePath(locale, value === undefined ? ['manual'] : ['manual', value])
       }

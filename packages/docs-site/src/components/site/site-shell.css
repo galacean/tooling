@@ -76,9 +76,9 @@
   align-self: start;
   justify-self: start;
   z-index: 7;
-  margin-left: max(0px, calc((100vw - 1440px) / 2));
+  margin-inline-start: max(0px, calc((100vw - 1440px) / 2));
   width: var(--site-doc-sidebar-width);
-  border-right: 1px solid var(--site-border);
+  border-inline-end: 1px solid var(--site-border);
   background: var(--site-surface);
   transition: width 0.2s ease;
 }
@@ -160,8 +160,8 @@
   cursor: pointer;
 }
 .docs-page-switcher-menu {
-  right: 0;
-  left: auto;
+  inset-inline-end: 0;
+  inset-inline-start: auto;
 }
 .docs-page-switcher-menu a svg {
   flex: 0 0 16px;
@@ -175,7 +175,7 @@
   width: 6px;
   height: 6px;
   flex: 0 0 6px;
-  margin-left: auto;
+  margin-inline-start: auto;
   border-radius: 50%;
   background: var(--site-accent);
   content: '';
@@ -198,7 +198,7 @@
   color: var(--docs-search-muted);
   cursor: pointer;
   font-size: 14px;
-  text-align: left;
+  text-align: start;
 }
 .docs-sidebar-search-field {
   display: flex;
@@ -214,7 +214,7 @@
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  margin-right: 12px;
+  margin-inline-end: 12px;
 }
 .docs-sidebar-search-field > span {
   min-width: 0;
@@ -227,7 +227,7 @@
 .docs-sidebar-search-trigger kbd {
   position: absolute;
   top: 5px;
-  right: 8px;
+  inset-inline-end: 8px;
   color: var(--docs-search-muted);
   font-family: system-ui;
   font-size: 14px;
@@ -244,10 +244,10 @@
 }
 .brand-dot {
   color: var(--site-accent);
-  margin-left: -12px;
+  margin-inline-start: -12px;
 }
 .brand-mark {
-  margin-right: 4px;
+  margin-inline-end: 4px;
   display: block;
   flex: 0 1 auto;
   width: auto;
@@ -267,7 +267,7 @@
 .site-tools {
   display: flex;
   align-items: center;
-  margin-left: auto;
+  margin-inline-start: auto;
   gap: 12px;
 }
 .site-nav a {
@@ -286,8 +286,8 @@
   content: '';
   position: absolute;
   bottom: 0;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   height: 3px;
   background: var(--site-accent);
 }
@@ -314,7 +314,7 @@
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  margin-right: 12px;
+  margin-inline-end: 12px;
 }
 .site-header .search-trigger span {
   font-size: 14px;
@@ -367,7 +367,7 @@
   color: var(--site-muted);
 }
 .search-trigger kbd {
-  margin-left: auto;
+  margin-inline-start: auto;
   font:
     10px 'IBM Plex Mono',
     monospace;
@@ -387,8 +387,8 @@
   color: var(--site-muted);
 }
 .site-tools .site-select-menu {
-  right: 0;
-  left: auto;
+  inset-inline-end: 0;
+  inset-inline-start: auto;
 }
 .site-shell :is(button, a).icon-action {
   transition: var(--icon-action-transition);
@@ -466,7 +466,7 @@
 .docs-back-top {
   position: fixed;
   z-index: 5;
-  right: 32px;
+  inset-inline-end: 32px;
   bottom: 30px;
   display: inline-grid;
   width: 42px;
@@ -520,7 +520,7 @@
   margin: 0;
   padding: 20px;
   border: 0;
-  border-left: 1px solid var(--site-border);
+  border-inline-start: 1px solid var(--site-border);
   background: var(--site-background);
   color: var(--site-ink);
 }
@@ -570,8 +570,8 @@
   }
   .docs-header-shell {
     position: relative;
-    right: auto;
-    left: auto;
+    inset-inline-end: auto;
+    inset-inline-start: auto;
     height: 68px;
     min-height: 68px;
     padding: 0 5%;
@@ -632,7 +632,7 @@
     border: 0;
   }
   .docs-back-top {
-    right: 18px;
+    inset-inline-end: 18px;
     bottom: 18px;
   }
 }

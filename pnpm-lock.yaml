@@ -129,12 +129,21 @@ importers:
       html-to-text:
         specifier: ^10.0.1
         version: 10.0.1
+      htmlparser2:
+        specifier: ^10.1.0
+        version: 10.1.0
       jsonc-parser:
         specifier: ^3.3.1
         version: 3.3.1
       pinyin-pro:
         specifier: ^3.29.5
         version: 3.29.5
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
       semver:
         specifier: ^7.7.2
         version: 7.8.5
@@ -147,7 +156,13 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
     devDependencies:
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.9

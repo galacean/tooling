@@ -164,7 +164,7 @@
 }
 .markdown-content :is(blockquote, .ne-quote) > :is(ul, ol) {
   margin-block: 0;
-  padding-left: 29px;
+  padding-inline-start: 29px;
 }
 .markdown-content :is(blockquote, .ne-quote) > :is(ul, ol) > li {
   padding-bottom: 0.5px;
@@ -211,7 +211,7 @@
 }
 .markdown-content :is(ul, ol) {
   margin: 12px 0;
-  padding-left: 24px;
+  padding-inline-start: 24px;
 }
 .markdown-content li + li {
   margin-top: 6px;

@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'vitest';
 import {
+  applyTranslationPairs,
+  extractTranslationTasks,
   generateAPIDocumentation,
   generateVersionedAPIDocumentation,
   inspectAPIVersionState,
+  synchronizeAPILocales,
 } from '@galacean/docs-tools';
-import type { DocsSiteConfig } from '@galacean/docs-tools';
+import type { ResolvedDocsBuildConfig } from '@galacean/docs-tools';
 
 async function fixture() {
   const repositoryRoot = await mkdtemp(
@@ -23,7 +26,7 @@ async function fixture() {
     { key: 'first', name: '@example/first' },
     { key: 'second', name: '@example/second' },
   ];
-  const config: DocsSiteConfig = {
+  const config: ResolvedDocsBuildConfig = {
     repositoryRoot,
     configPath: path.join(repositoryRoot, 'site/docs.config.json'),
     sourceLocale: 'en',
@@ -51,14 +54,25 @@ async function fixture() {
     await writeFile(filename, `${JSON.stringify(value)}\n`);
   }
 
+  const entries = [{
+    key: 'root', source: 'src/index.ts', types: 'dist/index.d.ts', id: 1,
+    symbols: [{ name: 'Widget', id: 2, kind: 256 }],
+  }];
+
   for (const locale of config.locales) {
     const snapshot = {
+      id: 1, name: 'Fixture', kind: 1, variant: 'project', schemaVersion: '2.0', flags: {},
+      symbolIdMap: {}, files: { entries: {}, reflections: {} },
+      children: [{
+        id: 2, name: 'Widget', kind: 256, variant: 'declaration', flags: {},
+        comment: { summary: [{ kind: 'text', text: 'A widget.' }], sourceLocale: 'en' },
+      }],
       locale,
       apiSnapshot: {
         commit,
         generatorVersion: '0.28.20',
         snapshot: modelHash,
-        packages: packages.map(pkg => ({ ...pkg, version, entries: [] })),
+        packages: packages.map((pkg, index) => ({ ...pkg, version, entries: index === 0 ? entries : [] })),
       },
     };
     const contents = `${JSON.stringify(snapshot)}\n`;
@@ -73,7 +87,7 @@ async function fixture() {
       );
     }
   }
-  const versionRecords = packages.map(pkg => {
+  const versionRecords = packages.map((pkg, index) => {
     const json = config.locales.reduce<Record<string, string>>(
       (result, locale) => {
         result[locale] = `api/${pkg.key}/${version}/${locale}.api.json`;
@@ -86,7 +100,7 @@ async function fixture() {
       version,
       snapshot: modelHash,
       commit,
-      entries: [],
+      entries: index === 0 ? entries : [],
       json,
     };
 
@@ -94,7 +108,7 @@ async function fixture() {
       key: pkg.key,
       name: pkg.name,
       latestVersion: version,
-      entries: [],
+      entries: index === 0 ? entries : [],
       current: { ...record, version: 'current', packageVersion: version },
       versions: [record],
     };
@@ -245,6 +259,7 @@ void test('defaults to the latest configured version and ignores missing history
     versions: ['1.2.2', values.version],
   };
 
+  values.config.locales.push('ja');
   const result = await generateVersionedAPIDocumentation(
     values.config,
     values.config.apiPackages!.map(pkg => pkg.key),
@@ -421,6 +436,7 @@ void test('leaves published API data unchanged when a missing tag build fails', 
     versions: [values.version, '1.2.4'],
   };
 
+  values.config.locales.push('ja');
   await assert.rejects(
     generateVersionedAPIDocumentation(
       values.config,
@@ -433,4 +449,64 @@ void test('leaves published API data unchanged when a missing tag build fails', 
   );
 
   assert.equal(await (await import('node:fs/promises')).readFile(manifestPath, 'utf8'), manifestBefore);
+});
+
+void test('adds language views from verified models without rebuilding source versions', async t => {
+  const values = await fixture();
+
+  t.onTestFinished(() => rm(values.repositoryRoot, { recursive: true, force: true }));
+  values.config.locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ar', 'th'];
+  const state = await inspectAPIVersionState(values.config, values.version);
+
+  assert.equal(state.status, 'locales-pending');
+  const result = await synchronizeAPILocales(values.config);
+
+  assert.equal(result.versions, 1);
+  assert.equal((await inspectAPIVersionState(values.config, values.version)).status, 'complete');
+  assert.equal((await synchronizeAPILocales(values.config)).versions, 0);
+  values.config.locales = ['en', 'ja'];
+  await synchronizeAPILocales(values.config);
+  assert.equal((await inspectAPIVersionState(values.config, values.version)).status, 'complete');
+});
+
+void test('language expansion does not mask existing snapshot corruption', async t => {
+  const values = await fixture();
+
+  t.onTestFinished(() => rm(values.repositoryRoot, { recursive: true, force: true }));
+  const { readdir } = await import('node:fs/promises');
+  const snapshots = path.join(values.apiDirectory, 'snapshots');
+  const [filename] = await readdir(snapshots);
+
+  assert.ok(filename);
+  await writeFile(path.join(snapshots, filename), 'corrupt');
+  values.config.locales.push('ja');
+  await assert.rejects(synchronizeAPILocales(values.config), /snapshot hash is invalid/u);
+});
+
+void test('preserves applied API translations across locale expansion and removal', async t => {
+  const { config, version, repositoryRoot, apiDirectory } = await fixture();
+
+  t.onTestFinished(() => rm(repositoryRoot, { recursive: true, force: true }));
+  const [task] = await extractTranslationTasks([], config, { packages: ['first'] });
+
+  assert.ok(task);
+  const input = JSON.parse(await readFile(task.taskPath, 'utf8')) as { sourceHash: string; fields: { key: string }[] };
+  const translationPath = path.join(path.dirname(task.taskPath), 'result.json');
+
+  await writeFile(translationPath, JSON.stringify({
+    version, sourceHash: input.sourceHash, locale: 'zh-CN',
+    translations: Object.fromEntries(input.fields.map(field => [field.key, '一个组件。'])),
+  }));
+  await applyTranslationPairs([{ taskPath: task.taskPath, translationPath }], config);
+  assert.deepEqual(await inspectAPIVersionState(config, version), { status: 'complete' });
+  const wrapper = path.join(apiDirectory, 'first', version, 'zh-CN.api.json');
+  const translated = await readFile(wrapper, 'utf8');
+
+  config.locales = ['ja', 'zh-CN', 'en'];
+  await synchronizeAPILocales(config);
+  assert.deepEqual(await inspectAPIVersionState(config, version), { status: 'complete' });
+  config.locales = ['en', 'zh-CN'];
+  await synchronizeAPILocales(config);
+  assert.deepEqual(await inspectAPIVersionState(config, version), { status: 'complete' });
+  assert.equal(await readFile(wrapper, 'utf8'), translated);
 });

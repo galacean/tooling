@@ -1,7 +1,7 @@
 {
   "name": "@galacean/docs-site",
-  "version": "0.0.11",
-  "description": "Shared bilingual documentation site runtime and data contracts",
+  "version": "0.0.12",
+  "description": "Shared multilingual documentation site runtime and data contracts",
   "type": "module",
   "files": [
     "dist"

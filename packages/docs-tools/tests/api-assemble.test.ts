@@ -17,7 +17,7 @@ import {
 } from '@galacean/docs-tools';
 import type {
   APIDocumentationMetadata,
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
 } from '@galacean/docs-tools';
 
 async function fixture() {
@@ -93,7 +93,7 @@ async function fixture() {
     sourceHash: 'b'.repeat(64),
     packages,
   };
-  const config: DocsSiteConfig = {
+  const config: ResolvedDocsBuildConfig = {
     repositoryRoot,
     configPath: path.join(repositoryRoot, 'site/site.config.ts'),
     sourceLocale: 'en',

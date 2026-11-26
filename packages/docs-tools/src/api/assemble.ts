@@ -7,8 +7,8 @@ import type {
   APIManifestPackage,
   APIVersion,
 } from '@galacean/docs-site';
-import type { DocsSiteConfig } from '../config/site-config';
-import { assertNoSymlinkPath } from '../config/site-config';
+import type { ResolvedDocsBuildConfig } from '../config/types';
+import { assertNoSymlinkPath, isWithin } from '../path-validation';
 import { getErrorCode, readOptionalJSON } from './read-json';
 import { sourceProject } from './snapshot';
 import { cleanAPISnapshots } from './snapshot-cleanup';
@@ -64,17 +64,6 @@ async function readOptionalSnapshot(
   return undefined;
 }
 
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-}
-
 function safeSnapshotPath(dataRoot: string, relativePath: string): string {
   if (
     relativePath.length === 0 ||
@@ -88,7 +77,7 @@ function safeSnapshotPath(dataRoot: string, relativePath: string): string {
   }
   const filename = path.resolve(dataRoot, relativePath);
 
-  if (!isWithin(dataRoot, filename)) {
+  if (!isWithin(dataRoot, filename, 'descendant')) {
     throw new Error(
       `API snapshot path leaves the data directory: ${relativePath}`,
     );
@@ -146,7 +135,7 @@ async function recoverTranslations(
   dataRoot: string,
   previous: APIManifestPackage | undefined,
   currentSource: ReturnType<typeof buildTranslationSource>,
-  config: Pick<DocsSiteConfig, 'repositoryRoot' | 'sourceLocale' | 'locales'>,
+  config: Pick<ResolvedDocsBuildConfig, 'repositoryRoot' | 'sourceLocale' | 'locales'>,
 ): Promise<{
   translations: Record<string, Record<string, string>>;
   warnings: string[];
@@ -299,7 +288,7 @@ async function stageFile(
 export async function assembleAPIDocumentation(
   project: Record<string, unknown>,
   metadata: APIDocumentationMetadata,
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   selectedPackageKeys: string[] = metadata.packages.map(pkg => pkg.key),
 ): Promise<{ packages: number; exports: number; warnings: string[] }> {
   if (metadata.packages.length === 0 || selectedPackageKeys.length === 0) {
@@ -486,38 +475,38 @@ export async function assembleAPIDocumentation(
     }
   }
 
-  for (const pkg of selectedPackages) {
-    for (const locale of config.locales) {
-      const translations = preservedTranslations.get(locale) ?? {};
-      const localized =
-        locale === config.sourceLocale
-          ? localizeProject(project, source, undefined, locale)
-          : localizeProjectWithFallback(
-              project,
-              source,
-              translations,
-              locale,
-            );
-      const snapshot = Object.assign(localized, { locale, apiSnapshot });
-      const contents = `${JSON.stringify(snapshot)}\n`;
-      const contentHash = createHash('sha256').update(contents).digest('hex');
-      const contentPath = `api/snapshots/${contentHash}.api.json`;
-      const existing = contentSnapshots.get(contentPath);
+  for (const locale of config.locales) {
+    const translations = preservedTranslations.get(locale) ?? {};
+    const localized =
+      locale === config.sourceLocale
+        ? localizeProject(project, source, undefined, locale)
+        : localizeProjectWithFallback(
+            project,
+            source,
+            translations,
+            locale,
+          );
+    const snapshot = Object.assign(localized, { locale, apiSnapshot });
+    const contents = `${JSON.stringify(snapshot)}\n`;
+    const contentHash = createHash('sha256').update(contents).digest('hex');
+    const contentPath = `api/snapshots/${contentHash}.api.json`;
+    const existing = contentSnapshots.get(contentPath);
 
-      if (existing !== undefined && existing !== contents) {
-        throw new Error(`API snapshot hash collision: ${contentPath}`);
-      }
-      contentSnapshots.set(contentPath, contents);
+    if (existing !== undefined && existing !== contents) {
+      throw new Error(`API snapshot hash collision: ${contentPath}`);
+    }
+    contentSnapshots.set(contentPath, contents);
+    const missing = source.fields.filter(
+      field =>
+        field.sourceLocale !== locale &&
+        translations[field.key] === undefined,
+    ).length;
+
+    for (const pkg of selectedPackages) {
       localizedSnapshots.set(
         `${pkg.key}\0${locale}`,
         `${JSON.stringify({ $ref: contentPath })}\n`,
       );
-      const missing = source.fields.filter(
-        field =>
-          field.sourceLocale !== locale &&
-          translations[field.key] === undefined,
-      ).length;
-
       if (missing > 0) {
         warnings.push(
           `${pkg.key}/${locale}: ${missing} API comment fields use source-language fallback.`,
@@ -529,7 +518,9 @@ export async function assembleAPIDocumentation(
   const previousPackages = previous?.packages ?? [];
   const generatedPackages = selectedPackages.map(pkg => {
     const previousPackage = previousPackages.find(item => item.key === pkg.key);
+    const fields = collectCommentFields(project, [pkg], { sourceLocale: config.sourceLocale });
     const version: APIVersion = {
+      translatedLocales: config.locales.filter(locale => fields.every(field => field.sourceLocale === locale || preservedTranslations.get(locale)?.[field.key] !== undefined)),
       version: pkg.version,
       snapshot: snapshotHash,
       commit: metadata.commit,

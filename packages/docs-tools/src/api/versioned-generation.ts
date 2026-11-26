@@ -1,10 +1,11 @@
+import { synchronizeAPILocales } from './locales';
 import { randomUUID } from 'node:crypto';
 import { cp, link, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseAPIManifest } from '@galacean/docs-site';
 import type { APIManifest } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { assertNoSymlinkPath } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { assembleAPIDocumentation } from './assemble';
 import type { APIDocumentationMetadata } from './assemble';
 import { getErrorCode, readJSON, readOptionalJSON } from './read-json';
@@ -21,7 +22,7 @@ export interface BuiltAPIVersion {
 }
 
 export type APIVersionBuilder = (
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   repository: string,
   source: 'tag' | 'current',
@@ -140,7 +141,7 @@ function latestVersion(manifest: APIManifest, versions: string[]): APIManifest {
 }
 
 function validateBuiltVersion(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   built: BuiltAPIVersion,
 ): void {
@@ -170,7 +171,7 @@ function validateBuiltVersion(
   }
 }
 
-function sourceRoot(config: DocsSiteConfig, apiDirectory: string): DocsSiteConfig {
+function sourceRoot(config: ResolvedDocsBuildConfig, apiDirectory: string): ResolvedDocsBuildConfig {
   return { ...config, apiDirectory };
 }
 
@@ -179,7 +180,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function currentWorkspaceVersion(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   configuredVersions: string[],
 ): Promise<string | undefined> {
   const packages = config.apiPackages ?? [];
@@ -214,7 +215,7 @@ async function currentWorkspaceVersion(
 }
 
 export async function generateVersionedAPIDocumentation(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   selectedPackageKeys: string[],
   buildVersion: APIVersionBuilder,
   reportStatus?: (status: {
@@ -249,6 +250,7 @@ export async function generateVersionedAPIDocumentation(
       `API version is not configured: ${selectedVersion ?? '(none)'}`,
     );
   }
+  const warnings: string[] = [];
   const currentVersion = await currentWorkspaceVersion(
     config,
     versionManifest.versions,
@@ -256,7 +258,14 @@ export async function generateVersionedAPIDocumentation(
   const versionStates = await Promise.all(
     [selectedVersion].map(async version => {
       try {
-        const state = await inspectAPIVersionState(config, version);
+        let state = await inspectAPIVersionState(config, version);
+
+        if (state.status === 'locales-pending') {
+          const result = await synchronizeAPILocales(config, version);
+
+          warnings.push(...result.warnings);
+          state = { status: 'complete' };
+        }
 
         return {
           version,
@@ -312,8 +321,6 @@ export async function generateVersionedAPIDocumentation(
       built,
     });
   }
-
-  const warnings: string[] = [];
 
   if (builds.length > 0) {
     const buildRoot = path.join(

@@ -1,6 +1,6 @@
 {
   "name": "@galacean/docs-tools",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "Documentation generation tools for Galacean repositories",
   "type": "module",
   "files": [
@@ -21,14 +21,19 @@
   "dependencies": {
     "@galacean/docs-site": "workspace:*",
     "html-to-text": "^10.0.1",
+    "htmlparser2": "^10.1.0",
     "jsonc-parser": "^3.3.1",
     "pinyin-pro": "^3.29.5",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
     "semver": "^7.7.2",
     "tsx": "catalog:",
     "typedoc": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
+    "@types/mdast": "^4.0.4",
     "@types/node": "catalog:",
     "@types/semver": "^7.7.1",
     "vitest": "catalog:"

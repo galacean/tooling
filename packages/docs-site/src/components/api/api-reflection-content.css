@@ -1,7 +1,7 @@
 .api-source {
   display: inline-flex;
   color: var(--site-muted);
-  margin-left: 4px;
+  margin-inline-start: 4px;
 }
 .api-source.icon-action {
   display: inline-grid;

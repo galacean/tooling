@@ -1,11 +1,12 @@
+import { selectTargetLocales, validateSourceSelection } from '../translations/selection';
+import type { TranslationSelectionOptions } from '../translations/selection';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isRecord, parseAPIManifest, parseProject } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
-import { isSafeRelativePath } from '../path-validation';
-import { readAPITranslationArchive } from './translation-archive';
+import { assertNoSymlinkPath, isSafeRelativePath, isWithin } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
+import { readAPITranslationArchive, reusableAPITranslations } from './translation-archive';
 import { readJSON } from './read-json';
 import { sourceProject } from './snapshot';
 import {
@@ -18,7 +19,7 @@ import { compareVersions, parseVersion } from './versions';
 import { readAPISnapshot } from './snapshot-reference';
 
 type ExtractConfig = Pick<
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
   | 'repositoryRoot'
   | 'sourceLocale'
   | 'locales'
@@ -55,20 +56,9 @@ export interface TranslationInput {
   translationSource: TranslationSource;
 }
 
-export interface ExtractOptions {
+export interface ExtractOptions extends TranslationSelectionOptions {
   version?: string;
   locale?: string;
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 function isUnknownArray(value: unknown): value is unknown[] {
@@ -82,12 +72,12 @@ export async function loadTranslationInput(
   const targetPath = path.resolve(config.repositoryRoot, targetFile);
   const relativePath = path.relative(config.apiDirectory, targetPath);
   const segments = relativePath.split(path.sep);
-  const localeMatch = /^([a-z]{2}(?:-[A-Za-z0-9]+)*)\.api\.json$/u.exec(
+  const localeMatch = /^([a-z]{2,8}(?:-[A-Za-z0-9]+)*)\.api\.json$/u.exec(
     path.basename(targetPath),
   );
 
   if (
-    !isWithin(config.apiDirectory, targetPath) ||
+    !isWithin(config.apiDirectory, targetPath, 'descendant') ||
     segments.length !== 3 ||
     localeMatch?.[1] === undefined ||
     segments[0] === undefined ||
@@ -208,7 +198,7 @@ export async function loadTranslationInput(
     configHash,
     fields: translationSource.fields
       .filter(field => field.sourceLocale !== locale)
-      .map(({ key, sourceText, tokens }) => ({ key, sourceText, tokens })),
+      .map(({ key, sourceText, tokens, sourceLocale }) => ({ key, sourceText, tokens, sourceLocale })),
     project,
     targetProject,
     apiSnapshot,
@@ -221,6 +211,13 @@ export async function extractTranslationTasks(
   config: ExtractConfig,
   options: ExtractOptions = {},
 ): Promise<ExtractedTranslationTask[]> {
+  validateSourceSelection([config.sourceLocale], options.sourceLocale);
+  if (options.locale !== undefined && options.targetLocales !== undefined) {
+    throw new Error('--locale and --target-locales cannot be combined');
+  }
+  if (options.collections !== undefined || options.pages !== undefined) {
+    throw new Error('API extraction does not accept manual collection/page filters');
+  }
   let selectedTargetFiles = targetFiles;
 
   if (selectedTargetFiles.length === 0) {
@@ -234,9 +231,9 @@ export async function extractTranslationTasks(
     if (version === undefined || !versions.includes(version)) {
       throw new Error(`API version is not configured: ${version ?? '(none)'}`);
     }
-    const locales = options.locale === undefined
-      ? config.locales.filter(locale => locale !== config.sourceLocale)
-      : [options.locale];
+    const locales = selectTargetLocales(config.locales, config.sourceLocale, {
+      ...options, ...(options.locale === undefined ? {} : { targetLocales: [options.locale] }),
+    });
 
     if (
       locales.some(
@@ -252,8 +249,11 @@ export async function extractTranslationTasks(
     const packageKeys = config.apiPackages?.map(pkg => pkg.key) ??
       manifest.packages.map(pkg => pkg.key);
 
+    if (options.packages?.some(key => !packageKeys.includes(key)) === true) {
+      throw new Error('Unknown API package selection');
+    }
     selectedTargetFiles = [];
-    for (const packageKey of packageKeys) {
+    for (const packageKey of packageKeys.filter(key => options.packages === undefined || options.packages.includes(key))) {
       const packageVersion = manifest.packages
         .find(pkg => pkg.key === packageKey)
         ?.versions.find(item => item.version === version);
@@ -289,6 +289,7 @@ export async function extractTranslationTasks(
   );
   const seenTargets = new Set<string>();
   const pendingInputs: TranslationInput[] = [];
+  const reusableByTarget = new Map<string, Record<string, string>>();
 
   for (const input of inputs) {
     if (seenTargets.has(input.targetPath)) {
@@ -306,6 +307,7 @@ export async function extractTranslationTasks(
       );
 
       if (archive !== undefined) {
+        reusableByTarget.set(input.targetPath, reusableAPITranslations(archive, input.translationSource.fields, input.locale));
         validateTranslation(
           {
             version: archive.version,
@@ -336,6 +338,10 @@ export async function extractTranslationTasks(
     return [];
   }
 
+  if (options.dryRun === true) {
+    return pendingInputs.map(input => ({ taskPath: '', targetPath: input.targetPath, packageKey: input.packageKey,
+      version: input.version, locale: input.locale, fields: input.fields.length }));
+  }
   const apiTranslationDirectory = config.apiTranslationDirectory ??
     path.join(config.repositoryRoot, 'tmp/docs-tools/api-translation');
 
@@ -362,6 +368,7 @@ export async function extractTranslationTasks(
         sourcePath: input.sourcePath,
         targetPath: input.targetPath,
         fields: input.fields,
+        reusableTranslations: reusableByTarget.get(input.targetPath) ?? {},
       };
       const taskPath = path.join(
         runDirectory,

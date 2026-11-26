@@ -1,12 +1,11 @@
 import { isRecord } from '@galacean/docs-site';
+import type { ManualNavigationItem as PublishedManualItem } from '@galacean/docs-site';
 import { isSafePathSegment } from '../path-validation';
 
-export interface ManualNavigationItem {
-  slug: string;
-  title: Record<string, string>;
-  group: Record<string, string>;
-  format?: Record<string, 'markdown' | 'html'>;
-}
+export type ManualNavigationItem = Pick<
+  PublishedManualItem<string>,
+  'slug' | 'contentLocales' | 'translationStatus' | 'title' | 'group' | 'format'
+>;
 
 function isLocalizedRecord(value: unknown): value is Record<string, string> {
   return (
@@ -27,6 +26,8 @@ export function isManualNavigation(
         isSafePathSegment(item['slug']) &&
         isLocalizedRecord(item['title']) &&
         isLocalizedRecord(item['group']) &&
+        (item['contentLocales'] === undefined || isLocalizedRecord(item['contentLocales'])) &&
+        (item['translationStatus'] === undefined || (isLocalizedRecord(item['translationStatus']) && Object.values(item['translationStatus']).every(value => ['source', 'translated', 'missing', 'needs-review'].includes(value)))) &&
         (item['format'] === undefined ||
           (isRecord(item['format']) &&
             Object.values(item['format']).every(

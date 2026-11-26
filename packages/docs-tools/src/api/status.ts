@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { parseAPIManifest } from '@galacean/docs-site';
-import type { DocsSiteConfig } from '../config/site-config';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { isSafeRelativePath } from '../path-validation';
 import { loadTranslationInput } from './extract';
 import { readOptionalJSON } from './read-json';
@@ -22,7 +22,7 @@ export interface APIStatusResult {
 }
 
 export async function getAPIStatus(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   selectedVersion?: string,
 ): Promise<APIStatusResult[]> {
   if (config.apiVersions === undefined) {

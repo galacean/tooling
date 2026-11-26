@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { commonMessages } from '../../i18n/messages';
+import type { CommonSiteMessages } from '../../i18n/messages';
 import { Icon } from './icon';
+
+export type ImageViewerMessages = Pick<CommonSiteMessages,
+  | 'imageViewer' | 'imageControls'
+  | 'closeImageViewer' | 'closeImageViewerHint'
+  | 'previousImage' | 'previousImageHint' | 'nextImage' | 'nextImageHint'
+  | 'zoomOut' | 'zoomOutHint' | 'zoomIn' | 'zoomInHint'
+  | 'originalImageSize' | 'originalImageSizeHint'
+  | 'fitImageToScreen' | 'fitImageToScreenHint'
+>;
 
 export interface ImageViewerImage {
   src: string;
@@ -12,6 +23,7 @@ export interface ImageViewerImage {
 }
 
 export interface ImageViewerProps {
+  messages?: ImageViewerMessages;
   images: readonly ImageViewerImage[];
   initialIndex: number;
   returnFocusTo?: () => HTMLElement | undefined;
@@ -58,6 +70,7 @@ const getStageSize = (
 });
 
 export function ImageViewer({
+  messages: t = commonMessages.en,
   images,
   initialIndex,
   returnFocusTo,
@@ -446,7 +459,7 @@ export function ImageViewer({
       className="image-viewer"
       role="dialog"
       aria-modal="true"
-      aria-label="Image viewer"
+      aria-label={t.imageViewer}
       tabIndex={-1}
       onClick={event => {
         if (dragged.current) {
@@ -465,8 +478,8 @@ export function ImageViewer({
       <button
         className="image-viewer-close"
         type="button"
-        aria-label="Close image viewer"
-        title="Close (Esc)"
+        aria-label={t.closeImageViewer}
+        title={t.closeImageViewerHint}
         onClick={onClose}
       >
         <Icon name="close" />
@@ -576,12 +589,12 @@ export function ImageViewer({
           })}
         </div>
       </div>
-      <div className="image-viewer-toolbar" aria-label="Image controls">
+      <div className="image-viewer-toolbar" aria-label={t.imageControls}>
         <button
           className="image-viewer-control"
           type="button"
-          aria-label="Previous image"
-          title="Previous image (Left arrow)"
+          aria-label={t.previousImage}
+          title={t.previousImageHint}
           onClick={() => move(-1)}
         >
           <Icon name="chevronLeft" />
@@ -592,8 +605,8 @@ export function ImageViewer({
         <button
           className="image-viewer-control"
           type="button"
-          aria-label="Next image"
-          title="Next image (Right arrow)"
+          aria-label={t.nextImage}
+          title={t.nextImageHint}
           onClick={() => move(1)}
         >
           <Icon name="chevronRight" />
@@ -602,8 +615,8 @@ export function ImageViewer({
         <button
           className="image-viewer-control"
           type="button"
-          aria-label="Zoom out"
-          title="Zoom out (-)"
+          aria-label={t.zoomOut}
+          title={t.zoomOutHint}
           onClick={() => setScale(value => Math.max(0.05, value / 1.25))}
         >
           <Icon name="zoomOut" />
@@ -611,8 +624,8 @@ export function ImageViewer({
         <button
           className="image-viewer-control"
           type="button"
-          aria-label="Zoom in"
-          title="Zoom in (+)"
+          aria-label={t.zoomIn}
+          title={t.zoomInHint}
           onClick={() => setScale(value => Math.min(4, value * 1.25))}
         >
           <Icon name="zoomIn" />
@@ -620,8 +633,8 @@ export function ImageViewer({
         <button
           className={`image-viewer-control image-viewer-scale${isSameScale(scale, 1) ? ' is-active' : ''}`}
           type="button"
-          aria-label="View image at original size"
-          title="Original size (1:1)"
+          aria-label={t.originalImageSize}
+          title={t.originalImageSizeHint}
           aria-pressed={isSameScale(scale, 1)}
           onClick={() => setScale(1)}
         >
@@ -630,8 +643,8 @@ export function ImageViewer({
         <button
           className={`image-viewer-control${isSameScale(scale, fitScale) ? ' is-active' : ''}`}
           type="button"
-          aria-label="Fit image to screen"
-          title="Fit to screen"
+          aria-label={t.fitImageToScreen}
+          title={t.fitImageToScreenHint}
           aria-pressed={isSameScale(scale, fitScale)}
           onClick={() => setScale(fitScale)}
         >

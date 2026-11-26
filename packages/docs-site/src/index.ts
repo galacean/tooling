@@ -1,7 +1,8 @@
 import './index.css';
 
+export * from './config';
 export * from './data';
-export * from './i18n';
+export * from './i18n/index';
 export * from './manual';
 export * from './preferences';
 export * from './search';
@@ -12,3 +13,4 @@ export * from './components/shared';
 export * from './components/site';
 export { useTheme } from './providers/theme';
 export type { ThemeMode } from './providers/theme';
+export { DocsI18nProvider } from './providers/i18n';

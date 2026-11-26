@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Link } from 'react-router-dom';
 import { Icon } from '../shared';
 import type { IconName } from '../shared/icon';
+import { SiteLink } from './site-link';
 
 export interface DocsPageSwitcherItem {
   key: string;
@@ -102,13 +102,13 @@ export function DocsPageSwitcher({
 
   return (
     <div className="docs-page-switcher" ref={root}>
-      <Link
+      <SiteLink
         className="docs-page-switcher-current"
         to={currentHref}
         title={label}
       >
         {label}
-      </Link>
+      </SiteLink>
       <button
         ref={trigger}
         type="button"
@@ -138,7 +138,7 @@ export function DocsPageSwitcher({
           onKeyDown={handleMenuKeyDown}
         >
           {items.map(item => (
-            <Link
+            <SiteLink
               key={item.key}
               to={item.href}
               role="menuitem"
@@ -149,7 +149,7 @@ export function DocsPageSwitcher({
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
-            </Link>
+            </SiteLink>
           ))}
         </div>
       )}

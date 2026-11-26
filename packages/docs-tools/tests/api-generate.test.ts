@@ -6,14 +6,17 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'vitest';
 import { ReflectionKind } from 'typedoc';
+import type { JSONOutput } from 'typedoc';
 import {
+  collectTypeDocReflections,
   externalizeTypeDocDependencies,
   generateAPIDocumentation,
+  readAPISnapshot,
 } from '@galacean/docs-tools';
 import type {
   APIDocumentationPackage,
   APIGenerationDependencies,
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
 } from '@galacean/docs-tools';
 
 const execFileAsync = promisify(execFile);
@@ -45,6 +48,7 @@ async function fixture() {
         composite: true,
         declaration: true,
         emitDeclarationOnly: true,
+        rootDir: 'src',
         outDir: 'dist',
       },
       include: ['src/**/*.ts'],
@@ -65,7 +69,7 @@ async function fixture() {
       },
     }),
   );
-  const config: DocsSiteConfig = {
+  const config: ResolvedDocsBuildConfig = {
     repositoryRoot,
     configPath: path.join(repositoryRoot, 'site/site.config.ts'),
     sourceLocale: 'en',
@@ -346,6 +350,68 @@ void test('builds the configured package version from the local workspace when v
     { code: 'ENOENT' },
   );
 });
+
+void test('generates repository-relative source links for nested package files', async t => {
+  const values = await fixture();
+
+  t.onTestFinished(() =>
+    rm(values.repositoryRoot, { recursive: true, force: true }),
+  );
+  values.config.apiVersions = {
+    repository: 'https://github.com/example/project.git',
+    versions: ['1.2.3'],
+  };
+  values.config.sourceLinkTemplate =
+    'https://github.com/example/project/blob/{commit}/{path}#L{line}';
+  const sourceDirectory = path.join(values.packageDirectory, 'src');
+
+  await mkdir(path.join(sourceDirectory, 'model'), { recursive: true });
+  await writeFile(
+    path.join(sourceDirectory, 'model/widget.ts'),
+    'export interface Widget {\n  title: string;\n}\n',
+  );
+  await writeFile(
+    path.join(sourceDirectory, 'index.ts'),
+    "export type { Widget } from './model/widget';\n",
+  );
+  await execFileAsync('git', ['init', '--quiet'], { cwd: values.repositoryRoot });
+  await execFileAsync('git', [
+    '-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+    '-c', 'commit.gpgsign=false', 'commit', '--quiet', '--allow-empty', '-m', 'Fixture',
+  ], { cwd: values.repositoryRoot });
+  const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
+    cwd: values.repositoryRoot,
+  });
+  const commit = stdout.trim();
+
+  await generateAPIDocumentation(values.config);
+  for (const locale of values.config.locales) {
+    const snapshot = await readAPISnapshot(
+      path.join(values.apiDirectory, `widget-dir/1.2.3/${locale}.api.json`),
+      path.dirname(values.apiDirectory),
+      values.repositoryRoot,
+    );
+    const reflections = collectTypeDocReflections(
+      snapshot.value as JSONOutput.ProjectReflection,
+    );
+    const widget = [...reflections.values()].find(item => item.name === 'Widget');
+
+    assert.ok(widget && 'sources' in widget);
+    assert.deepEqual(widget.sources, [{
+      fileName: 'packages/widget-dir/src/model/widget.ts',
+      line: 1,
+      character: 17,
+      url: `https://github.com/example/project/blob/${commit}/packages/widget-dir/src/model/widget.ts#L1`,
+    }]);
+    const title = [...reflections.values()].find(item => item.name === 'title');
+
+    assert.ok(title && 'sources' in title);
+    assert.equal(
+      title.sources?.[0]?.url,
+      `https://github.com/example/project/blob/${commit}/packages/widget-dir/src/model/widget.ts#L2`,
+    );
+  }
+}, 15_000);
 
 void test('requires fixed API versions through the mjs CLI', async t => {
   const values = await fixture();

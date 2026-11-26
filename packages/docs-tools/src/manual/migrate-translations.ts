@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { writeFileAtomically } from '../atomic-write';
-import type { DocsSiteConfig, ManualCollectionConfig } from '../config/site-config';
-import { assertNoSymlinkPath } from '../config/site-config';
+import type { ResolvedDocsBuildConfig, ManualCollectionConfig } from '../config/types';
+import { assertNoSymlinkPath, isWithin } from '../path-validation';
 import { parseJSON } from '../api/read-json';
 import { isSafeSlug } from '../config/validation';
 
@@ -78,18 +78,8 @@ function belongsToCollection(
   );
 }
 
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-}
-
 export async function migrateManualTranslations(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   inputs: ManualTranslationMigrationInput[],
 ): Promise<ManualTranslationMigrationResult> {
   if (inputs.length === 0) {

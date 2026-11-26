@@ -26,9 +26,11 @@ import type {
 import { SearchPanel } from '../../src/components/search/search-panel';
 import type { SearchResult } from '../../src/search';
 import { ThemeProvider } from '../../src/providers/theme';
-import { resolveDocsSiteStorageKeys } from '../../src/components/site/default-docs-site-config';
+import { resolveDocsSiteStorageKeys } from '../../src/config/resolve';
+import { commonMessages } from '../../src/i18n/messages';
 
 const messages: SiteShellMessages = {
+  ...commonMessages.en,
   search: 'Search',
   close: 'Close',
   searchPlaceholder: 'Search docs',
@@ -93,10 +95,12 @@ function RoutedSiteShell({
   pageKind = 'manual',
   includeAPI = true,
   includeSearchHistory = true,
+  messageOverrides = {},
 }: {
   pageKind?: 'manual' | 'api' | 'other';
   includeAPI?: boolean;
   includeSearchHistory?: boolean;
+  messageOverrides?: Partial<SiteShellMessages>;
 } = {}) {
   const { locale = 'en' } = useParams();
   const locales = [
@@ -108,13 +112,13 @@ function RoutedSiteShell({
     <SiteShell
       locale={locale}
       locales={locales}
-      messages={messages}
+      messages={{ ...messages, ...messageOverrides }}
       brandLabel="Example Docs"
-      brandMarkUrls={{
+      brandMarkURLs={{
         light: '/artis-logo.svg',
         dark: '/artis-logo-dark.svg',
       }}
-      docsBrandMarkUrls={{
+      docsBrandMarkURLs={{
         light: '/brand/artis-mark-light.svg',
         dark: '/brand/artis-mark-dark.svg',
       }}
@@ -149,11 +153,13 @@ function renderSite({
   initialEntry = '/en/manual?tab=read#intro',
   includeAPI = true,
   includeSearchHistory = true,
+  messageOverrides = {},
 }: {
   failStorageRead?: boolean;
   initialEntry?: string;
   includeAPI?: boolean;
   includeSearchHistory?: boolean;
+  messageOverrides?: Partial<SiteShellMessages>;
 } = {}) {
   const values = new Map<string, string>();
   const storage = {
@@ -187,6 +193,7 @@ function renderSite({
             path="/:locale"
             element={
               <RoutedSiteShell
+                messageOverrides={messageOverrides}
                 pageKind="other"
                 includeAPI={includeAPI}
                 includeSearchHistory={includeSearchHistory}
@@ -197,6 +204,7 @@ function renderSite({
             path="/:locale/manual"
             element={
               <RoutedSiteShell
+                messageOverrides={messageOverrides}
                 includeAPI={includeAPI}
                 includeSearchHistory={includeSearchHistory}
               />
@@ -209,6 +217,7 @@ function renderSite({
             path="/:locale/api"
             element={
               <RoutedSiteShell
+                messageOverrides={messageOverrides}
                 pageKind="api"
                 includeAPI={includeAPI}
                 includeSearchHistory={includeSearchHistory}
@@ -280,6 +289,21 @@ afterEach(() => {
 });
 
 describe('SiteShell preferences', () => {
+  it.each(['en', 'zh-CN'])('uses configured shell labels for %s', locale => {
+    renderSite({
+      initialEntry: `/${locale}/manual`,
+      messageOverrides: {
+        home: 'Custom home',
+        searchShort: 'Custom search',
+        switchPage: 'Custom switcher',
+      },
+    });
+
+    expect(screen.getByRole('button', { name: 'Custom search' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Custom switcher' }));
+    expect(screen.getByRole('menuitem', { name: 'Custom home' })).toBeDefined();
+  });
+
   it('renders the shared left brand and responsive search for API pages', async () => {
     renderSite({ initialEntry: '/en/api' });
 
@@ -350,24 +374,28 @@ describe('SiteShell preferences', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'API' })).toBeNull();
   });
 
-  it('limits search to manuals when API navigation is disabled', async () => {
+  it.each([
+    { includeAPI: false, label: 'Search manuals', footer: 'Manual', hiddenTerm: 'APIOnlySymbol' },
+    { includeAPI: true, label: commonMessages.en.apiSearchPlaceholder, footer: 'API', hiddenTerm: 'ManualGuide' },
+  ])('limits search to the enabled category ($footer)', async ({ includeAPI, label, footer, hiddenTerm }) => {
     render(
       <SearchPanel
         locale="en"
         brandLabel="Example Docs"
-        brandMarkUrl="/brand.svg"
+        brandMarkURL="/brand.svg"
         historyKey="example:search:en"
         messages={messages}
-        includeAPI={false}
+        includeAPI={includeAPI}
+        includeManual={!includeAPI}
         loadItems={async () =>
           [
             {
               category: 'api',
-              name: 'ApiOnlySymbol',
+              name: 'APIOnlySymbol',
               summary: 'API-only result',
-              keywords: 'ApiOnlySymbol',
+              keywords: 'APIOnlySymbol',
               sourceLocale: 'en',
-              url: '/en/api/example/current/ApiOnlySymbol',
+              url: '/en/api/example/current/APIOnlySymbol',
             },
             {
               category: 'manual',
@@ -384,15 +412,11 @@ describe('SiteShell preferences', () => {
       />,
     );
 
-    const searchInput = screen.getByRole('searchbox', {
-      name: 'Search manuals',
-    });
+    const searchInput = screen.getByRole('searchbox', { name: label });
 
-    expect(searchInput.getAttribute('placeholder')).toBe('Search manuals');
-    expect(document.querySelector('.site-search-footer')?.textContent).toBe(
-      'Manual',
-    );
-    fireEvent.change(searchInput, { target: { value: 'ApiOnlySymbol' } });
+    expect(searchInput.getAttribute('placeholder')).toBe(label);
+    expect(document.querySelector('.site-search-footer')?.textContent).toBe(footer);
+    fireEvent.change(searchInput, { target: { value: hiddenTerm } });
 
     expect(await screen.findByText('No results')).toBeDefined();
   });
@@ -451,13 +475,13 @@ describe('SiteShell preferences', () => {
   it('syncs the current manual title to the browser tab', async () => {
     renderSite({ initialEntry: '/en/manual/first' });
 
-    await waitFor(() => expect(document.title).toBe('first'));
+    await waitFor(() => expect(document.title).toBe('first | Example Docs'));
   });
 
-  it('omits the brand suffix from API document titles', async () => {
+  it('includes the brand suffix in API document titles', async () => {
     renderSite({ initialEntry: '/en/api' });
 
-    await waitFor(() => expect(document.title).toBe('API'));
+    await waitFor(() => expect(document.title).toBe('API | Example Docs'));
   });
 
   it('switches the brand mark with the resolved theme', async () => {
@@ -654,4 +678,14 @@ describe('SiteShell preferences', () => {
       }
     }
   });
+});
+
+it('restores LTR and preserves the route when switching from Arabic to English', async () => {
+  renderSite({ initialEntry: '/ar/manual?tab=read#intro' });
+  await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
+  fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  fireEvent.click(screen.getByRole('option', { name: 'English' }));
+  await waitFor(() => expect(document.documentElement.dir).toBe('ltr'));
+  expect(document.documentElement.lang).toBe('en');
+  expect(screen.getByText('/en/manual?tab=read#intro')).toBeDefined();
 });

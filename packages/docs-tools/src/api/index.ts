@@ -13,3 +13,4 @@ export * from './translations';
 export * from './versioned-generation';
 export * from './versioned-state';
 export * from './versions';
+export * from './locales';

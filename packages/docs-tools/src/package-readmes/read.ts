@@ -1,6 +1,8 @@
+import { readDocumentTranslation } from '../translations/document-archive';
 import { readFile } from 'node:fs/promises';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { readOptionalText } from '../read-optional-text';
+import { assertNoSymlinkPath } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 
 export interface PackageReadmeContent {
   text: string;
@@ -8,7 +10,7 @@ export interface PackageReadmeContent {
 }
 
 export function hasPackageReadme(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   packageKey: string,
 ): boolean {
   return (
@@ -20,13 +22,14 @@ export function hasPackageReadme(
 }
 
 export async function readPackageReadme(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   packageKey: string,
   locale: string,
 ): Promise<PackageReadmeContent> {
-  const packageReadme = config.apiPackages?.find(
+  const pkg = config.apiPackages?.find(
     packageConfig => packageConfig.key === packageKey,
-  )?.readme;
+  );
+  const packageReadme = pkg?.readme;
 
   if (packageReadme === undefined) {
     throw new Error(`Missing source README mapping for package: ${packageKey}`);
@@ -41,32 +44,33 @@ export async function readPackageReadme(
   if (!config.locales.includes(locale)) {
     throw new Error(`Unconfigured README locale: ${locale}`);
   }
-  const localizedPath = packagePaths[locale] ?? sourcePath;
+  const localizedPath = packagePaths[locale];
 
-  await assertNoSymlinkPath(config.repositoryRoot, localizedPath);
-  let text: string;
-  let sourceLocale =
-    packagePaths[locale] === undefined ? packageSourceLocale : locale;
+  if (locale !== packageSourceLocale && localizedPath !== undefined) {
+    const text = await readOptionalText(config.repositoryRoot, localizedPath);
 
-  try {
-    text = await readFile(localizedPath, 'utf8');
-  } catch (error) {
-    if (
-      error === null ||
-      typeof error !== 'object' ||
-      !('code' in error) ||
-      error.code !== 'ENOENT' ||
-      locale === packageSourceLocale
-    ) {
-      throw error;
+    if (text !== undefined) {
+      if (text.trim() === '') {
+        throw new Error(`Empty package README: ${packageKey}/${locale}`);
+      }
+
+      return { text, sourceLocale: locale };
     }
-    await assertNoSymlinkPath(config.repositoryRoot, sourcePath);
-    text = await readFile(sourcePath, 'utf8');
-    sourceLocale = packageSourceLocale;
   }
-  if (text.trim() === '') {
-    throw new Error(`Empty package README: ${packageKey}/${sourceLocale}`);
+  await assertNoSymlinkPath(config.repositoryRoot, sourcePath);
+  const sourceText = await readFile(sourcePath, 'utf8');
+
+  if (sourceText.trim() === '') {
+    throw new Error(`Empty package README: ${packageKey}/${packageSourceLocale}`);
+  }
+  if (locale !== packageSourceLocale) {
+    const archived = await readDocumentTranslation(config, { kind: 'package-readmes', owner: packageKey, key: 'readme',
+      sourceLocale: packageSourceLocale, format: 'markdown', content: sourceText, title: pkg?.name ?? packageKey, group: '' }, locale);
+
+    if (archived.content !== undefined) {
+      return { text: archived.content, sourceLocale: locale };
+    }
   }
 
-  return { text, sourceLocale };
+  return { text: sourceText, sourceLocale: packageSourceLocale };
 }

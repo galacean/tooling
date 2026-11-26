@@ -92,6 +92,7 @@ export function APIReferencePage<
   const location = useLocation();
   const shellContext = useOutletContext<SiteShellOutletContext | null>();
   const setAPIDocumentTitle = shellContext?.setAPIDocumentTitle;
+  const setContentLocales = shellContext?.setContentLocales;
   const [query] = useSearchParams();
   const [apiManifest, setAPIManifest] = useState<APIManifest>();
   const [data, setData] = useState<TData>();
@@ -149,6 +150,12 @@ export function APIReferencePage<
   useEffect(() => {
     setAPIDocumentTitle?.(apiDocumentTitle);
   }, [apiDocumentTitle, setAPIDocumentTitle]);
+
+  useEffect(() => {
+    if (versionInfo !== undefined) {
+      setContentLocales?.(packageHome ? undefined : versionInfo.translatedLocales);
+    }
+  }, [versionInfo, packageHome, setContentLocales]);
 
   useEffect(() => {
     let cancelled = false;
@@ -321,15 +328,7 @@ export function APIReferencePage<
 
   return (
     <APIReferenceLayout
-      messages={{
-        ...t,
-        collapseSidebar:
-          t.collapseSidebar ??
-          (locale.startsWith('zh') ? '收起侧栏' : 'Collapse sidebar'),
-        expandSidebar:
-          t.expandSidebar ??
-          (locale.startsWith('zh') ? '展开侧栏' : 'Expand sidebar'),
-      }}
+      messages={t}
       collapsed={collapsed}
       onToggleCollapsed={() => setCollapsed(value => !value)}
       drawerOpen={drawer}

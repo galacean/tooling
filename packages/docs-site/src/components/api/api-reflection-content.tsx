@@ -1,12 +1,15 @@
+import { useDocsI18n } from '../../providers/i18n';
+import { getLocaleDefinition } from '../../i18n/registry';
 import type { ReactNode } from 'react';
 import { Icon, MarkdownContent } from '../shared';
+import type { MarkdownMessages } from '../shared/markdown';
 
 export interface APICommentProps {
   text: string | undefined;
   locale: string;
   sourceLocale: string | undefined;
   getLocaleLabel: (locale: string) => string;
-  messages: {
+  messages: Partial<MarkdownMessages> & {
     noDescription: string;
     original: string;
     copy: string;
@@ -26,6 +29,8 @@ export function APIComment({
   resolveLink,
   empty = false,
 }: APICommentProps) {
+  const i18n = useDocsI18n();
+
   if (text === undefined) {
     return empty ? (
       <p className="api-no-description">{t.noDescription}</p>
@@ -33,8 +38,9 @@ export function APIComment({
   }
 
   return (
-    <div className="api-comment">
+    <div className="api-comment" lang={sourceLocale ?? locale} dir={getLocaleDefinition(sourceLocale ?? locale, i18n.localeDefinitions).direction}>
       <MarkdownContent
+        messages={t}
         text={text}
         copyLabel={t.copy}
         copied={t.copied}

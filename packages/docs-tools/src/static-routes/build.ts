@@ -1,43 +1,22 @@
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { getCommonMessages, getLocaleDefinition } from '@galacean/docs-site';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  getAPISymbolRouteSegment,
+  localePath,
   isRecord,
   parseAPIManifest,
 } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig, SitePageConfig } from '../config/site-config';
+import { assertNoSymlinkPath, isWithin } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { isManualNavigation } from '../manual/navigation';
-import { isSafePathSegment } from '../path-validation';
 import { readJSON } from '../api/read-json';
-
-interface StaticRoute {
-  locale: string;
-  relativePath: string;
-}
+import { collectStaticRoutes } from './collect-routes';
+import { copyManualAssets } from './copy-manual-assets';
+import { escapeHTML, parseRouteTemplate } from './assemble-page';
 
 interface StaticRouteOptions {
   base?: string;
   origin?: string;
-}
-
-function errorCode(error: unknown): string | undefined {
-  return error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-    ? error.code
-    : undefined;
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 function isSearchLinkArray(value: unknown): value is { url: string }[] {
@@ -65,20 +44,6 @@ function normalizeBase(value: string | undefined): string {
   }
 
   return segments.length === 0 ? '/' : `/${segments.join('/')}/`;
-}
-
-function escapeHTML(value: string): string {
-  return value.replace(
-    /[&<>"']/gu,
-    character =>
-      ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;',
-      })[character] ?? character,
-  );
 }
 
 async function directoryBytes(directory: string): Promise<number> {
@@ -110,7 +75,7 @@ async function directoryBytes(directory: string): Promise<number> {
 }
 
 export async function buildStaticRoutes(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   { base: baseValue, origin }: StaticRouteOptions = {},
 ): Promise<{ routes: number; bytes: number; base: string }> {
   if (config.siteName === undefined) {
@@ -140,115 +105,72 @@ export async function buildStaticRoutes(
   if (!isManualNavigation(navigationValue)) {
     throw new Error('Invalid manual navigation');
   }
-  const template = await readFile(path.join(dist, 'index.html'), 'utf8');
-  const routes = new Map<string, StaticRoute>();
-  const diskPaths = new Map<string, string>();
+  const template = parseRouteTemplate(await readFile(path.join(dist, 'index.html'), 'utf8'), config.i18n);
+  const routes = collectStaticRoutes(config, config.siteName, navigationValue, apiPackages);
 
-  function add(locale: string, segments: string[] = []): void {
-    const route = `/${[locale, ...segments].map(encodeURIComponent).join('/')}/`;
-    const relativePath = [locale, ...segments].join('/');
-    const folded = relativePath.toLocaleLowerCase('en-US');
+  if (routes.size > 10000) {
+    const counts = Object.fromEntries(config.locales.map(locale => [locale, [...routes.values()].filter(page => page.locale === locale).length]));
 
-    if (segments.some(segment => !isSafePathSegment(segment))) {
-      throw new Error(`Unsafe static route: ${route}`);
-    }
-    if (diskPaths.has(folded) && diskPaths.get(folded) !== relativePath) {
-      throw new Error(`Case-insensitive static route collision: ${route}`);
-    }
-    diskPaths.set(folded, relativePath);
-    routes.set(route, { locale, relativePath });
+    throw new Error(`Static site artifact too large: ${routes.size} routes; locales ${JSON.stringify(counts)}`);
   }
+  const defaultHome = localePath(config.defaultLocale ?? config.sourceLocale);
+  const sitemap: string[] = [];
+  const routeHref = (route: string) => {
+    const pathname = `${base}${route.slice(1)}`;
 
-  for (const locale of config.locales) {
-    add(locale);
-    for (const page of config.pages ?? []) {
-      if (page.slug !== null) {
-        add(locale, [page.slug]);
-      }
-    }
-    if (config.apiConfigured !== false) {
-      add(locale, ['api']);
-    }
-    if (config.manualConfigured !== false) {
-      add(locale, ['manual']);
-      for (const manual of navigationValue) {
-        add(locale, ['manual', manual.slug]);
-      }
-    }
-    for (const pkg of apiPackages) {
-      add(locale, ['api', pkg.key]);
-      for (const version of [pkg.current, ...pkg.versions]) {
-        for (const entry of version.entries) {
-          for (const symbol of entry.symbols) {
-            add(locale, [
-              'api',
-              pkg.key,
-              version.version,
-              getAPISymbolRouteSegment(entry.symbols, symbol.name),
-            ]);
-          }
-        }
-      }
-    }
-  }
+    return origin === undefined ? pathname : new URL(pathname, origin).href;
+  };
 
-  for (const [route, info] of routes) {
-    const directory = path.join(dist, info.relativePath);
-    const pageSlug = info.relativePath.split('/')[1];
-    const pageTitle = config.pages?.find(
-      (page): page is Extract<SitePageConfig, { slug: string }> =>
-        page.slug === pageSlug,
-    )?.title[info.locale];
-    const canonical =
-      origin === undefined
-        ? ''
-        : `<link rel="canonical" href="${escapeHTML(
-            new URL(`${base}${route.slice(1)}`, origin).href,
-          )}" />`;
-    const routeSuffix = info.relativePath
-      .split('/')
-      .slice(1)
-      .map(encodeURIComponent)
-      .join('/');
-    const alternates = config.locales
-      .map(locale => {
-        const localizedPath = `${base}${encodeURIComponent(locale)}/${routeSuffix.length === 0 ? '' : `${routeSuffix}/`}`;
-        const href =
-          origin === undefined
-            ? localizedPath
-            : new URL(localizedPath, origin).href;
+  for (const [pathname, page] of routes) {
+    const directory = path.join(dist, page.locale, ...page.segments);
+    const canonical = origin === undefined ? undefined : routeHref(pathname);
+    const alternates = (page.alternateLocales ?? config.locales).filter(locale => routes.has(localePath(locale, page.segments))).map(locale => ({ locale, href: routeHref(localePath(locale, page.segments)) }));
+    const html = template.render(page, canonical, alternates);
 
-        return `<link rel="alternate" hreflang="${escapeHTML(locale)}" href="${escapeHTML(href)}" />`;
-      })
-      .join('');
-    const titledTemplate =
-      pageTitle === undefined
-        ? template
-        : /<title>[^<]*<\/title>/u.test(template)
-          ? template.replace(
-              /<title>[^<]*<\/title>/u,
-              `<title>${escapeHTML(pageTitle)}</title>`,
-            )
-          : template.replace(
-              '</head>',
-              `<title>${escapeHTML(pageTitle)}</title></head>`,
-            );
-    const html = titledTemplate
-      .replace('lang="zh-CN"', `lang="${escapeHTML(info.locale)}"`)
-      .replace('</head>', `${canonical}${alternates}</head>`);
-
+    if (page.includeInSitemap && canonical !== undefined) {
+      sitemap.push(canonical);
+    }
+    await assertNoSymlinkPath(config.repositoryRoot, directory);
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, 'index.html'), html);
+    if (pathname === defaultHome) {
+      await writeFile(path.join(dist, 'index.html'), html);
+    }
   }
-  const home = `${base}${config.locales[0] ?? config.sourceLocale}/`;
+  const sitemapPath = path.join(dist, 'sitemap.xml');
+  const robotsPath = path.join(dist, 'robots.txt');
 
-  await writeFile(
-    path.join(dist, '404.html'),
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1"><title>404 · ${escapeHTML(config.siteName)}</title>
-  <link rel="icon" href="${base}favicon.svg"></head><body style="font-family:system-ui;padding:48px">
-  <h1>404 · Page not found</h1><p><a href="${home}">Home</a></p></body></html>\n`,
-  );
+  if (origin !== undefined) {
+    await writeFile(sitemapPath, '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      sitemap.map(url => `  <url><loc>${escapeHTML(url)}</loc></url>`).join('\n') + '\n</urlset>\n');
+  } else {
+    await rm(sitemapPath, { force: true });
+  }
+  if (base === '/' && origin !== undefined) {
+    await writeFile(robotsPath, `User-agent: *\nAllow: /\nSitemap: ${new URL('/sitemap.xml', origin).href}\n`);
+  } else {
+    await rm(robotsPath, { force: true });
+  }
+  const homeHref = config.homeHref ?? '/';
+  const home = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(homeHref)
+    ? homeHref
+    : `${base}${homeHref.replace(/^\//u, '')}`;
+
+  const errorPage = (locale: string) => {
+    const messages = getCommonMessages(locale, config.i18n);
+
+    return `<!doctype html><html lang="${escapeHTML(locale)}" dir="${getLocaleDefinition(locale, config.i18n?.localeDefinitions).direction}"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+  <title>404 · ${escapeHTML(config.siteName!)}</title>
+  <link rel="icon" href="${escapeHTML(base)}favicon.svg"></head><body style="font-family:system-ui;padding:48px">
+  <h1>404 · ${escapeHTML(messages.notFound)}</h1><p><a href="${escapeHTML(home)}">${escapeHTML(messages.home)}</a></p></body></html>\n`;
+  };
+
+  await writeFile(path.join(dist, '404.html'), errorPage(config.defaultLocale ?? config.sourceLocale));
+  for (const locale of config.locales) {
+    await writeFile(path.join(dist, locale, '404.html'), errorPage(locale));
+  }
   await writeFile(path.join(dist, '.nojekyll'), '');
   await writeFile(
     path.join(dist, 'routes.json'),
@@ -269,103 +191,22 @@ export async function buildStaticRoutes(
         throw new Error(`Search route has no static entry: ${result.url}`);
       }
     }
-    for (const manual of navigationValue) {
-      const format = manual.format?.[locale] ?? 'markdown';
-      const extension = format === 'html' ? 'html' : 'md';
-      const contentPath = path.join(
-        config.manualDirectory,
-        locale,
-        `${manual.slug}.${extension}`,
-      );
-      const content = await readFile(contentPath, 'utf8');
-      const targets =
-        format === 'html'
-          ? [
-              ...content.matchAll(
-                /(?:^|[\s<])(?:href|src)\s*=\s*["']([^"']+)["']/giu,
-              ),
-            ].map(match => match[1])
-          : [...content.matchAll(/!?(?:\[[^\]]*\])\(([^)]+)\)/gu)].map(
-              match => match[1],
-            );
-
-      for (const target of targets) {
-        if (
-          target === undefined ||
-          /^(?:https?:|mailto:|tel:|data:|\/\/)/iu.test(target)
-        ) {
-          continue;
-        }
-        const url = new URL(
-          target,
-          `https://local.invalid/${locale}/manual/${manual.slug}/`,
-        );
-
-        if (routes.has(url.pathname)) {
-          continue;
-        }
-        const manualPrefix = `/${locale}/manual/`;
-
-        if (
-          !/\.(?:png|jpe?g|gif|webp|svg|pdf|mp4|webm|zip)$/iu.test(
-            url.pathname,
-          ) ||
-          !url.pathname.startsWith(manualPrefix)
-        ) {
-          throw new Error(
-            `Invalid manual link: ${locale}/${manual.slug} -> ${target}`,
-          );
-        }
-        const assetSegments = url.pathname
-          .slice(manualPrefix.length)
-          .split('/')
-          .map(decodeURIComponent);
-        const assetPath = path.resolve(
-          config.manualDirectory,
-          locale,
-          ...assetSegments,
-        );
-
-        if (
-          assetSegments.some(segment => !isSafePathSegment(segment)) ||
-          !isWithin(path.join(config.manualDirectory, locale), assetPath)
-        ) {
-          throw new Error(
-            `Unsafe manual asset link: ${locale}/${manual.slug} -> ${target}`,
-          );
-        }
-        await assertNoSymlinkPath(config.repositoryRoot, assetPath);
-        let metadata;
-
-        try {
-          metadata = await stat(assetPath);
-        } catch (error) {
-          if (errorCode(error) === 'ENOENT') {
-            throw new Error(
-              `Manual asset does not exist: ${locale}/${manual.slug} -> ${target}`,
-              { cause: error },
-            );
-          }
-          throw error;
-        }
-        if (!metadata.isFile()) {
-          throw new Error(
-            `Manual asset is not a file: ${locale}/${manual.slug} -> ${target}`,
-          );
-        }
-      }
-    }
+    await copyManualAssets(config, locale, navigationValue, routes, dist);
   }
-  for (const match of template.matchAll(/(?:src|href)="([^"#]+)"/gu)) {
-    const resource = match[1];
-
-    if (resource === undefined || /^https?:\/\//u.test(resource)) {
+  for (const resource of template.resources) {
+    if (/^(?:#|[a-z][a-z\d+.-]*:|\/\/)/iu.test(resource)) {
       continue;
     }
     if (!resource.startsWith(base)) {
       throw new Error(`Resource is outside site base ${base}: ${resource}`);
     }
-    await stat(path.join(dist, resource.slice(base.length)));
+    const pathname = decodeURIComponent(new URL(resource, 'https://local.invalid').pathname);
+    const filename = path.join(dist, pathname.slice(base.length));
+
+    if (!pathname.startsWith(base) || !isWithin(dist, filename)) {
+      throw new Error(`Resource is outside site base ${base}: ${resource}`);
+    }
+    await stat(filename);
   }
   const bytes = await directoryBytes(dist);
 

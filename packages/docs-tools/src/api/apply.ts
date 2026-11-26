@@ -3,8 +3,8 @@ import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import path from 'node:path';
 import { isRecord, parseAPIManifest, parseProject } from '@galacean/docs-site';
 import type { APIManifest, APIVersion } from '@galacean/docs-site';
-import { assertNoSymlinkPath } from '../config/site-config';
-import type { DocsSiteConfig } from '../config/site-config';
+import { assertNoSymlinkPath, isSafeRelativePath, isWithin } from '../path-validation';
+import type { ResolvedDocsBuildConfig } from '../config/types';
 import { loadTranslationInput } from './extract';
 import {
   buildTranslationSource,
@@ -18,8 +18,8 @@ import type { DocumentationPackage } from './translations';
 import { readJSON } from './read-json';
 import { cleanAPISnapshots } from './snapshot-cleanup';
 import { readAPISnapshot } from './snapshot-reference';
-import { sourceProject } from './snapshot';
-import { writeAPITranslationArchive } from './translation-archive';
+import { localizedSnapshotHash } from './snapshot';
+import { translationFieldHash, writeAPITranslationArchive } from './translation-archive';
 
 interface TranslationTaskField {
   key: string;
@@ -72,38 +72,17 @@ interface ApplyOutput {
   apiSnapshot: Record<string, unknown>;
   source: Record<string, unknown>;
   translations: Record<string, string>;
+  sourceFields: Record<string, string>;
 }
 
 type ApplyConfig = Pick<
-  DocsSiteConfig,
+  ResolvedDocsBuildConfig,
   | 'repositoryRoot'
   | 'sourceLocale'
   | 'locales'
   | 'apiDirectory'
   | 'apiTranslationDirectory'
 >;
-
-function isWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-}
-
-function isSafeRelativePath(value: string): boolean {
-  return (
-    value.length > 0 &&
-    !path.isAbsolute(value) &&
-    !value.includes('\\') &&
-    value
-      .split(/[\\/]/u)
-      .every(segment => segment !== '' && segment !== '.' && segment !== '..')
-  );
-}
 
 function isTaskField(value: unknown): value is TranslationTaskField {
   return (
@@ -214,7 +193,7 @@ function resolveManifestSnapshot(
   }
   const filename = path.resolve(dataRoot, relativePath);
 
-  if (!isWithin(dataRoot, filename)) {
+  if (!isWithin(dataRoot, filename, 'descendant')) {
     throw new Error(
       `API snapshot path leaves the data directory: ${relativePath}`,
     );
@@ -242,7 +221,7 @@ async function loadVersionSnapshots(
   }
   const snapshots: Record<string, unknown> = {};
 
-  for (const locale of locales) {
+  for (const locale of Object.keys(version.json)) {
     const relativePath = version.json[locale];
 
     if (relativePath === undefined) {
@@ -377,9 +356,9 @@ export async function applyTranslationPairsWithRename(
     const runDirectory = path.dirname(taskPath);
 
     if (
-      !isWithin(workRoot, taskPath) ||
+      !isWithin(workRoot, taskPath, 'descendant') ||
       path.dirname(translationPath) !== runDirectory ||
-      !isWithin(runDirectory, translationPath)
+      !isWithin(runDirectory, translationPath, 'descendant')
     ) {
       throw new Error(
         `Task and translation files must share a run directory inside ${workRoot}`,
@@ -407,7 +386,7 @@ export async function applyTranslationPairsWithRename(
       taskValue.targetPath,
     );
 
-    if (!isWithin(config.apiDirectory, absoluteTarget)) {
+    if (!isWithin(config.apiDirectory, absoluteTarget, 'descendant')) {
       throw new Error(
         `API target path leaves the configured API directory: ${taskValue.targetPath}`,
       );
@@ -450,6 +429,7 @@ export async function applyTranslationPairsWithRename(
       sourceHash: input.sourceHash,
       apiSnapshot: input.apiSnapshot,
       source: input.project,
+      sourceFields: Object.fromEntries(input.translationSource.fields.map(field => [field.key, translationFieldHash(field)])),
       translations: translation.translations,
     });
   }
@@ -667,11 +647,7 @@ export async function applyTranslationPairsWithRename(
         updatedSnapshots,
         first.apiSnapshot,
       );
-      const snapshotHash = contentHash({
-        source: sourceProject(sourceSnapshot),
-        metadata: first.apiSnapshot,
-        locales,
-      });
+      const snapshotHash = localizedSnapshotHash(sourceSnapshot, locales);
 
       manifest = updateManifestSnapshot(
         manifest,
@@ -681,6 +657,17 @@ export async function applyTranslationPairsWithRename(
       );
     }
   }
+  for (const output of outputs) {
+    const pkg = manifest.packages.find(pkg => pkg.key === output.packageKey);
+    const item = pkg?.versions.find(item => item.version === output.version);
+
+    if (pkg !== undefined && item !== undefined) {
+      item.translatedLocales = [...new Set([...(item.translatedLocales ?? [config.sourceLocale]), output.locale])];
+      if (pkg.current.packageVersion === output.version) {
+        pkg.current.translatedLocales = [...item.translatedLocales];
+      }
+    }
+  }
   const staged: StagedFile[] = [];
 
   try {
@@ -688,6 +675,8 @@ export async function applyTranslationPairsWithRename(
       await writeAPITranslationArchive(
         config,
         {
+          schemaVersion: 2,
+          sourceFields: output.sourceFields,
           locale: output.locale,
           version: output.version,
           sourceHash: output.sourceHash,

@@ -1,3 +1,5 @@
+import type { DocsI18nOptions } from '@galacean/docs-site';
+import { formatMessage, getCommonMessages } from '@galacean/docs-site';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -6,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Application, ReflectionKind } from 'typedoc';
 import type { JSONOutput } from 'typedoc';
 import ts from 'typescript';
-import type { APIPackageConfig, DocsSiteConfig } from '../config/site-config';
+import type { APIPackageConfig, ResolvedDocsBuildConfig } from '../config/types';
 import { readJSON } from './read-json';
 import type { APIDocumentationPackage } from './assemble';
 import { contentHash } from './translations';
@@ -47,7 +49,7 @@ export interface APIGenerationDependencies {
   ) => Promise<void>;
   getCommit: (repositoryRoot: string) => string;
   convert: (
-    config: DocsSiteConfig,
+    config: ResolvedDocsBuildConfig,
     commit: string,
   ) => Promise<JSONOutput.ProjectReflection>;
   generatorVersion: () => Promise<string>;
@@ -221,7 +223,7 @@ function resolveReflection(
 }
 
 export function buildAPIDocumentationPackages(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   manifests: Map<string, { name: string; version: string }>,
   project: JSONOutput.ProjectReflection,
 ): APIDocumentationPackage[] {
@@ -323,6 +325,7 @@ export function externalizeTypeDocDependencies(
   project: JSONOutput.ProjectReflection,
   packages: APIDocumentationPackage[],
   sourceLocale = 'en',
+  i18n?: DocsI18nOptions,
 ): JSONOutput.ProjectReflection {
   const reflections = collectTypeDocReflections(project, {
     allowExternalReferences: true,
@@ -344,18 +347,18 @@ export function externalizeTypeDocDependencies(
   const symbolIdMap = isRecord(project.symbolIdMap)
     ? project.symbolIdMap as Record<string, JSONOutput.ReflectionSymbolId>
     : {};
-  const externalUrls = new Map<number, string>();
+  const externalURLs = new Map<number, string>();
 
   for (const id of externalIds) {
     const symbol = symbolIdMap[String(id)];
     const url = externalPackageURL(symbol?.packageName);
 
     if (url !== undefined) {
-      externalUrls.set(id, url);
+      externalURLs.set(id, url);
     }
   }
   for (const id of publicExternalIds) {
-    if (!externalUrls.has(id)) {
+    if (!externalURLs.has(id)) {
       const reflection = reflections.get(id);
 
       throw new Error(
@@ -394,7 +397,7 @@ export function externalizeTypeDocDependencies(
       typeof value['target'] === 'number' &&
       externalIds.has(value['target'])
     ) {
-      const url = externalUrls.get(value['target']) ?? externalPackageURL(value['package']);
+      const url = externalURLs.get(value['target']) ?? externalPackageURL(value['package']);
 
       return {
         ...value,
@@ -408,7 +411,7 @@ export function externalizeTypeDocDependencies(
       if (!publicExternalIds.has(value['id'])) {
         return undefined;
       }
-      const url = externalUrls.get(value['id']);
+      const url = externalURLs.get(value['id']);
 
       if (url === undefined) {
         throw new Error(`Missing external URL for public reflection: ${String(value['name'])}`);
@@ -423,9 +426,7 @@ export function externalizeTypeDocDependencies(
         comment: {
           summary: [{
             kind: 'text',
-            text: sourceLocale === 'zh-CN'
-              ? `外部依赖包： [${String(value['name'])}](${url})。`
-              : `External dependency: [${String(value['name'])}](${url}).`,
+            text: formatMessage(getCommonMessages(sourceLocale, i18n).externalDependency, { name: String(value['name']), url }),
           }],
         },
         externalUrl: url,
@@ -712,7 +713,7 @@ function mergeTypeDocProjects(
 }
 
 async function convertTypeDoc(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   commit: string,
 ): Promise<JSONOutput.ProjectReflection> {
   const sourceLinkTemplate = config.sourceLinkTemplate?.replaceAll(
@@ -746,6 +747,8 @@ async function convertTypeDoc(
       tsconfig: packageConfig.tsconfig,
       readme: 'none',
       basePath: config.repositoryRoot,
+      // TypeDoc also uses displayBasePath to root source URLs when Git is disabled.
+      displayBasePath: config.repositoryRoot,
       gitRevision: commit,
       disableGit: true,
       ...(sourceLinkTemplate === undefined ? {} : { sourceLinkTemplate }),
@@ -786,9 +789,9 @@ async function typeDocVersion(): Promise<string> {
 }
 
 function versionedPackageConfig(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   sourceRoot: string,
-): DocsSiteConfig {
+): ResolvedDocsBuildConfig {
   const packages = config.apiPackages?.map(packageConfig => {
     const packageRelative = path.relative(
       config.repositoryRoot,
@@ -821,7 +824,7 @@ function versionedPackageConfig(
 }
 
 async function buildVersionAtTag(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   repository: string,
   dependencies: APIGenerationDependencies,
@@ -908,6 +911,7 @@ async function buildVersionAtTag(
       project,
       generatedPackages,
       config.sourceLocale,
+      config.i18n,
     );
 
     return {
@@ -925,7 +929,7 @@ async function buildVersionAtTag(
 }
 
 async function buildVersionAtCurrent(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   version: string,
   dependencies: APIGenerationDependencies,
 ): Promise<Awaited<ReturnType<APIVersionBuilder>>> {
@@ -962,6 +966,7 @@ async function buildVersionAtCurrent(
     project,
     generatedPackages,
     config.sourceLocale,
+    config.i18n,
   );
 
   return {
@@ -987,12 +992,12 @@ const defaultDependencies: APIGenerationDependencies = {
 };
 
 export async function generateAPIDocumentation(
-  config: DocsSiteConfig,
+  config: ResolvedDocsBuildConfig,
   selectedPackageKeys?: string[],
   dependencies: APIGenerationDependencies = defaultDependencies,
   reportVersionStatus?: (status: {
     version: string;
-    status: 'complete' | 'missing' | 'invalid';
+    status: 'complete' | 'missing' | 'invalid' | 'locales-pending';
     reason?: string;
   }) => void,
   options: APIGenerationOptions = {},
@@ -1002,7 +1007,7 @@ export async function generateAPIDocumentation(
   warnings: string[];
   versionStatuses: {
     version: string;
-    status: 'complete' | 'missing' | 'invalid';
+    status: 'complete' | 'missing' | 'invalid' | 'locales-pending';
     reason?: string;
   }[];
 }> {

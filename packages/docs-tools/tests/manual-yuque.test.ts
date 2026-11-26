@@ -6,7 +6,9 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { test, vi } from 'vitest';
 import {
-  loadSiteConfig,
+  applyDocumentTranslations,
+  extractDocumentTranslations,
+  loadDocsProjectConfig,
   migrateManualTranslations,
   syncManuals,
 } from '@galacean/docs-tools';
@@ -40,7 +42,7 @@ async function loadConfig(
     }),
   );
 
-  return loadSiteConfig(path.basename(filename), root);
+  return loadDocsProjectConfig(path.basename(filename), root);
 }
 
 function yuqueDocument(slug: string, title: string) {
@@ -189,6 +191,9 @@ test('repo sync filters ignored TOC subtrees and documents before fetching bodie
   assert.deepEqual(navigation, [
     {
       slug: 'product-start',
+      collectionKey: 'guide', documentKey: 'doc-101', sourceLocale: 'zh-CN',
+      contentLocales: { 'zh-CN': 'zh-CN', en: 'zh-CN' },
+      translationStatus: { 'zh-CN': 'source', en: 'missing' },
       title: { 'zh-CN': 'Start', en: 'Start' },
       group: { 'zh-CN': 'Guide', en: 'Guide' },
       format: { 'zh-CN': 'markdown', en: 'markdown' },
@@ -386,7 +391,7 @@ test('documents mode requests only allowed references in configured order', asyn
       path.join(config.manualDirectory, 'en/renamed-first.md'),
       'utf8',
     ),
-    '# First translation\n\nPersistent text.\n',
+    '# first\n\nMarkdown body for first.\n',
   );
 });
 
@@ -559,6 +564,21 @@ test('rewrites Yuque links in HTML pages only', async t => {
     ),
       '# markdown-source\n\n[Link](https://galacean-effects.yuque.com/kpcugk/bld4le/uadx5gd73vyerrhw)\n',
   );
+  const [task] = await extractDocumentTranslations('manual', config, {
+    pages: ['ar87k5d92f23myc5'], targetLocales: ['en'],
+  });
+
+  assert.ok(task);
+  const input = JSON.parse(await readFile(task.taskPath, 'utf8')) as { content: string; sourceHash: string };
+  const content = input.content.replace('「信息图设计」', 'Infographic design');
+  const translationPath = path.join(path.dirname(task.taskPath), 'result.json');
+
+  await writeFile(translationPath, JSON.stringify({
+    locale: 'en', sourceHash: input.sourceHash, content, title: 'Design', group: 'Guides',
+  }));
+  await applyDocumentTranslations('manual', config, [{ taskPath: task.taskPath, translationPath }]);
+  await syncManuals(config, fetcher);
+  assert.equal(await readFile(path.join(config.manualDirectory, 'en/ar87k5d92f23myc5.html'), 'utf8'), content);
 });
 
 test('retries a rate-limited request according to Retry-After', async t => {
@@ -648,7 +668,7 @@ test('preserves Yuque Lake HTML in an HTML artifact', async t => {
   );
 });
 
-test('preserves HTML translation structure and format from the archive', async t => {
+test('keeps unverified HTML archives for review and uses source fallback', async t => {
   const root = await fixture(t);
   const tokenBefore = process.env['YUQUE_TEST_TOKEN'];
 
@@ -698,8 +718,9 @@ test('preserves HTML translation structure and format from the archive', async t
   assert.equal(navigation[0]?.format['en'], 'html');
   assert.equal(
     await readFile(path.join(config.manualDirectory, 'en/lake-guide.html'), 'utf8'),
-    translatedHTML,
+    '<div><p>Overview text.</p><ul><li>First item</li><li>Second item</li></ul><table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>One</td><td>Two</td></tr></tbody></table></div>',
   );
+  assert.equal(await readFile(path.join(archiveDirectory, 'doc-102.html'), 'utf8'), translatedHTML);
   await assert.rejects(
     readFile(path.join(config.manualDirectory, 'en/lake-guide.md')),
     { code: 'ENOENT' },
@@ -897,7 +918,7 @@ test('local collections use localized source pages, navigation, and overview fil
   );
 });
 
-test('local sync fails when a configured locale source page is missing', async t => {
+test('local sync uses marked source fallback when a target is missing and its archive is unverified', async t => {
   const root = await fixture(t);
   const localDirectory = path.join(root, 'site/manual-local');
   const config = await loadConfig(root, [
@@ -938,10 +959,12 @@ test('local sync fails when a configured locale source page is missing', async t
     '# Getting started\n\nCached English translation.\n',
   );
 
-  await assert.rejects(
-    syncManuals(config),
-    /Missing local manual for local-guide\/en\/getting-started/u,
-  );
+  await syncManuals(config);
+  assert.equal(await readFile(path.join(config.manualDirectory, 'en/getting-started.md'), 'utf8'), '# 开始使用\n\n中文正文。\n');
+  const navigation = JSON.parse(await readFile(path.join(config.manualDirectory, 'navigation.json'), 'utf8')) as { contentLocales: Record<string, string>; translationStatus: Record<string, string> }[];
+
+  assert.equal(navigation[0]?.contentLocales['en'], 'zh-CN');
+  assert.equal(navigation[0]?.translationStatus['en'], 'needs-review');
 });
 
 test('shared manual output directory imports only entries marked as local', async t => {
@@ -949,6 +972,7 @@ test('shared manual output directory imports only entries marked as local', asyn
   const config = await loadConfig(root, [
     {
       key: 'local-guides',
+      routePrefix: 'docs',
       source: {
         type: 'local',
         directory: 'site/public/data/manual',
@@ -990,6 +1014,10 @@ test('shared manual output directory imports only entries marked as local', asyn
     '# Local\n\nEnglish local page content.\n',
   );
 
+  await mkdir(path.join(manualDirectory, 'zh-CN/local-page'));
+  await writeFile(path.join(manualDirectory, 'zh-CN/local-page/figure.svg'), '<svg/>');
+  await writeFile(path.join(manualDirectory, 'zh-CN/local-page.md'), '# Local\n\n![Figure](figure.svg)\n');
+
   const result = await syncManuals(config);
   const navigation = JSON.parse(
     await readFile(path.join(manualDirectory, 'navigation.json'), 'utf8'),
@@ -998,13 +1026,26 @@ test('shared manual output directory imports only entries marked as local', asyn
   assert.deepEqual(result, { collections: 1, documents: 1 });
   assert.deepEqual(navigation, [
     {
-      slug: 'local-page',
+      slug: 'docs-local-page',
+      collectionKey: 'local-guides', documentKey: 'local-page', sourceLocale: 'zh-CN',
+      contentLocales: { 'zh-CN': 'zh-CN', en: 'en' },
+      translationStatus: { 'zh-CN': 'source', en: 'translated' },
       title: { 'zh-CN': 'Local', en: 'Local' },
       group: { 'zh-CN': 'Guides', en: 'Guides' },
       format: { 'zh-CN': 'markdown', en: 'markdown' },
       source: { type: 'local' },
     },
   ]);
+  config.locales.push('ja');
+  await syncManuals(config);
+  await syncManuals(config);
+  const rebuilt = JSON.parse(await readFile(path.join(config.manualDirectory, 'navigation.json'), 'utf8')) as { contentLocales: Record<string, string>; translationStatus: Record<string, string> }[];
+
+  assert.equal(await readFile(path.join(manualDirectory, 'ja/docs-local-page/figure.svg'), 'utf8'), '<svg/>');
+  assert.match(await readFile(path.join(manualDirectory, 'en/docs-local-page.md'), 'utf8'), /English local page/u);
+  assert.equal(rebuilt[0]?.contentLocales['ja'], 'zh-CN');
+  assert.equal(rebuilt[0]?.translationStatus['ja'], 'missing');
+
 });
 
 test('manual sync CLI prints file totals, group counts, and per-file states', async t => {

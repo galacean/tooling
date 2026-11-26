@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ResolvedDocsBuildConfig } from '../config/types';
 import { getErrorCode } from '../fs-errors';
+import { manualLinkTargets } from '../manual/assets';
 import type { ManualNavigationItem } from '../manual/navigation';
 import { assertNoSymlinkPath, isSafePathSegment, isWithin } from '../path-validation';
 import type { StaticRoute } from './collect-routes';
@@ -22,20 +23,10 @@ export async function copyManualAssets(
       `${manual.slug}.${extension}`,
     );
     const content = await readFile(contentPath, 'utf8');
-    const targets =
-      format === 'html'
-        ? [
-            ...content.matchAll(
-              /(?:^|[\s<])(?:href|src)\s*=\s*["']([^"']+)["']/giu,
-            ),
-          ].map(match => match[1])
-        : [...content.matchAll(/!?(?:\[[^\]]*\])\(([^)]+)\)/gu)].map(
-            match => match[1],
-          );
+    const targets = manualLinkTargets(content, format);
 
     for (const target of targets) {
       if (
-        target === undefined ||
         /^(?:https?:|mailto:|tel:|data:|\/\/)/iu.test(target)
       ) {
         continue;

@@ -1,3 +1,6 @@
+import { getCommonMessages } from '@galacean/docs-site';
+import { readDocumentTranslation } from '../translations/document-archive';
+import type { DocumentTranslation, TranslationDocument } from '../translations/document-model';
 import {
   lstat,
   mkdir,
@@ -15,9 +18,15 @@ import type {
 } from '../config/types';
 import { isSafeSlug } from '../config/validation';
 import { parseJSON } from '../api/read-json';
+import { readOptionalText } from '../read-optional-text';
+import { generatedHashesFilename, manualContentHash, readGeneratedHashes } from './generated-hashes';
+import { copyManualPageAssets } from './assets';
 
 interface ManualNavigationItem {
   slug: string;
+  collectionKey: string;
+  documentKey: string;
+  sourceLocale: string;
   title: Record<string, string>;
   group: Record<string, string>;
   parent?: string;
@@ -29,18 +38,12 @@ interface ManualNavigationItem {
 }
 
 interface ManualPage {
+  inputSlug?: string;
   navigation: ManualNavigationItem;
   sourceLocale: string;
   content: string;
   format: 'markdown' | 'html';
-  translations: Record<string, ManualTranslation>;
-}
-
-interface ManualTranslation {
-  content: string;
-  format: 'markdown' | 'html';
-  title?: string;
-  group?: string;
+  translations: Record<string, DocumentTranslation>;
 }
 
 interface YuqueTocNode {
@@ -376,82 +379,25 @@ function countFilesByGroup(
 }
 
 async function loadTranslations(
-  collection: ManualCollectionConfig,
-  documentKey: string,
-  sourceFormat: ManualTranslation['format'],
   config: ResolvedDocsBuildConfig,
+  document: Pick<TranslationDocument, 'owner' | 'key' | 'sourceLocale' | 'format' | 'content' | 'title' | 'group'>,
 ): Promise<ManualPage['translations']> {
   const translations: ManualPage['translations'] = {};
-  const collectionDirectory = path.join(
-    config.translationCacheDirectory ??
-      path.join(config.repositoryRoot, 'tmp/docs-tools/translation-cache'),
-    'manual',
-    collection.key,
-  );
 
   for (const locale of config.locales) {
-    if (locale === collection.source.locale) {
+    if (locale === document.sourceLocale) {
       continue;
     }
-    const directory = path.join(collectionDirectory, locale);
-    const extension = sourceFormat === 'html' ? 'html' : 'md';
-    const translationPath = path.join(directory, `${documentKey}.${extension}`);
-
-    try {
-      await assertNoSymlinkPath(config.repositoryRoot, translationPath);
-      const content = await readFile(translationPath, 'utf8');
-
-      if (content.trim() === '') {
-        throw new Error(`Empty manual translation: ${translationPath}`);
-      }
-      translations[locale] = { content, format: sourceFormat };
-    } catch (error) {
-      if (getErrorCode(error) !== 'ENOENT') {
-        throw error;
-      }
-    }
-    const metadataPath = path.join(directory, 'navigation.json');
-
-    try {
-      await assertNoSymlinkPath(config.repositoryRoot, metadataPath);
-      const metadata: unknown = parseJSON(
-        await readFile(metadataPath, 'utf8'),
-        metadataPath,
-      );
-      const localized = isRecord(metadata) ? metadata[documentKey] : undefined;
-
-      if (isRecord(localized)) {
-        const translation = translations[locale] ?? {
-          content: '',
-          format: sourceFormat,
-        };
-
-        if (typeof localized['title'] === 'string') {
-          translation.title = localized['title'];
-        }
-        if (typeof localized['group'] === 'string') {
-          translation.group = localized['group'];
-        }
-        translations[locale] = translation;
-      }
-    } catch (error) {
-      if (getErrorCode(error) !== 'ENOENT') {
-        throw error;
-      }
-    }
+    translations[locale] = await readDocumentTranslation(config, { ...document, kind: 'manual' }, locale);
   }
 
   return translations;
 }
 
-function manualTranslationKey(navigation: ManualNavigationItem): string {
-  if (navigation.source?.type === 'yuque') {
-    return navigation.source.docId === undefined
-      ? `source-${encodeURIComponent(navigation.source.namespace)}-${encodeURIComponent(navigation.source.slug)}`
-      : `doc-${encodeURIComponent(navigation.source.docId)}`;
-  }
-
-  return navigation.slug;
+function yuqueDocumentKey(namespace: string, slug: string, docId?: string): string {
+  return docId === undefined
+    ? `source-${encodeURIComponent(namespace)}-${encodeURIComponent(slug)}`
+    : `doc-${encodeURIComponent(docId)}`;
 }
 
 async function syncYuqueCollection(
@@ -639,6 +585,9 @@ async function syncYuqueCollection(
     }
     const navigation: ManualNavigationItem = {
       slug: sourceDoc.routeSlug,
+      collectionKey: collection.key,
+      documentKey: yuqueDocumentKey(sourceDoc.namespace, sourceDoc.slug, documentId),
+      sourceLocale: source.locale,
       title: Object.fromEntries(config.locales.map(locale => [locale, title])),
       group: Object.fromEntries(
         config.locales.map(locale => [locale, sourceDoc.group]),
@@ -661,29 +610,6 @@ async function syncYuqueCollection(
       },
     };
 
-    const translations = await loadTranslations(
-      collection,
-      manualTranslationKey(navigation),
-      document.format,
-      config,
-    );
-
-    for (const locale of config.locales) {
-      const translation = translations[locale];
-
-      navigation.format![locale] = translation?.content !== undefined &&
-        translation.content.length > 0
-        ? translation.format
-        : document.format;
-    }
-    for (const [locale, translation] of Object.entries(translations)) {
-      if (translation.title !== undefined) {
-        navigation.title[locale] = translation.title;
-      }
-      if (translation.group !== undefined) {
-        navigation.group[locale] = translation.group;
-      }
-    }
     addPage(pages, slugs, {
       navigation,
       sourceLocale: source.locale,
@@ -692,7 +618,7 @@ async function syncYuqueCollection(
           ? `${document.body}\n`
           : document.body,
       format: document.format,
-      translations,
+      translations: {},
     });
     onProgress?.({
       type: 'document',
@@ -715,6 +641,8 @@ async function syncLocalCollection(
   config: ResolvedDocsBuildConfig,
   pages: ManualPage[],
   slugs: Set<string>,
+  previousHashes: ReadonlyMap<string, string>,
+  generatedHashes: Map<string, string>,
   onProgress?: ManualSyncProgressHandler,
 ): Promise<number> {
   if (collection.source.type !== 'local') {
@@ -742,7 +670,8 @@ async function syncLocalCollection(
         item =>
           isRecord(item) &&
           isRecord(item['source']) &&
-          item['source']['type'] === 'local',
+          item['source']['type'] === 'local' &&
+          (item['collectionKey'] === undefined || item['collectionKey'] === collection.key),
       )
     : raw;
   const localGroups = localItems.map(item => {
@@ -775,9 +704,10 @@ async function syncLocalCollection(
     }
     const titles = item['title'];
     const groups = item['group'];
-    const slug = item['slug'];
+    const inputSlug = item['slug'];
+    const slug = readsOutputDirectory && typeof item['documentKey'] === 'string' ? item['documentKey'] : item['slug'];
 
-    if (!isSafeSlug(slug)) {
+    if (!isSafeSlug(inputSlug) || !isSafeSlug(slug)) {
       throw new Error(`Unsafe local manual slug in ${navigationPath}`);
     }
     const group = String(groups[collection.source.locale] ?? '');
@@ -796,57 +726,68 @@ async function syncLocalCollection(
     const sourceMarkdownPath = path.join(
       collection.source.directory,
       collection.source.locale,
-      `${slug}.md`,
+      `${inputSlug}.md`,
     );
 
     await assertNoSymlinkPath(config.repositoryRoot, sourceMarkdownPath);
     const markdown = await readFile(sourceMarkdownPath, 'utf8');
-    const translations: ManualPage['translations'] = {};
+    const translations = await loadTranslations(config, {
+      owner: collection.key, key: slug, sourceLocale: collection.source.locale,
+      format: 'markdown', content: markdown, title: String(titles[collection.source.locale] ?? ''), group,
+    });
+
+    const routeSlug = safeRouteSlug(collection.routePrefix, slug);
+    const title: Record<string, string> = {};
+    const localizedGroup: Record<string, string> = {};
 
     for (const locale of config.locales) {
-      if (locale === collection.source.locale) {
-        continue;
-      }
-      const localizedMarkdownPath = path.join(
-        collection.source.directory,
-        locale,
-        `${slug}.md`,
-      );
+      const archive = translations[locale];
 
-      await assertNoSymlinkPath(config.repositoryRoot, localizedMarkdownPath);
-      try {
-        translations[locale] = {
-          content: await readFile(localizedMarkdownPath, 'utf8'),
-          format: 'markdown',
-        };
-      } catch (error) {
-        if (getErrorCode(error) !== 'ENOENT') {
-          throw error;
+      if (locale !== collection.source.locale) {
+        const relativePath = `${locale}/${inputSlug}.md`;
+        const localizedPath = path.join(collection.source.directory, relativePath);
+        const content = await readOptionalText(config.repositoryRoot, localizedPath);
+        const maintained = content !== undefined &&
+          (!readsOutputDirectory || previousHashes.get(relativePath) !== manualContentHash(content));
+
+        if (maintained) {
+          if (content.trim() === '') {
+            throw new Error(`Empty maintained manual: ${localizedPath}`);
+          }
+          if (archive?.content !== undefined && archive.content !== content) {
+            onProgress?.({ type: 'warning', message: `${collection.key}/${locale}/${slug}: maintained file differs from archive; using maintained file` });
+          }
+          translations[locale] = { content, status: 'translated' };
+        } else if (readsOutputDirectory) {
+          generatedHashes.set(`${locale}/${routeSlug}.md`, manualContentHash(archive?.content ?? markdown));
         }
-        throw new Error(
-          `Missing local manual for ${collection.key}/${locale}/${slug}`,
-          { cause: error },
-        );
+      }
+
+      for (const field of ['title', 'group'] as const) {
+        const values = field === 'title' ? titles : groups;
+        const output = field === 'title' ? title : localizedGroup;
+        const input = values[locale];
+        const inputKey = `navigation.json/${inputSlug}/${locale}/${field}`;
+
+        if (typeof input === 'string' && (!readsOutputDirectory || previousHashes.get(inputKey) !== manualContentHash(input))) {
+          output[locale] = input;
+        } else {
+          const generated = archive?.[field] ?? String(values[collection.source.locale] ?? '');
+
+          output[locale] = generated;
+          if (readsOutputDirectory) {
+            generatedHashes.set(`navigation.json/${routeSlug}/${locale}/${field}`, manualContentHash(generated));
+          }
+        }
       }
     }
     const navigation: ManualNavigationItem = {
-      slug: safeRouteSlug(collection.routePrefix, slug),
-      title: Object.fromEntries(
-        config.locales.map(locale => [
-          locale,
-          typeof titles[locale] === 'string'
-            ? titles[locale]
-            : String(titles[collection.source.locale] ?? ''),
-        ]),
-      ),
-      group: Object.fromEntries(
-        config.locales.map(locale => [
-          locale,
-          typeof groups[locale] === 'string'
-            ? groups[locale]
-            : String(groups[collection.source.locale] ?? ''),
-        ]),
-      ),
+      slug: routeSlug,
+      collectionKey: collection.key,
+      documentKey: slug,
+      sourceLocale: collection.source.locale,
+      title,
+      group: localizedGroup,
       ...(typeof item['parent'] === 'string'
         ? {
             parent:
@@ -869,6 +810,7 @@ async function syncLocalCollection(
       navigation,
       sourceLocale: collection.source.locale,
       content: markdown,
+      inputSlug,
       format: 'markdown',
       translations,
     });
@@ -928,6 +870,8 @@ async function readManualOverview(
 async function writeManualData(
   config: ResolvedDocsBuildConfig,
   pages: ManualPage[],
+  previousHashes: ReadonlyMap<string, string>,
+  generatedHashes: Map<string, string>,
 ): Promise<void> {
   const targetDirectory = config.manualDirectory;
   const temporaryDirectory = path.join(
@@ -939,7 +883,12 @@ async function writeManualData(
   await assertNoSymlinkPath(config.repositoryRoot, targetDirectory);
   await mkdir(temporaryDirectory, { recursive: true });
   try {
-    const navigation = pages.map(page => page.navigation);
+    const navigation = pages.map(page => ({ ...page.navigation,
+      contentLocales: Object.fromEntries(config.locales.map(locale => [locale,
+        page.translations[locale]?.content === undefined ? page.sourceLocale : locale])),
+      translationStatus: Object.fromEntries(config.locales.map(locale => [locale,
+        locale === page.sourceLocale ? 'source' : page.translations[locale]?.status ?? 'missing'])),
+    }));
 
     await writeFile(
       path.join(temporaryDirectory, 'navigation.json'),
@@ -948,30 +897,16 @@ async function writeManualData(
     for (const locale of config.locales) {
       const overview = await readManualOverview(config, locale);
 
-      if (overview === undefined) {
-        continue;
-      }
+      const messages = getCommonMessages(locale, config.i18n);
       const localeDirectory = path.join(temporaryDirectory, locale);
 
       await mkdir(localeDirectory, { recursive: true });
-      await writeFile(path.join(localeDirectory, 'index.md'), overview);
+      await writeFile(path.join(localeDirectory, 'index.md'), overview ?? `# ${messages.manual}\n\n${messages.manualIntro}\n`);
     }
     for (const page of pages) {
       for (const locale of config.locales) {
-        const translation = page.translations[locale];
-        const hasTranslation =
-          translation?.content !== undefined &&
-          translation.content.length > 0;
-        const format =
-          locale !== page.sourceLocale && hasTranslation
-            ? translation.format
-            : page.format;
-        const content =
-          locale === page.sourceLocale
-            ? page.content
-            : hasTranslation
-              ? translation.content
-              : page.content;
+        const content = page.translations[locale]?.content ?? page.content;
+        const format = page.format;
         const localeDirectory = path.join(temporaryDirectory, locale);
         const extension = format === 'html' ? 'html' : 'md';
 
@@ -980,7 +915,12 @@ async function writeManualData(
           path.join(localeDirectory, `${page.navigation.slug}.${extension}`),
           content,
         );
+        await copyManualPageAssets(config, page.navigation.collectionKey, page.navigation.slug,
+          page.sourceLocale, locale, format, content, temporaryDirectory, previousHashes, generatedHashes, page.inputSlug);
       }
+    }
+    if (generatedHashes.size > 0) {
+      await writeFile(path.join(temporaryDirectory, generatedHashesFilename), JSON.stringify(Object.fromEntries(generatedHashes)));
     }
     let existing = false;
 
@@ -1022,6 +962,8 @@ export async function syncManuals(
   }
   const pages: ManualPage[] = [];
   const slugs = new Set<string>();
+  const previousHashes = await readGeneratedHashes(config.repositoryRoot, config.manualDirectory);
+  const generatedHashes = new Map<string, string>();
   let documents = 0;
 
   for (const collection of config.manuals) {
@@ -1031,6 +973,8 @@ export async function syncManuals(
         config,
         pages,
         slugs,
+        previousHashes,
+        generatedHashes,
         onProgress,
       )) +
       (await syncYuqueCollection(
@@ -1043,7 +987,24 @@ export async function syncManuals(
       ));
   }
   replaceYuqueLinksInPages(pages);
-  await writeManualData(config, pages);
+  // Extraction reads the published HTML, including rewritten inter-document links.
+  for (const page of pages) {
+    const { navigation, sourceLocale } = page;
+
+    if (navigation.source?.type !== 'yuque') {
+      continue;
+    }
+    page.translations = await loadTranslations(config, {
+      owner: navigation.collectionKey, key: navigation.documentKey, sourceLocale,
+      format: page.format, content: page.content,
+      title: navigation.title[sourceLocale]!, group: navigation.group[sourceLocale]!,
+    });
+    for (const [locale, translation] of Object.entries(page.translations)) {
+      navigation.title[locale] = translation.title ?? navigation.title[sourceLocale]!;
+      navigation.group[locale] = translation.group ?? navigation.group[sourceLocale]!;
+    }
+  }
+  await writeManualData(config, pages, previousHashes, generatedHashes);
 
   return { collections: config.manuals.length, documents };
 }

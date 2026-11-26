@@ -1,52 +1,25 @@
 import { withTrailingSlash } from '../config/urls';
 import { loadJSON } from '../data';
+import { manualAlternateLocales } from './document';
+import type { ManualContentFormat, ManualHeading, ManualNavigationItem, ManualNavigationPage, ManualPageDocument } from './document';
 
-export interface ManualNavigationItem<TLocale extends string> {
-  slug: string;
-  title: Record<TLocale, string>;
-  group: Record<TLocale, string>;
-  parent?: string;
-  format?: Readonly<Record<TLocale, ManualContentFormat>>;
-  lastModified?: Readonly<Record<TLocale, string>>;
-}
-
-export type ManualContentFormat = 'markdown' | 'html';
-
-export interface ManualHeading {
-  title: string;
-  level: number;
-  id?: string;
-}
-
-export interface ManualPageDocument {
-  text: string;
-  headings: ManualHeading[];
-  format?: ManualContentFormat;
-  lastModified?: string;
-}
+export type { ManualContentFormat, ManualHeading, ManualNavigationItem, ManualPageDocument } from './document';
 
 export interface ManualContentClient<TLocale extends string> {
   loadNavigation: () => Promise<ManualNavigationItem<TLocale>[]>;
   manualPages: (
     locale: TLocale,
     navigation: ManualNavigationItem<TLocale>[],
-  ) => {
-    slug: string;
-    title: string;
-    group: string;
-    parent?: string;
-  }[];
+  ) => ManualNavigationPage[];
   loadPage: (
     locale: TLocale,
     slug: string,
     navigation: ManualNavigationItem<TLocale>[],
-  ) => Promise<{
+  ) => Promise<ManualPageDocument & {
     slug: string;
+    alternateLocales?: string[];
     title: string;
-    text: string;
-    headings: ManualHeading[];
     format: ManualContentFormat;
-    lastModified?: string;
   }>;
   loadOverview: (locale: TLocale) => Promise<ManualPageDocument>;
 }
@@ -164,8 +137,10 @@ export function createManualContentClient<TLocale extends string>({
             typeof item['parent'] === 'string') &&
           (item['format'] === undefined ||
             isFormatMap(item['format'], locales)) &&
+          (item['contentLocales'] === undefined || (isLocalized(item['contentLocales']) && Object.values(item['contentLocales']).every(value => typeof value === 'string' && locales.includes(value as TLocale)))) &&
+          (item['translationStatus'] === undefined || (isLocalized(item['translationStatus']) && Object.values(item['translationStatus']).every(value => ['source', 'translated', 'missing', 'needs-review'].includes(String(value))))) &&
           (item['lastModified'] === undefined ||
-            isLocalized(item['lastModified'])),
+            (isRecord(item['lastModified']) && Object.entries(item['lastModified']).every(([key, value]) => locales.includes(key as TLocale) && typeof value === 'string'))),
       )
     );
   }
@@ -214,7 +189,8 @@ export function createManualContentClient<TLocale extends string>({
       return cachedNavigation;
     },
     manualPages(locale, navigation) {
-      return navigation.map(({ slug, title, group, parent }) => ({
+      return navigation.map(({ slug, title, group, parent, contentLocales }) => ({
+        ...(contentLocales === undefined ? {} : { alternateLocales: manualAlternateLocales(locales, contentLocales) }),
         slug,
         title: title[locale],
         group: group[locale],
@@ -240,6 +216,8 @@ export function createManualContentClient<TLocale extends string>({
         slug,
         title: page.title[locale],
         ...document,
+        contentLocale: page.contentLocales?.[locale] ?? locale,
+        translationStatus: page.translationStatus?.[locale] ?? 'source',
         format,
         ...(document.lastModified === undefined &&
         pageLastModified !== undefined

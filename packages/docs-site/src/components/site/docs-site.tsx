@@ -7,6 +7,7 @@ import {
   useLocation,
 } from 'react-router-dom';
 import { createBrowserLocalePreference } from '../../i18n';
+import { DocsI18nProvider } from '../../providers/i18n';
 import { ThemeProvider } from '../../providers';
 import { resolveDocsSiteOptions } from '../../config/resolve';
 import type { DocsSiteOptions, DocsSitePage } from '../../config/types';
@@ -71,6 +72,7 @@ export function DocsSite<TLocale extends string>({ config, pages }: DocsSiteProp
   }
 
   return (
+    <DocsI18nProvider {...(resolvedConfig.i18n === undefined ? {} : { options: resolvedConfig.i18n })}>
     <ThemeProvider
       themeStorageKey={resolvedConfig.storageKeys.theme}
     >
@@ -159,5 +161,6 @@ export function DocsSite<TLocale extends string>({ config, pages }: DocsSiteProp
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
+    </DocsI18nProvider>
   );
 }

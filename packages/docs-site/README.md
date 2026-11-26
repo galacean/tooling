@@ -2,7 +2,7 @@
 
 [简体中文](README-zh_CN.md)
 
-React runtime for bilingual API and manual documentation sites, with search, themes, and language switching.
+React runtime for multilingual API and manual documentation sites, with search, themes, and language switching.
 
 ## Install
 
@@ -54,11 +54,26 @@ export default function App() {
 
 See [configuration types](src/config/types.ts) for all options. Generation settings belong to the CLI's `docs.config` file; pass runtime options explicitly to `DocsSite`.
 
-## Messages
+## Multilingual sites
 
-`createMessageCatalog` merges common English and Chinese messages with product messages; product keys override common keys. Maintain common UI messages in [en.json](src/i18n/en.json) and [zh-CN.json](src/i18n/zh-CN.json).
+Built-in UI languages are `en`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `pt`, `es`, `fr`, `tr`, `ar`, `ru`, `uk`, and `th`. Configure only the languages your project enables; upgrading does not enable all languages automatically.
 
-Standalone components accept localized messages too. `MarkdownContent` and `HTMLDocumentContent` use the common English messages for omitted keys.
+```ts
+import { builtInLocales, createMessageCatalog } from '@galacean/docs-site';
+
+const { locales, messages } = createMessageCatalog(builtInLocales);
+// Or choose a subset: createMessageCatalog(['en', 'ja', 'ar'] as const).
+```
+
+Common UI messages, manual introduction and count labels have built-in defaults. Empty product dictionaries are unnecessary. Product-specific keys must cover every enabled locale; product messages override common messages. `localeLabels` and API `symbolCountLabelTemplates` are optional overrides. Counts use locale-aware plural and number formatting.
+
+Use the same `locales` declaration in build and runtime configuration. Import language helpers and types from the main `@galacean/docs-site` entry, which can also be loaded in Node. Browser APIs are accessed when browser features run, rather than at module initialization. Canonical BCP 47 content IDs are required; explicit README filenames can still use underscores.
+
+Optional `i18n.localeDefinitions` supplies language labels, direction and script; `i18n.commonMessages` supplies common-message overrides or complete dictionaries for additional languages. Pass the same options to `createMessageCatalog(locales, productMessages, i18n)` and `DocsSite` config. Simplified/traditional Chinese and regional language-pack matching preserve writing systems. `getCommonMessageIssues(locale, i18n)` reports incomplete custom dictionaries.
+
+The shell sets `html.lang` and `html.dir` on every navigation. Arabic uses RTL layout, while code and signatures retain LTR isolation. Manual source fallback carries its actual content language and a visible notice; API comments and README bodies also retain their source language. Dates, search normalization and language-menu labels follow the configured locales. Static metadata uses the same language resolver; fallback-only bodies are excluded from translated-language alternates when coverage metadata is available.
+
+Standalone Markdown, HTML and image-viewer components accept message overrides and use English defaults outside a configured site.
 
 ## Code highlighting
 

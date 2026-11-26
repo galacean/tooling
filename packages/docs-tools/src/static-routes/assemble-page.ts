@@ -1,3 +1,5 @@
+import { getLocaleDefinition } from '@galacean/docs-site';
+import type { DocsI18nOptions } from '@galacean/docs-site';
 import { DomUtils, parseDocument } from 'htmlparser2';
 import type { StaticRoute } from './collect-routes';
 
@@ -7,7 +9,7 @@ export function escapeHTML(value: string): string {
   })[character] ?? character);
 }
 
-export function parseRouteTemplate(source: string) {
+export function parseRouteTemplate(source: string, i18n?: DocsI18nOptions) {
   const document = parseDocument(source);
   const html = DomUtils.findOne(element => element.name === 'html', document.children, false);
   const head = html === null ? null : DomUtils.findOne(element => element.name === 'head', html.children, false);
@@ -46,6 +48,7 @@ export function parseRouteTemplate(source: string) {
       ).join('');
 
     html.attribs['lang'] = page.locale;
+    html.attribs['dir'] = getLocaleDefinition(page.locale, i18n?.localeDefinitions).direction;
     head.children = [...preserved, ...parseDocument(metadata).children];
 
     return DomUtils.getOuterHTML(document, { encodeEntities: 'utf8', emptyAttrs: true });

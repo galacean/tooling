@@ -679,3 +679,13 @@ describe('SiteShell preferences', () => {
     }
   });
 });
+
+it('restores LTR and preserves the route when switching from Arabic to English', async () => {
+  renderSite({ initialEntry: '/ar/manual?tab=read#intro' });
+  await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
+  fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  fireEvent.click(screen.getByRole('option', { name: 'English' }));
+  await waitFor(() => expect(document.documentElement.dir).toBe('ltr'));
+  expect(document.documentElement.lang).toBe('en');
+  expect(screen.getByText('/en/manual?tab=read#intro')).toBeDefined();
+});

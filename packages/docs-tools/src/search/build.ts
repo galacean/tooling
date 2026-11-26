@@ -36,11 +36,11 @@ function searchableMarkdown(markdown: string): string {
     .trim();
 }
 
-function pinyinFields(value: string): {
+function pinyinFields(value: string, locale: string): {
   pinyin?: string;
   pinyinInitials?: string;
 } {
-  if (!/\p{Script=Han}/u.test(value)) {
+  if (new Intl.Locale(locale).language !== 'zh' || !/\p{Script=Han}/u.test(value)) {
     return {};
   }
 
@@ -259,7 +259,7 @@ async function buildManualResults(
       name: title,
       summary: searchableText.slice(0, 250),
       keywords: searchableText,
-      sourceLocale: locale,
+      sourceLocale: manual.contentLocales?.[locale] ?? locale,
       url: `/${locale}/manual/${manual.slug}/`,
     });
   }
@@ -332,7 +332,7 @@ export async function buildSearchIndexes(
 
       return {
         ...result,
-        ...pinyinFields(searchableText),
+        ...pinyinFields(searchableText, result.sourceLocale),
       };
     });
 

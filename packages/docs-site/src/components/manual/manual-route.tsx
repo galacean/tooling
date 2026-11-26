@@ -33,7 +33,7 @@ export function ManualRoute<TLocale extends string>({
   messages,
 }: ManualRouteProps<TLocale>) {
   const { slug } = useParams();
-  const { setManualPageTitle, setManualSidebarCollapsed } =
+  const { setManualPageTitle, setManualSidebarCollapsed, setContentLocales } =
     useOutletContext<SiteShellOutletContext>();
   const [client] = useState(() =>
     createManualContentClient({
@@ -50,6 +50,7 @@ export function ManualRoute<TLocale extends string>({
       slug={slug}
       messages={messages}
       onTitleChange={setManualPageTitle}
+      onContentLocalesChange={setContentLocales}
       onSidebarCollapsed={setManualSidebarCollapsed}
       getPageHref={value =>
         localePath(locale, value === undefined ? ['manual'] : ['manual', value])

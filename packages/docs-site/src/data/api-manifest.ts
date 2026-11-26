@@ -15,6 +15,7 @@ export interface APIEntry {
 }
 
 export interface APIVersion {
+  translatedLocales?: string[];
   version: string;
   snapshot: string;
   commit: string;
@@ -117,6 +118,7 @@ function isVersion(value: unknown): value is APIVersion {
     value['entries'].every(isEntry) &&
     new Set(value['entries'].map(entry => entry.key)).size ===
       value['entries'].length &&
+    (value['translatedLocales'] === undefined || (Array.isArray(value['translatedLocales']) && value['translatedLocales'].every(locale => typeof locale === 'string' && isRecord(value['json']) && Object.hasOwn(value['json'], locale)))) &&
     isStringRecord(value['json']) &&
     Object.values(value['json']).every(isSafeDataPath)
   );

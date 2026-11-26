@@ -1,3 +1,4 @@
+import { synchronizeAPILocales } from './locales';
 import { randomUUID } from 'node:crypto';
 import { cp, link, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -249,6 +250,7 @@ export async function generateVersionedAPIDocumentation(
       `API version is not configured: ${selectedVersion ?? '(none)'}`,
     );
   }
+  const warnings: string[] = [];
   const currentVersion = await currentWorkspaceVersion(
     config,
     versionManifest.versions,
@@ -256,7 +258,14 @@ export async function generateVersionedAPIDocumentation(
   const versionStates = await Promise.all(
     [selectedVersion].map(async version => {
       try {
-        const state = await inspectAPIVersionState(config, version);
+        let state = await inspectAPIVersionState(config, version);
+
+        if (state.status === 'locales-pending') {
+          const result = await synchronizeAPILocales(config, version);
+
+          warnings.push(...result.warnings);
+          state = { status: 'complete' };
+        }
 
         return {
           version,
@@ -312,8 +321,6 @@ export async function generateVersionedAPIDocumentation(
       built,
     });
   }
-
-  const warnings: string[] = [];
 
   if (builds.length > 0) {
     const buildRoot = path.join(

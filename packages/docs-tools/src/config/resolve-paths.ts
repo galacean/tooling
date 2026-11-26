@@ -160,6 +160,7 @@ export async function resolveDocsBuildConfig(
     sourceLocale: input.sourceLocale,
     ...(input.defaultLocale === undefined ? {} : { defaultLocale: input.defaultLocale }),
     locales: [...input.locales],
+    ...(input.i18n === undefined ? {} : { i18n: input.i18n }),
     apiDirectory,
     ...(apiVersions === undefined ? {} : { apiVersions }),
     apiConfigured: input.api !== undefined,

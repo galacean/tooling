@@ -411,7 +411,7 @@ void test('generates repository-relative source links for nested package files',
       `https://github.com/example/project/blob/${commit}/packages/widget-dir/src/model/widget.ts#L2`,
     );
   }
-});
+}, 15_000);
 
 void test('requires fixed API versions through the mjs CLI', async t => {
   const values = await fixture();

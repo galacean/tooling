@@ -7,3 +7,5 @@ export * from './package-readmes/build';
 export * from './search/build';
 export * from './skills/sync';
 export * from './static-routes/build';
+export * from './translations/selection';
+export * from './translations/documents';

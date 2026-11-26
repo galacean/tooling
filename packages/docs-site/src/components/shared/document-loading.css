@@ -23,7 +23,7 @@
 }
 .document-loading-sidebar {
   padding: 38px 30px;
-  border-right: 1px solid var(--site-border);
+  border-inline-end: 1px solid var(--site-border);
 }
 .document-loading-sidebar::before {
   content: '';

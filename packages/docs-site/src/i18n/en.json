@@ -94,5 +94,15 @@
   "originalImageSize": "View image at original size",
   "originalImageSizeHint": "Original size (1:1)",
   "fitImageToScreen": "Fit image to screen",
-  "fitImageToScreenHint": "Fit to screen"
+  "fitImageToScreenHint": "Fit to screen",
+  "manualIntro": "Guides and reference documentation.",
+  "pageDescription": "Documentation and reference for {title}.",
+  "externalDependency": "External dependency: [{name}]({url}).",
+  "fallbackNotice": "No translation is available for this language yet. Showing the original.",
+  "symbolCount_other": "{count} symbols",
+  "symbolCount_one": "{count} symbol",
+  "symbolCount_zero": "{count} symbols",
+  "symbolCount_two": "{count} symbols",
+  "symbolCount_few": "{count} symbols",
+  "symbolCount_many": "{count} symbols"
 }

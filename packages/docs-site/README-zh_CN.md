@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-双语 API 与手册文档站点的 React 运行时，提供搜索、主题和语言切换。
+多语言 API 与手册文档站点的 React 运行时，提供搜索、主题和语言切换。
 
 ## 安装
 
@@ -56,9 +56,24 @@ export default function App() {
 
 ## 多语言
 
-`createMessageCatalog` 合并公共中英文文案与业务文案，同名键由业务覆盖。公共界面文案统一维护在 [en.json](src/i18n/en.json) 和 [zh-CN.json](src/i18n/zh-CN.json)。
+内置公共界面语言：`en`、`zh-CN`、`zh-TW`、`ja`、`ko`、`de`、`pt`、`es`、`fr`、`tr`、`ar`、`ru`、`uk`、`th`。项目通过 `locales` 启用其中的子集；升级依赖不会自动扩大发布语言。
 
-独立组件也支持传入本地化文案。`MarkdownContent` 和 `HTMLDocumentContent` 未提供的文案键使用公共英文默认值。
+```ts
+import { builtInLocales, createMessageCatalog } from '@galacean/docs-site';
+
+const { locales, messages } = createMessageCatalog(builtInLocales);
+// 也可只启用部分语言：createMessageCatalog(['en', 'ja', 'ar'] as const)。
+```
+
+公共界面、通用手册介绍和符号计数均有内置文案，不必提供空业务字典。新增业务键必须覆盖所有启用语言；业务文案覆盖同名公共键。`localeLabels`、API `symbolCountLabelTemplates` 为可选覆盖，默认计数按语言处理数字与复数。
+
+构建配置和运行时使用同一份 `locales`。语言工具函数与类型统一从 `@galacean/docs-site` 主入口导入，该入口也可在 Node 中加载；浏览器 API 在对应功能执行时访问，不在模块初始化时访问。内容语言使用规范 BCP 47 标签；README 显式文件映射仍可使用带下划线的文件名。
+
+可选 `i18n.localeDefinitions` 定义语言标签、方向及脚本，`i18n.commonMessages` 覆盖公共文案或补充其他语言的完整字典。将同一选项传入 `createMessageCatalog(locales, productMessages, i18n)` 及 `DocsSite` 配置。语言匹配区分简繁书写系统；`getCommonMessageIssues(locale, i18n)` 可检查自定义字典缺项。
+
+站点导航时同步设置 `html.lang` 与 `html.dir`。阿拉伯语采用 RTL 布局，代码与签名保留 LTR 隔离。手册缺译时显示原文提示并保留正文真实语言；API 注释和 README 也保留来源语言。日期、搜索规范化和语言菜单使用对应 locale。静态元信息复用相同规则；有覆盖元数据时，纯原文回退正文不列为已翻译的语言替代页。
+
+独立使用 Markdown、HTML、图片查看器组件时可传文案覆盖，未配置站点的独立组件使用英文默认值。
 
 ## 代码高亮
 

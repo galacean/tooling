@@ -71,19 +71,37 @@ pnpm exec galacean-docs --help
 
 `routes build` requires `siteName` and reads `site/dist/index.html`. Set `SITE_BASE_PATH` for subpath deployments and `VITE_SITE_ORIGIN` for absolute canonical URLs.
 
-## Translation
+## Translation and language selection
 
-Install the bundled skills, then ask your coding agent to use one with the config path, target locale, and package or collection:
+The shared UI includes English, Simplified/Traditional Chinese, Japanese, Korean, German, Portuguese, Spanish, French, Turkish, Arabic, Russian, Ukrainian and Thai. `locales` enables the project's subset and accepts custom language definitions and common-message dictionaries through `i18n`. Canonicalized duplicate locale IDs or conflicting locale-map keys are rejected.
+
+Install or verify the two bundled agent skills:
 
 ```sh
 pnpm exec galacean-docs skills sync
 pnpm exec galacean-docs skills sync --check
 ```
 
-- [api-documentation-translation](skills/api-documentation-translation/SKILL.md): translate TypeDoc snapshot comments through extract/apply.
-- [manual-documentation-translation](skills/manual-documentation-translation/SKILL.md): translate Markdown or HTML manuals while preserving their format and routes.
+[API translation](skills/api-documentation-translation/SKILL.md) and [manual/README translation](skills/manual-documentation-translation/SKILL.md) offer source selection and multiple/all target selection when the request omits them. Explicit choices are used directly. `all` means configured languages, excluding each document's actual source. A manual collection or README can have a different source language from the API project.
 
-Skills are installed in `.agents/skills`; `--check` validates them without writing. Persistent translations live under `<translationDirectory>/translation-cache/`, with `translationDirectory` defaulting to `tmp/docs-tools/`. Preserve this cache when cleaning generated data. Migration commands preserve existing archives; review skipped entries before removing legacy directories.
+```sh
+pnpm exec galacean-docs api locales sync --config <config>
+pnpm exec galacean-docs api extract --config <config> --source-locale en --target-locales ja,ko,de --dry-run
+pnpm exec galacean-docs manual extract --config <config> --source-locale all --target-locales all
+pnpm exec galacean-docs package-readmes extract --config <config> --target-locales all
+pnpm exec galacean-docs translations status --config <config>
+pnpm exec galacean-docs translations check --config <config> --require-complete
+```
+
+`api extract` defaults to the latest configured version; `--version` selects a historical version. `--packages`, `--collections`, and `--pages` restrict their corresponding resource types. `--locale` remains the single-target alias, exclusive with `--target-locales`. `--dry-run` does not create tasks. `api locales sync` adds language wrappers from verified existing models without rebuilding source tags; corrupt models remain errors.
+
+Apply API results using the existing `api apply` result shape. Tasks may include `reusableTranslations`, verified against recorded per-field source fingerprints; merge those values into a complete result and translate the remaining fields. A stable key alone is insufficient to reuse changed source text.
+
+Manual/README task results contain `locale`, `sourceHash`, translated `content`, `title` and `group`. Save them beside their task and run `manual apply` or `package-readmes apply` with task/result pairs. Protected Markdown syntax, HTML element trees/attributes, code and placeholders are validated. Internal Markdown heading links must resolve after translation. Explicitly maintained target files take precedence and must be edited explicitly.
+
+Persistent bodies and commit metadata live in `<translationDirectory>/translation-cache/manual/` or `package-readmes/`; API archives live in `translation-cache/api/`. Disposable tasks use `api-translation/`, `manual-translation/` and `package-readmes-translation/`. Preserve `translation-cache` across generated-data cleanup and ephemeral CI workspaces. Default `translationDirectory` is `tmp/docs-tools`.
+
+Missing target manuals no longer require placeholder files: generation uses a verified archive or marked source fallback. Legacy manual archives without matching source metadata remain available for review and are not silently considered current. After applying results, regenerate the project's manual/README data, search and static routes. `translations check --require-complete` provides a strict release gate. No translation service, remote publication or site deployment is invoked automatically.
 
 ## Development
 

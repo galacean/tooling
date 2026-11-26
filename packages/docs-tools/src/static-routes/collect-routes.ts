@@ -1,4 +1,4 @@
-import { commonMessages, formatPageDescription, formatPageTitle, getAPISymbolRouteSegment, localePath } from '@galacean/docs-site';
+import { formatPageDescription, formatPageTitle, getAPISymbolRouteSegment, getCommonMessages, localePath, manualAlternateLocales } from '@galacean/docs-site';
 import type { APIManifestPackage } from '@galacean/docs-site';
 import type { ResolvedDocsBuildConfig } from '../config/types';
 import type { ManualNavigationItem } from '../manual/navigation';
@@ -10,6 +10,7 @@ export interface StaticRoute {
   title: string;
   description: string;
   includeInSitemap: boolean;
+  alternateLocales?: string[];
 }
 
 export function collectStaticRoutes(
@@ -23,7 +24,7 @@ export function collectStaticRoutes(
   const home = config.pages?.find(page => page.slug === null);
 
   for (const locale of config.locales) {
-    function add(segments: string[], title: string, description?: string, includeInSitemap = true): void {
+    function add(segments: string[], title: string, description?: string, includeInSitemap = true, alternateLocales?: string[]): void {
       const route = localePath(locale, segments);
       const diskPath = [locale, ...segments].join('/').toLocaleLowerCase('en-US');
 
@@ -36,7 +37,8 @@ export function collectStaticRoutes(
       diskPaths.add(diskPath);
       routes.set(route, {
         locale, segments, title: formatPageTitle(title, siteName),
-        description: formatPageDescription(locale, title, description), includeInSitemap,
+        description: formatPageDescription(locale, title, description, config.i18n), includeInSitemap,
+        ...(alternateLocales === undefined ? {} : { alternateLocales }),
       });
     }
 
@@ -50,11 +52,12 @@ export function collectStaticRoutes(
       add(['api'], 'API');
     }
     if (config.manualConfigured !== false) {
-      const { manual } = commonMessages[locale.startsWith('zh') ? 'zh-CN' : 'en'];
+      const { manual } = getCommonMessages(locale, config.i18n);
 
       add(['manual'], manual);
       for (const chapter of navigation) {
-        add(['manual', chapter.slug], chapter.title[locale] ?? manual);
+        add(['manual', chapter.slug], chapter.title[locale] ?? manual, undefined, true,
+          chapter.contentLocales === undefined ? undefined : manualAlternateLocales(config.locales, chapter.contentLocales));
       }
     }
     for (const pkg of packages) {
@@ -64,7 +67,7 @@ export function collectStaticRoutes(
           for (const symbol of entry.symbols) {
             const segment = getAPISymbolRouteSegment(entry.symbols, symbol.name);
 
-            add(['api', pkg.key, version.version, segment], symbol.name, undefined, false);
+            add(['api', pkg.key, version.version, segment], symbol.name, undefined, false, version.translatedLocales);
           }
         }
       }

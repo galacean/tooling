@@ -1,3 +1,4 @@
+import { formatSymbolCount } from '../../i18n/format';
 import {
   createTypeDocAPIDocumentationClient,
   loadAPIReadmeData,
@@ -73,12 +74,10 @@ export function ConfiguredAPIPage ({
       ),
   };
   const symbolCountLabel = (count: number, pageLocale: string) => {
-    const template = api.symbolCountLabelTemplates[pageLocale];
+    const template = api.symbolCountLabelTemplates?.[pageLocale];
 
     if (template === undefined) {
-      throw new Error(
-        `Missing API symbol count label for locale: ${pageLocale}`,
-      );
+      return formatSymbolCount(count, pageLocale, messages);
     }
 
     return template.replace('{count}', String(count));

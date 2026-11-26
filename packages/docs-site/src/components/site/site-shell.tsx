@@ -1,10 +1,12 @@
-import { Component, Suspense, useEffect, useRef, useState } from 'react';
+import { Component, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   Outlet,
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { getLocaleDefinition } from '../../i18n/registry';
+import type { DocsI18nOptions } from '../../i18n/messages';
 import { formatPageDescription, formatPageTitle } from '../../config/page-metadata';
 import { DocumentLoading, Icon, SelectControl } from '../shared';
 import type { IconName } from '../shared/icon';
@@ -40,6 +42,8 @@ export interface SiteShellNavigationItem {
 
 export interface SiteShellProps {
   locale: string;
+  i18n?: DocsI18nOptions;
+  limitContentAlternates?: boolean;
   locales: { value: string; label: string }[];
   storageKeys: DocsSiteStorageKeys;
   messages: SiteShellMessages;
@@ -61,6 +65,7 @@ export interface SiteShellProps {
 }
 
 export interface SiteShellOutletContext {
+  setContentLocales: (locales: string[] | undefined) => void;
   setManualPageTitle: (title: string) => void;
   setManualSidebarCollapsed: (collapsed: boolean) => void;
   setAPIDocumentTitle: (title: string) => void;
@@ -103,6 +108,8 @@ class ShellErrorBoundary extends Component<
 
 export function SiteShell({
   locale,
+  i18n,
+  limitContentAlternates = false,
   locales,
   messages: t,
   brandLabel,
@@ -124,6 +131,12 @@ export function SiteShell({
 }: SiteShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [contentLocaleState, setContentLocaleState] = useState<{ pathname: string; locales: string[] | undefined }>();
+  const setContentLocales = useCallback((locales: string[] | undefined) => {
+    setContentLocaleState(current => current?.pathname === location.pathname && JSON.stringify(current.locales) === JSON.stringify(locales)
+      ? current : { pathname: location.pathname, locales });
+  }, [location.pathname]);
+  const alternateLocales = contentLocaleState?.pathname === location.pathname ? contentLocaleState.locales : limitContentAlternates ? [] : undefined;
   const [search, setSearch] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [manualPageTitle, setManualPageTitle] = useState('');
@@ -176,13 +189,14 @@ export function SiteShell({
       head.appendChild(document.createElement('link'));
 
     document.documentElement.lang = locale;
+    document.documentElement.dir = getLocaleDefinition(locale, i18n?.localeDefinitions).direction;
     document.title = formatPageTitle(title, brandLabel);
     description.name = 'description';
-    description.content = formatPageDescription(locale, title, pageDescription);
+    description.content = formatPageDescription(locale, title, pageDescription, i18n);
     canonical.rel = 'canonical';
     canonical.href = canonicalHref;
 
-    const alternates = new Map(locales.map(({ value }) => [value, getAlternateHref(value)]));
+    const alternates = new Map(locales.filter(({ value }) => alternateLocales === undefined || alternateLocales.includes(value)).map(({ value }) => [value, getAlternateHref(value)]));
 
     for (const link of head.querySelectorAll<HTMLLinkElement>('link[rel="alternate"][hreflang]')) {
       const href = alternates.get(link.hreflang);
@@ -204,9 +218,11 @@ export function SiteShell({
     }
   }, [
     activeDocumentTitle,
+    alternateLocales,
     brandLabel,
     canonicalHref,
     pageDescription,
+    i18n,
     getAlternateHref,
     locale,
     locales,
@@ -421,6 +437,7 @@ export function SiteShell({
         >
           <Outlet
             context={{
+              setContentLocales,
               setManualPageTitle,
               setManualSidebarCollapsed,
               setAPIDocumentTitle,

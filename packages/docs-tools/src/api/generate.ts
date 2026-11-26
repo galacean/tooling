@@ -1,3 +1,5 @@
+import type { DocsI18nOptions } from '@galacean/docs-site';
+import { formatMessage, getCommonMessages } from '@galacean/docs-site';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -323,6 +325,7 @@ export function externalizeTypeDocDependencies(
   project: JSONOutput.ProjectReflection,
   packages: APIDocumentationPackage[],
   sourceLocale = 'en',
+  i18n?: DocsI18nOptions,
 ): JSONOutput.ProjectReflection {
   const reflections = collectTypeDocReflections(project, {
     allowExternalReferences: true,
@@ -423,9 +426,7 @@ export function externalizeTypeDocDependencies(
         comment: {
           summary: [{
             kind: 'text',
-            text: sourceLocale === 'zh-CN'
-              ? `外部依赖包： [${String(value['name'])}](${url})。`
-              : `External dependency: [${String(value['name'])}](${url}).`,
+            text: formatMessage(getCommonMessages(sourceLocale, i18n).externalDependency, { name: String(value['name']), url }),
           }],
         },
         externalUrl: url,
@@ -910,6 +911,7 @@ async function buildVersionAtTag(
       project,
       generatedPackages,
       config.sourceLocale,
+      config.i18n,
     );
 
     return {
@@ -964,6 +966,7 @@ async function buildVersionAtCurrent(
     project,
     generatedPackages,
     config.sourceLocale,
+    config.i18n,
   );
 
   return {
@@ -994,7 +997,7 @@ export async function generateAPIDocumentation(
   dependencies: APIGenerationDependencies = defaultDependencies,
   reportVersionStatus?: (status: {
     version: string;
-    status: 'complete' | 'missing' | 'invalid';
+    status: 'complete' | 'missing' | 'invalid' | 'locales-pending';
     reason?: string;
   }) => void,
   options: APIGenerationOptions = {},
@@ -1004,7 +1007,7 @@ export async function generateAPIDocumentation(
   warnings: string[];
   versionStatuses: {
     version: string;
-    status: 'complete' | 'missing' | 'invalid';
+    status: 'complete' | 'missing' | 'invalid' | 'locales-pending';
     reason?: string;
   }[];
 }> {

@@ -13,8 +13,13 @@ interface SidebarDrag {
   pointerId: number;
   startX: number;
   startWidth: number;
+  inlineDirection: number;
   width: number;
   previousUserSelect: string;
+}
+
+function inlineDirection(handle: HTMLElement): number {
+  return handle.closest('[dir]')?.getAttribute('dir') === 'rtl' ? -1 : 1;
 }
 
 function clampSidebarWidth(width: number) {
@@ -104,6 +109,7 @@ export function DocsSidebarCollapse({
     drag.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      inlineDirection: inlineDirection(event.currentTarget),
       startWidth: targetWidth,
       width: clampSidebarWidth(targetWidth),
       previousUserSelect: document.body.style.userSelect,
@@ -123,7 +129,7 @@ export function DocsSidebarCollapse({
     }
 
     drag.current.width = applyWidth(
-      drag.current.startWidth + event.clientX - drag.current.startX,
+      drag.current.startWidth + (event.clientX - drag.current.startX) * drag.current.inlineDirection,
     );
   };
 
@@ -148,7 +154,7 @@ export function DocsSidebarCollapse({
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     let nextWidth: number;
-    const step = event.shiftKey ? 32 : 16;
+    const step = (event.shiftKey ? 32 : 16) * inlineDirection(event.currentTarget);
 
     switch (event.key) {
       case 'ArrowLeft':

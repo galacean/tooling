@@ -71,19 +71,37 @@ pnpm exec galacean-docs --help
 
 `routes build` 需要配置 `siteName`，并读取 `site/dist/index.html`。子路径部署设置 `SITE_BASE_PATH`，生成完整 canonical URL 时设置 `VITE_SITE_ORIGIN`。
 
-## 翻译
+## 翻译与语言选择
 
-安装内置 skill 后，在 coding agent 中指定配置路径、目标语言和目标包或集合：
+公共界面内置英文、简体/繁体中文、日语、韩语、德语、葡萄牙语、西班牙语、法语、土耳其语、阿拉伯语、俄语、乌克兰语、泰语。项目的 `locales` 决定启用语言，并可通过 `i18n` 扩展其他语言定义与字典。规范化后重复的语言 ID、冲突的语言映射键会报错。
+
+安装或校验两个内置 skill：
 
 ```sh
 pnpm exec galacean-docs skills sync
 pnpm exec galacean-docs skills sync --check
 ```
 
-- [api-documentation-translation](skills/api-documentation-translation/SKILL.md)：通过 extract/apply 翻译 TypeDoc 快照注释。
-- [manual-documentation-translation](skills/manual-documentation-translation/SKILL.md)：翻译 Markdown 或 HTML 手册，保留原格式和路由。
+[API 翻译](skills/api-documentation-translation/SKILL.md)与[手册/README 翻译](skills/manual-documentation-translation/SKILL.md)在用户未指定时提供源语言选择、目标多选与全选；已明确的选择直接执行。`all` 仅指当前配置语言，并按每份文档排除其实际源语言。各手册集合、README 的源语言可以与 API 项目不同。
 
-Skill 安装到 `.agents/skills`，`--check` 只校验、不写入。持久译文保存在 `<translationDirectory>/translation-cache/`，`translationDirectory` 默认为 `tmp/docs-tools/`。清理生成数据时保留该缓存。迁移命令保留已有归档，删除旧目录前先检查跳过项。
+```sh
+pnpm exec galacean-docs api locales sync --config <config>
+pnpm exec galacean-docs api extract --config <config> --source-locale en --target-locales ja,ko,de --dry-run
+pnpm exec galacean-docs manual extract --config <config> --source-locale all --target-locales all
+pnpm exec galacean-docs package-readmes extract --config <config> --target-locales all
+pnpm exec galacean-docs translations status --config <config>
+pnpm exec galacean-docs translations check --config <config> --require-complete
+```
+
+`api extract` 默认选择最新配置版本，历史版本需指定 `--version`。`--packages`、`--collections`、`--pages` 分别限制相应类型的资源范围。`--locale` 保留为单目标别名，与 `--target-locales` 互斥。`--dry-run` 不创建任务。`api locales sync` 从已验证模型补齐语言入口，不重建历史源码；模型损坏仍会失败。
+
+API apply 沿用现有结果格式。新任务的 `reusableTranslations` 根据归档中的逐字段源文指纹生成，合并这些值与新译字段形成完整结果；字段 key 相同不代表源文未变。
+
+Manual/README 结果包含 `locale`、`sourceHash`、译文 `content`、`title`、`group`。结果保存到任务旁，再用 `manual apply` 或 `package-readmes apply` 提交 task/result 对。工具校验 Markdown 保护语法、HTML 标签树/属性、代码、占位符及内部标题锚点。显式维护的目标文件优先，需要直接维护，archive apply 不覆盖它们。
+
+持久正文与提交元数据位于 `<translationDirectory>/translation-cache/manual/` 或 `package-readmes/`；API 归档位于 `translation-cache/api/`。临时任务分别位于 `api-translation/`、`manual-translation/`、`package-readmes-translation/`。清理生成数据时保留 `translation-cache`，临时 CI 工作区也需恢复/保存它。`translationDirectory` 默认为 `tmp/docs-tools`。
+
+新增语言无需预建空手册文件：生成时使用有效归档或带标识的原文回退。缺少匹配源文元数据的旧手册归档保留供复核，不自动当作最新译文。apply 后执行项目自己的手册/README、搜索及静态路由构建命令。发布要求完整覆盖时使用 `translations check --require-complete`。工具不会自动调用翻译服务、发布文档或部署站点。
 
 ## 开发
 

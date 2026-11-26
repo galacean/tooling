@@ -8,6 +8,8 @@ import { test } from 'vitest';
 import type { TestContext } from 'vitest';
 import {
   extractTranslationTasks,
+  loadTranslationInput,
+  translationFieldHash,
   getAPIStatus,
   writeAPITranslationArchive,
 } from '@galacean/docs-tools';
@@ -293,4 +295,32 @@ void test('runs api extract from the CLI with a TypeScript site config', async t
   );
 
   assert.match(result.stdout, /widget-dir@1\.2\.3 -> en/u);
+});
+
+void test('reuses only API fields whose source fingerprints still match', async t => {
+  const values = await fixture(t);
+  const input = await loadTranslationInput(values.targetPath, values.config);
+  const [field] = input.translationSource.fields;
+
+  assert.ok(field);
+  await writeAPITranslationArchive(values.config, {
+    schemaVersion: 2, locale: 'en', version: '1.2.3', sourceHash: 'old-model-hash',
+    sourceFields: { [field.key]: translationFieldHash(field) }, translations: { [field.key]: 'Translated widget.' },
+  }, 'widget-dir');
+  const [task] = await extractTranslationTasks([values.targetPath], values.config);
+
+  assert.ok(task);
+  const parsed = JSON.parse(await readFile(task.taskPath, 'utf8')) as { reusableTranslations: Record<string, string> };
+
+  assert.equal(parsed.reusableTranslations[field.key], 'Translated widget.');
+  const source = JSON.parse(await readFile(values.sourcePath, 'utf8')) as { children: { comment: { summary: { text: string }[] } }[] };
+
+  source.children[0]!.comment.summary[0]!.text = 'Changed original text with the same API field key.';
+  await writeFile(values.sourcePath, JSON.stringify(source));
+  const [changedTask] = await extractTranslationTasks([values.targetPath], values.config);
+
+  assert.ok(changedTask);
+  const changed = JSON.parse(await readFile(changedTask.taskPath, 'utf8')) as { reusableTranslations: Record<string, string> };
+
+  assert.deepEqual(changed.reusableTranslations, {});
 });

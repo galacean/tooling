@@ -1,5 +1,7 @@
-import { createHash } from 'node:crypto';
+import { contentHash } from '../content-hash';
 import { indexReflections, isRecord } from '@galacean/docs-site';
+
+export { contentHash };
 
 export interface CommentPart {
   kind: string;
@@ -62,10 +64,6 @@ interface TypeDocReflection extends Record<string, unknown> {
 interface TypeDocType extends Record<string, unknown> {
   type: string;
   declaration?: TypeDocReflection;
-}
-
-export function contentHash(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
 function signatureKey(signature: TypeDocReflection): string {

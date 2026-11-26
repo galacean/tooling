@@ -3,7 +3,7 @@ import { parseAPIManifest } from '@galacean/docs-site';
 import type { ResolvedDocsBuildConfig } from '../config/types';
 import { loadTranslationInput } from './extract';
 import { readJSON } from './read-json';
-import { readAPITranslationArchive, writeAPITranslationArchive } from './translation-archive';
+import { readAPITranslationArchive, translationFieldHash, writeAPITranslationArchive } from './translation-archive';
 import {
   collectCommentFields,
   translateParts,
@@ -137,6 +137,8 @@ export async function migrateAPITranslations(
           await writeAPITranslationArchive(
             config,
             {
+              schemaVersion: 2,
+              sourceFields: Object.fromEntries(input.translationSource.fields.map(field => [field.key, translationFieldHash(field)])),
               locale,
               version,
               sourceHash: input.sourceHash,

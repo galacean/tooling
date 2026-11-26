@@ -418,7 +418,7 @@ void test('generates metadata and sitemap entries without rendering route bodies
     assert.equal(html.match(/name="description"/gu)?.length, 1);
     assert.equal(html.match(/rel="canonical"/gu)?.length, 1);
   }
-  assert.match(root, /<html lang="zh-CN">/u);
+  assert.match(root, /<html lang="zh-CN" dir="ltr">/u);
   assert.equal(root, await read('zh-CN/index.html'));
   assert.match(root, /content="项目首页"/u);
   assert.match(root, /canonical[^>]+https:\/\/example.test\/docs\/zh-CN\//u);

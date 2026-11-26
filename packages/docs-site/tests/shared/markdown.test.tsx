@@ -762,7 +762,7 @@ describe('shared ManualPage', () => {
     const updated = container.querySelector('.manual-article-updated');
 
     expect(updated?.querySelector('time')?.textContent).toBe(
-      '2025-08-27 18:44',
+      new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date('2025-08-27T18:44:00Z')),
     );
     expect(updated?.querySelector('svg')).not.toBeNull();
     expect(

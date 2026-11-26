@@ -6,12 +6,14 @@ import type { APIManifest } from '@galacean/docs-site';
 import type { ResolvedDocsBuildConfig } from '../config/types';
 import { assertNoSymlinkPath, isWithin } from '../path-validation';
 import { readJSON, readOptionalJSON } from './read-json';
+import { localizedSnapshotHash } from './snapshot';
 import { resolveAPISnapshotReference } from './snapshot-reference';
 
 export type APIVersionState =
   | { status: 'missing' }
   | { status: 'invalid'; reason: string }
-  | { status: 'complete' };
+  | { status: 'complete' }
+  | { status: 'locales-pending'; missingLocales: string[]; extraLocales: string[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -19,10 +21,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.values(value).every(item => typeof item === 'string');
 }
 
 function versionFor(
@@ -111,7 +109,12 @@ export async function inspectAPIVersionState(
   }
 
   const dataRoot = path.dirname(config.apiDirectory);
-  let expectedSnapshotByLocale = new Map<string, string>();
+  const expectedSnapshotByLocale = new Map<string, string>();
+  const firstVersion = presentPackages[0]!.versions.find(item => item.version === version)!;
+  const appliedSnapshots: Record<string, Record<string, unknown>> = {};
+  let modelMetadata: string | undefined;
+  const missingLocales = new Set<string>();
+  const extraLocales = new Set<string>();
 
   for (const apiPackage of apiPackages) {
     const item = versionFor(manifest, apiPackage.key, version);
@@ -122,15 +125,17 @@ export async function inspectAPIVersionState(
         reason: `${apiPackage.key}@${version} commit does not match other API packages`,
       };
     }
+    if (item.snapshot !== firstVersion.snapshot) {
+      return { status: 'invalid', reason: `${apiPackage.key}@${version} snapshot revision differs between packages` };
+    }
     const locales = Object.keys(item.json).sort();
 
-    if (JSON.stringify(locales) !== JSON.stringify([...config.locales].sort())) {
-      return {
-        status: 'invalid',
-        reason: `${apiPackage.key}@${version} locales do not match site config`,
-      };
+    if (!locales.includes(config.sourceLocale)) {
+      return { status: 'invalid', reason: `${apiPackage.key}@${version} authoritative source locale is missing` };
     }
-    for (const locale of config.locales) {
+    config.locales.filter(locale => !locales.includes(locale)).forEach(locale => missingLocales.add(locale));
+    locales.filter(locale => !config.locales.includes(locale)).forEach(locale => extraLocales.add(locale));
+    for (const locale of locales) {
       const wrapperRelativePath = item.json[locale] ?? '';
       const expectedWrapperPath =
         `api/${apiPackage.key}/${version}/${locale}.api.json`;
@@ -177,6 +182,17 @@ export async function inspectAPIVersionState(
           reason: `${apiPackage.key}@${version}/${locale} snapshot path does not use content addressing`,
         };
       }
+      const expectedSnapshot = expectedSnapshotByLocale.get(locale);
+
+      if (expectedSnapshot !== undefined && expectedSnapshot !== snapshotPath) {
+        return {
+          status: 'invalid',
+          reason: `${version}/${locale} wrappers do not reference the same API model`,
+        };
+      }
+      if (expectedSnapshot === snapshotPath) {
+        continue;
+      }
       await assertNoSymlinkPath(config.repositoryRoot, snapshotPath);
       const snapshotHash = path.basename(snapshotPath).replace(/\.api\.json$/u, '');
       let snapshotText: string;
@@ -213,11 +229,11 @@ export async function inspectAPIVersionState(
         snapshot['locale'] !== locale ||
         !isRecord(snapshot['apiSnapshot']) ||
         snapshot['apiSnapshot']['commit'] !== item.commit ||
-        snapshot['apiSnapshot']['snapshot'] !== item.snapshot ||
+        typeof snapshot['apiSnapshot']['snapshot'] !== 'string' ||
+        !/^[a-f\d]{64}$/iu.test(snapshot['apiSnapshot']['snapshot']) ||
         typeof snapshot['apiSnapshot']['generatorVersion'] !== 'string' ||
         snapshot['apiSnapshot']['generatorVersion'].length === 0 ||
-        !isUnknownArray(snapshot['apiSnapshot']['packages']) ||
-        !isStringRecord(item.json)
+        !isUnknownArray(snapshot['apiSnapshot']['packages'])
       ) {
         return {
           status: 'invalid',
@@ -249,17 +265,31 @@ export async function inspectAPIVersionState(
           reason: `${apiPackage.key}@${version}/${locale} snapshot package model is inconsistent`,
         };
       }
-      const expectedSnapshot = expectedSnapshotByLocale.get(locale);
+      const metadata = JSON.stringify(snapshot['apiSnapshot']);
 
-      if (expectedSnapshot !== undefined && expectedSnapshot !== snapshotPath) {
-        return {
-          status: 'invalid',
-          reason: `${version}/${locale} wrappers do not reference the same API model`,
-        };
+      if (modelMetadata !== undefined && modelMetadata !== metadata) {
+        return { status: 'invalid', reason: `${version}/${locale} snapshot metadata differs between locales` };
+      }
+      modelMetadata = metadata;
+      if (snapshot['apiSnapshot']['snapshot'] !== item.snapshot) {
+        appliedSnapshots[locale] = snapshot;
       }
       expectedSnapshotByLocale.set(locale, snapshotPath);
     }
   }
 
-  return { status: 'complete' };
+  const source = appliedSnapshots[config.sourceLocale];
+
+  if (source !== undefined) {
+    // api apply records the revision of the localized set in the manifest.
+    const snapshots = Object.fromEntries(Object.keys(firstVersion.json).map(locale => [locale, appliedSnapshots[locale]]));
+
+    if (localizedSnapshotHash(source, snapshots) !== firstVersion.snapshot) {
+      return { status: 'invalid', reason: `${version} localized snapshot revision is inconsistent` };
+    }
+  }
+
+  return missingLocales.size > 0 || extraLocales.size > 0
+    ? { status: 'locales-pending', missingLocales: [...missingLocales], extraLocales: [...extraLocales] }
+    : { status: 'complete' };
 }

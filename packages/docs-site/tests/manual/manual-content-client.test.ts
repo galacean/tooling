@@ -49,6 +49,8 @@ describe('shared manual content client', () => {
     ]);
     expect(await client.loadPage('zh-CN', 'getting-started', first)).toEqual({
       slug: 'getting-started',
+      contentLocale: 'zh-CN',
+      translationStatus: 'source',
       title: '开始使用',
       text: '# Intro\n\n## Install\n\n### Detail\n\n#### Deep\n\n## Next\n',
       headings: [

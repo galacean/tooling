@@ -1,3 +1,5 @@
+import { normalizeLocale } from '@galacean/docs-site';
+import { normalizeDocsLocales, validateI18n } from './i18n-validation';
 import { isSafePathSegment } from '../path-validation';
 import { validateAPIConfig } from './api-config-validation';
 import { validateManualCollections } from './manual-config-validation';
@@ -5,7 +7,11 @@ import { isRecord } from './validation';
 import type { DocsProjectConfigInput } from './types';
 
 function isLocaleTag(value: string): boolean {
-  return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u.test(value);
+  try {
+    return normalizeLocale(value) === value;
+  } catch {
+    return false;
+  }
 }
 
 function validatePageSEO(seo: unknown, locales: string[], field: string): string[] {
@@ -78,6 +84,7 @@ function validateSitePages(value: unknown, locales: string[]): string[] {
 }
 
 export function validateDocsProjectConfig(config: unknown, configPath: string): DocsProjectConfigInput {
+  config = normalizeDocsLocales(config);
   const issues: string[] = [];
 
   if (!isRecord(config)) {
@@ -172,6 +179,7 @@ export function validateDocsProjectConfig(config: unknown, configPath: string): 
       : undefined;
 
     issues.push(...validateManualCollections(manualCollections, locales));
+    issues.push(...validateI18n(config['i18n'], Array.isArray(locales) ? locales as string[] : []));
     issues.push(...validateSitePages(
       config['pages'],
       Array.isArray(locales) ? locales.filter((locale): locale is string => typeof locale === 'string') : [],

@@ -475,38 +475,38 @@ export async function assembleAPIDocumentation(
     }
   }
 
-  for (const pkg of selectedPackages) {
-    for (const locale of config.locales) {
-      const translations = preservedTranslations.get(locale) ?? {};
-      const localized =
-        locale === config.sourceLocale
-          ? localizeProject(project, source, undefined, locale)
-          : localizeProjectWithFallback(
-              project,
-              source,
-              translations,
-              locale,
-            );
-      const snapshot = Object.assign(localized, { locale, apiSnapshot });
-      const contents = `${JSON.stringify(snapshot)}\n`;
-      const contentHash = createHash('sha256').update(contents).digest('hex');
-      const contentPath = `api/snapshots/${contentHash}.api.json`;
-      const existing = contentSnapshots.get(contentPath);
+  for (const locale of config.locales) {
+    const translations = preservedTranslations.get(locale) ?? {};
+    const localized =
+      locale === config.sourceLocale
+        ? localizeProject(project, source, undefined, locale)
+        : localizeProjectWithFallback(
+            project,
+            source,
+            translations,
+            locale,
+          );
+    const snapshot = Object.assign(localized, { locale, apiSnapshot });
+    const contents = `${JSON.stringify(snapshot)}\n`;
+    const contentHash = createHash('sha256').update(contents).digest('hex');
+    const contentPath = `api/snapshots/${contentHash}.api.json`;
+    const existing = contentSnapshots.get(contentPath);
 
-      if (existing !== undefined && existing !== contents) {
-        throw new Error(`API snapshot hash collision: ${contentPath}`);
-      }
-      contentSnapshots.set(contentPath, contents);
+    if (existing !== undefined && existing !== contents) {
+      throw new Error(`API snapshot hash collision: ${contentPath}`);
+    }
+    contentSnapshots.set(contentPath, contents);
+    const missing = source.fields.filter(
+      field =>
+        field.sourceLocale !== locale &&
+        translations[field.key] === undefined,
+    ).length;
+
+    for (const pkg of selectedPackages) {
       localizedSnapshots.set(
         `${pkg.key}\0${locale}`,
         `${JSON.stringify({ $ref: contentPath })}\n`,
       );
-      const missing = source.fields.filter(
-        field =>
-          field.sourceLocale !== locale &&
-          translations[field.key] === undefined,
-      ).length;
-
       if (missing > 0) {
         warnings.push(
           `${pkg.key}/${locale}: ${missing} API comment fields use source-language fallback.`,
@@ -518,7 +518,9 @@ export async function assembleAPIDocumentation(
   const previousPackages = previous?.packages ?? [];
   const generatedPackages = selectedPackages.map(pkg => {
     const previousPackage = previousPackages.find(item => item.key === pkg.key);
+    const fields = collectCommentFields(project, [pkg], { sourceLocale: config.sourceLocale });
     const version: APIVersion = {
+      translatedLocales: config.locales.filter(locale => fields.every(field => field.sourceLocale === locale || preservedTranslations.get(locale)?.[field.key] !== undefined)),
       version: pkg.version,
       snapshot: snapshotHash,
       commit: metadata.commit,

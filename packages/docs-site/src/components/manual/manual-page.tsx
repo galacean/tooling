@@ -1,7 +1,10 @@
+import { useDocsI18n } from '../../providers/i18n';
+import { getLocaleDefinition } from '../../i18n/registry';
+import { getCommonMessages } from '../../i18n/messages';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import type { ManualHeading } from '../../manual';
+import type { ManualPageDocument as ManualDocument } from '../../manual/document';
 import type { MarkdownMessages } from '../shared/markdown';
 import {
   BackToTopButton,
@@ -28,18 +31,12 @@ import { buildManualTocTree, flattenManualTocNodes } from './manual-toc';
 import type { ManualTocNode } from './manual-toc';
 
 export { buildManualNavigationGroups, groupManualPages };
-export type { ManualNavigationPage };
-
-export interface ManualDocument {
-  text: string;
-  headings: ManualHeading[];
-  format?: 'markdown' | 'html';
-  lastModified?: string;
-}
+export type { ManualDocument, ManualNavigationPage };
 
 export interface ManualPageMessages extends Partial<MarkdownMessages> {
   manual: string;
   manualIntro: string;
+  fallbackNotice?: string;
   loading: string;
   loadError: string;
   loadErrorDescription: string;
@@ -69,6 +66,7 @@ export interface ManualPageMessages extends Partial<MarkdownMessages> {
 export interface ManualPageProps {
   locale: string;
   slug: string | undefined;
+  onContentLocalesChange?: (locales: string[] | undefined) => void;
   onTitleChange?: (title: string) => void;
   onSidebarCollapsed?: (collapsed: boolean) => void;
   messages: ManualPageMessages;
@@ -97,6 +95,7 @@ export function ManualPage({
   locale,
   slug,
   onTitleChange,
+  onContentLocalesChange,
   onSidebarCollapsed,
   messages: t,
   getPageHref,
@@ -104,6 +103,7 @@ export function ManualPage({
   loadOverview,
   loadPage,
 }: ManualPageProps) {
+  const i18n = useDocsI18n();
   const location = useLocation();
   const sidebarRef = useRef<HTMLElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
@@ -139,6 +139,13 @@ export function ManualPage({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeTocId, setActiveTocId] = useState<string>();
   const pages = navigation?.locale === locale ? navigation.pages : undefined;
+  const selectedAlternates = pages?.find(page => page.slug === slug)?.alternateLocales;
+
+  useEffect(() => {
+    if (pages !== undefined) {
+      onContentLocalesChange?.(selectedAlternates);
+    }
+  }, [pages, selectedAlternates, onContentLocalesChange]);
   const index = pages?.findIndex(page => page.slug === slug) ?? -1;
   const selected = pages?.[index];
   const groups = buildManualNavigationGroups(pages ?? []);
@@ -193,7 +200,7 @@ export function ManualPage({
   const formattedLastModified =
     lastModified === undefined
       ? undefined
-      : lastModified.toISOString().slice(0, 16).replace('T', ' ');
+      : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(lastModified);
   const containsCurrentPage = (page: ManualNavigationNode): boolean =>
     page.slug === displayedSlug || page.children.some(containsCurrentPage);
   const containsCurrentGroupPage = (group: ManualNavigationGroup): boolean =>
@@ -801,6 +808,10 @@ export function ManualPage({
             <DocumentLoading label={t.loading} />
           ) : (
             <>
+              {displayedContent.contentLocale !== undefined && displayedContent.contentLocale !== locale && (
+                <p role="status">{t.fallbackNotice ?? getCommonMessages(locale, i18n).fallbackNotice}</p>
+              )}
+              <div lang={displayedContent.contentLocale ?? locale} dir={getLocaleDefinition(displayedContent.contentLocale ?? locale, i18n.localeDefinitions).direction}>
               {displayedContent.format === 'html' ? (
                 <>
                   {!/<h1(?:\s|>)/iu.test(displayedContent.text) && (
@@ -817,6 +828,7 @@ export function ManualPage({
                   copyFailed={t.copyFailed}
                 />
               )}
+              </div>
               {formattedLastModified !== undefined &&
                 lastModified !== undefined && (
                   <div className="manual-article-updated">

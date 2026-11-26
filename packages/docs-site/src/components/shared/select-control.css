@@ -16,7 +16,7 @@
   background: var(--site-surface);
   color: var(--site-ink);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition:
     border-color 0.15s,
@@ -59,7 +59,7 @@
   position: absolute;
   z-index: 30;
   top: calc(100% + 6px);
-  left: 0;
+  inset-inline-start: 0;
   width: max-content;
   min-width: 140px;
   max-width: min(320px, calc(100vw - 24px));
@@ -110,3 +110,5 @@
   color: var(--site-accent);
   font-weight: 600;
 }
+
+.site-select-menu { max-height: min(60vh, 28rem); max-width: calc(100vw - 2rem); overflow-y: auto; }

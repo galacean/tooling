@@ -3,7 +3,7 @@
   --site-doc-font-family:
     'Chinese Quote', -apple-system, system-ui, 'Segoe UI', Roboto,
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue',
-    Helvetica, Arial, sans-serif;
+    'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans CJK TC', 'Noto Sans CJK JP', Helvetica, Arial, sans-serif;
   --site-doc-body-size: 14px;
   --site-doc-body-leading: 1.57;
   --site-doc-code-size: 13px;
@@ -144,4 +144,11 @@ summary:focus-visible {
     scroll-behavior: auto !important;
     animation: none !important;
   }
+}
+
+/* Keep programming syntax isolated from the surrounding document direction. */
+code, pre, .api-signature, .api-type-reference { direction: ltr; text-align: left; unicode-bidi: isolate; }
+bdi { unicode-bidi: isolate; }
+.docs-sidebar-collapse:dir(rtl) svg {
+  transform: scaleX(-1);
 }

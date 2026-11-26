@@ -155,7 +155,7 @@ export function SearchPanel({
       setStorageError(true);
     }
   };
-  const results = searchResults(items, debounced);
+  const results = searchResults(items, debounced, locale);
   const categories = (['manual', 'api'] as const).filter(category =>
     category === 'manual' ? includeManual : includeAPI,
   );

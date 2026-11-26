@@ -1,10 +1,11 @@
-import type { DocsDataBaseURLs, DocsSitePageDeclaration } from '@galacean/docs-site';
+import type { DocsDataBaseURLs, DocsI18nOptions, DocsSitePageDeclaration } from '@galacean/docs-site';
 import type { APIVersionManifest } from '../api/versions';
 
 export type SitePageConfig = DocsSitePageDeclaration<string, string>;
 
 /** Serializable project declaration; filesystem paths are relative to the repository or package. */
 export interface DocsProjectConfigInput {
+  i18n?: DocsI18nOptions;
   sourceLocale: string;
   defaultLocale?: string;
   locales: string[];
@@ -72,6 +73,7 @@ export interface ManualCollectionConfig {
 export interface ResolvedDocsBuildConfig {
   repositoryRoot: string;
   configPath: string;
+  i18n?: DocsI18nOptions;
   sourceLocale: string;
   defaultLocale?: string;
   locales: string[];

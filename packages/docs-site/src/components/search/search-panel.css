@@ -38,7 +38,7 @@
   width: 100%;
   background: none;
   color: inherit;
-  text-align: left;
+  text-align: start;
 }
 .search-results h3 {
   letter-spacing: 0.08em;
@@ -66,7 +66,7 @@ dialog.site-search[open] {
 dialog.site-search::before {
   position: absolute;
   top: 0;
-  left: 24px;
+  inset-inline-start: 24px;
   width: 48px;
   height: 3px;
   background: var(--site-accent);
@@ -159,7 +159,7 @@ dialog.site-search .site-search-input input:focus-visible {
 dialog.site-search .site-search-warning {
   margin: 14px 24px 0;
   padding: 8px 12px;
-  border-left: 2px solid var(--site-accent);
+  border-inline-start: 2px solid var(--site-accent);
   color: var(--site-muted);
   font-size: 12px;
   line-height: 1.6;
@@ -179,7 +179,7 @@ dialog.site-search .search-history-header button:hover {
 }
 dialog.site-search .search-history-row {
   gap: 8px;
-  padding-right: 8px;
+  padding-inline-end: 8px;
   border-radius: 4px;
 }
 dialog.site-search .search-history-row:hover {
@@ -192,7 +192,7 @@ dialog.site-search .search-history-row > button:first-child {
   gap: 12px;
   min-width: 0;
   padding: 13px 10px;
-  text-align: left;
+  text-align: start;
   font-size: 13px;
 }
 dialog.site-search .search-history-row > button:first-child > span {

@@ -1,4 +1,5 @@
 import { createPreferenceStorage } from '../preferences';
+import { matchLocale } from './registry';
 
 export function isSupportedLocale<T extends string>(
   value: unknown,
@@ -16,24 +17,16 @@ export function resolvePreferredLocale<T extends string>(
   if (!isSupportedLocale(defaultLocale, locales)) {
     throw new Error('Default locale must be included in supported locales');
   }
-  if (isSupportedLocale(storedLocale, locales)) {
-    return storedLocale;
+  if (typeof storedLocale === 'string') {
+    const stored = locales.find(locale => locale.toLowerCase() === storedLocale.replace(/_/gu, '-').toLowerCase());
+
+    if (stored !== undefined) {
+      return stored;
+    }
   }
 
   for (const language of browserLanguages) {
-    const normalized = language.replace(/_/gu, '-').toLowerCase();
-    const exactMatch = locales.find(
-      locale => locale.toLowerCase() === normalized,
-    );
-
-    if (exactMatch !== undefined) {
-      return exactMatch;
-    }
-
-    const primaryLanguage = normalized.split('-')[0];
-    const languageMatch = locales.find(
-      locale => locale.toLowerCase().split('-')[0] === primaryLanguage,
-    );
+    const languageMatch = matchLocale(language, locales, defaultLocale);
 
     if (languageMatch !== undefined) {
       return languageMatch;

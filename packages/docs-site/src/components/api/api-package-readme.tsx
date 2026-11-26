@@ -1,3 +1,5 @@
+import { useDocsI18n } from '../../providers/i18n';
+import { getLocaleDefinition } from '../../i18n/registry';
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -38,6 +40,7 @@ export function APIPackageReadme<TLocale extends string>({
   resolveLink,
   resolveImage,
 }: APIPackageReadmeProps<TLocale>) {
+  const i18n = useDocsI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const container = useRef<HTMLElement>(null);
@@ -171,6 +174,7 @@ export function APIPackageReadme<TLocale extends string>({
     <article
       className="api-package-readme"
       lang={content.sourceLocale}
+      dir={getLocaleDefinition(content.sourceLocale, i18n.localeDefinitions).direction}
       ref={container}
       onClickCapture={handleAnchorClick}
     >

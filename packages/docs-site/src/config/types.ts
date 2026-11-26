@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { CommonSiteMessages } from '../i18n/messages';
+import type { CommonSiteMessages, DocsI18nOptions } from '../i18n/messages';
 import type { DocsSiteStorageKeyOverrides, DocsSiteStorageKeys } from '../preferences/storage';
 import type { IconName } from '../components/shared/icon';
 
@@ -13,7 +13,7 @@ export interface DocsDataBaseURLs {
 export interface DocsSiteAPIOptions<TLocale extends string = string> {
   sourceLinkTemplate: string;
   rawAssetURLTemplate: string;
-  symbolCountLabelTemplates: Readonly<Record<TLocale, string>>;
+  symbolCountLabelTemplates?: Readonly<Partial<Record<TLocale, string>>>;
   packageReadmes: Readonly<Record<string, Partial<Record<TLocale, string>>>>;
 }
 
@@ -41,7 +41,8 @@ export interface DocsSiteOptions<TLocale extends string> {
   /** Homepage destination; paths are relative to baseURL. Defaults to /. */
   homeHref?: string;
   storageKeys?: DocsSiteStorageKeyOverrides;
-  localeLabels: Readonly<Record<TLocale, string>>;
+  i18n?: DocsI18nOptions;
+  localeLabels?: Readonly<Partial<Record<TLocale, string>>>;
   messages: (locale: TLocale) => DocsSiteMessages;
   /** Explicitly enable manuals, optionally overriding their published directory. */
   manual: boolean | { dataURL?: string };
@@ -53,8 +54,9 @@ export interface DocsSiteOptions<TLocale extends string> {
 export type ResolvedDocsSiteOptions<TLocale extends string> = Omit<
   DocsSiteOptions<TLocale>,
   'dataBaseURL' | 'docsBrandMarkURLs' | 'homeHref' | 'storageKeys' |
-  'manual' | 'siteOrigin' | 'getSearchDataURL'
+  'manual' | 'siteOrigin' | 'getSearchDataURL' | 'localeLabels'
 > & {
+  localeLabels: Readonly<Record<TLocale, string>>;
   dataBaseURL: string;
   docsBrandMarkURLs: Readonly<{ light: string; dark: string }>;
   homeHref: string;

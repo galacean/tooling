@@ -44,6 +44,7 @@ export function ConfiguredSiteShell<TLocale extends string>({
   };
   const languageOptions = locales.map(value => ({
     value,
+    lang: value,
     label: config.localeLabels[value],
   }));
   const loadSearchItems = async (searchLocale: string) => {
@@ -86,6 +87,7 @@ export function ConfiguredSiteShell<TLocale extends string>({
   return (
     <SiteShell
       locale={locale}
+      {...(config.i18n === undefined ? {} : { i18n: config.i18n })}
       locales={languageOptions}
       messages={messages}
       brandLabel={config.brandLabel}
@@ -98,6 +100,7 @@ export function ConfiguredSiteShell<TLocale extends string>({
         ? {}
         : { githubHref: config.githubHref })}
       pageKind={pageKind}
+      limitContentAlternates={pageKind === 'manual' && pathSegments.length > 2 || pageKind === 'api' && pathSegments.length > 4}
       pageTitle={
         pageKind === 'api'
           ? (pathSegments.at(-1) ?? 'API')

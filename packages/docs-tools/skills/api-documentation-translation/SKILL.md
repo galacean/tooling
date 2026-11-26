@@ -1,49 +1,59 @@
 ---
 name: api-documentation-translation
-description: 'Translate TypeDoc API snapshot JSON using the repository-configured source and target locales while preserving API structure and immutable tokens.'
-argument-hint: 'Attach one or more API snapshot files and specify the desired target locale.'
+description: Translate configured TypeDoc API snapshots into one, several, or all enabled languages using validated extract/apply tasks and persistent translation archives.
 ---
 
-# TypeDoc API Snapshot Translation
+# API Documentation Translation
 
-Use this Skill only for API snapshots produced by TypeDoc. Do not use it for Markdown manuals, UI messages, arbitrary JSON, or source-code comments.
+Use this skill for TypeDoc API snapshots. Manual pages and package READMEs use `manual-documentation-translation`.
 
-## Procedure
+## Choose the scope
 
-1. Identify the consuming repository's docs config. Use a path provided by the user or task; otherwise consult repository documentation and project scripts, then inspect candidate config files for `sourceLocale`, configured locales, `api.dataDirectory`, and `translationDirectory`. If multiple configs match, ask which site/package is in scope instead of guessing. Do not assume a config filename or data directory. Read `<api.dataDirectory>/manifest.json` and select the package by its configured key. Choose the target locale's wrapper path from `current.json` for the latest version or from the desired entry in `versions[].json` for a specific version. Never infer a locale from a filename.
-2. From the repository root, create a translation task with the shared CLI:
+Discover the consuming repository's actual docs config from the user's paths, repository documentation or scripts. Read `sourceLocale`, `locales`, `api.packages`, `api.versions`, `api.dataDirectory` and `translationDirectory`. Do not assume a config filename, project name, package, data path or build command. If multiple configs match and the request does not identify one, ask which is in scope.
 
-   ```bash
-   pnpm exec galacean-docs api extract --config <docs-config> <snapshot-wrapper-path>
-   ```
+Use source and target choices already supplied by the user. Otherwise offer the actual source language and a target-language multi-selection, including **all enabled languages**. For a single API project, the source must match its configured authoritative source. `--source-locale all` means all actual sources, not relabeling input or translating through an intermediate language. Target `all` uses the config's enabled locales and excludes the actual source. The tool includes English, Simplified Chinese, Traditional Chinese, Japanese, Korean, German, Portuguese, Spanish, French, Turkish, Arabic, Russian, Ukrainian and Thai, and accepts configured extensions. Do not silently enable languages absent from the config.
 
-   With the package-key layout, the wrapper path has the form `<api.dataDirectory>/<package-key>/<version>/<locale>.api.json`; use the actual version from the manifest. The wrapper may contain a `$ref` to a content-addressed file under `api/snapshots/`. Pass the wrapper path from the manifest, not the referenced snapshot; `api extract` resolves the reference itself.
+Keep the user's package and version scope. The default is the latest configured version; choosing all languages does not select all historical versions.
 
-3. Before translating, inspect `<translationDirectory>/translation-cache/api/<package-key>/<version>/<locale>.json`. Always use the newly extracted task as the current validation source. If an archive exists with matching locale, version, and source hash, reuse it as the translation result and apply it directly. If its source hash differs, reuse only fields whose exact key remains in the task and whose placeholder validation succeeds; report changed source text for human review and translate missing fields. Do not use a hash as the archive lookup key or skip task validation.
-4. Translate every still-missing extracted comment field into the requested target locale. Preserve each placeholder exactly once. Never alter identifiers, signatures, types, URLs, anchors, code tokens, reflection IDs, field keys, or non-comment JSON data.
-5. Save a JSON result beside the generated task. Copy `locale`, `version`, and `sourceHash` from the task, and put the complete translations in a `translations` object keyed by each field's exact `key`:
+## Extract, translate, apply
 
-    ```json
-    {
-       "locale": "en",
-       "version": "1.2.3",
-       "sourceHash": "copy the task sourceHash",
-       "translations": {
-          "@example/package|root|Widget|summary": "A widget with {{0}}."
-       }
-    }
-    ```
+Preview pending work without writing files:
 
-6. Apply the result through the shared CLI. It revalidates the source, target, task fields, locale paths, and manifest before writing. A valid result is persisted to the archive before generated snapshots are updated:
+```sh
+pnpm exec galacean-docs api extract --config <config> --source-locale <source> --target-locales all --dry-run
+```
 
-   ```bash
-   pnpm exec galacean-docs api apply --config <docs-config> <task-path> <translation-path>
-   ```
+Replace `all` with a comma-separated selection such as `ja,ko,de`. `--packages <key[,key...]>` restricts packages; `--version <version>` selects a specific version. `--locale <locale>` is the existing single-target alias and cannot be combined with `--target-locales`.
 
-   `api apply` merges this result with existing translations for the same TypeDoc model and locale, writes a new content-addressed snapshot, and updates every matching package/version/locale wrapper to reference it. Keep wrappers as `$ref` entries; never replace them with snapshot contents or edit an existing content-addressed snapshot in place. Apply translations for a shared model and locale together when possible. An earlier apply updates all matching wrappers, so tasks extracted before that update become stale and must be extracted again.
+If adding languages to existing generated data, run `api locales sync --config <config>` to create missing language wrappers from verified existing models. This does not rebuild historical source tags or translate their content. Invalid models must be repaired rather than bypassed.
 
-7. If the task is stale or validation fails, extract a fresh task. Do not edit snapshots manually or bypass validation.
+Run extraction again without `--dry-run`. Alternatively, pass wrapper paths selected from the actual API manifest, without combining path mode with selection flags. Never pass a referenced content-addressed snapshot in place of its wrapper.
 
-After applying translations, use the consuming repository's documented command to regenerate derived site data and search indexes. Do not assume a particular command name or that the repository has a Makefile.
+Tasks live in `<translationDirectory>/api-translation/`; persistent results live in `<translationDirectory>/translation-cache/api/<package>/<version>/<locale>.json`. Do not put tasks in this skill directory, `node_modules`, or generated data.
 
-Translation archives belong under `<translationDirectory>/translation-cache/api/`. Disposable task data belongs under `<translationDirectory>/api-translation/`, which defaults to the repository's ignored `tmp/docs-tools/api-translation/` directory. Never place task data in this Skill directory or in `node_modules`.
+A valid archive for the exact current source is reused. When the overall source hash differs, a stable field key and valid placeholders do **not** prove the text is unchanged. Compare the current source with the recorded source where available; otherwise review or retranslate the affected fields. Do not copy an old result under a new hash and claim it is current.
+
+Use `reusableTranslations` from the task for fields verified against recorded source fingerprints. Merge these with newly translated fields to produce a complete result. Translate every remaining required task field. Preserve each placeholder exactly once, as well as API identifiers, signatures, types, URLs, anchors, code, reflection IDs and field keys. Save a complete result beside the task:
+
+```json
+{
+  "locale": "ja",
+  "version": "1.2.3",
+  "sourceHash": "copy from the current task",
+  "translations": {
+    "exact field key": "Translated text with {{0}}."
+  }
+}
+```
+
+Apply through the CLI:
+
+```sh
+pnpm exec galacean-docs api apply --config <config> <task-path> <translation-path>
+```
+
+Apply tasks sharing a model and target language together when possible. Applying one task may update multiple wrappers and invalidate other previously extracted tasks; extract fresh tasks after a stale-target error. Do not edit immutable snapshots or bypass validation. The CLI persists validated translations before updating generated snapshots.
+
+For large selections, work in bounded package/language groups and keep track of every selected target. After apply, use the project's actual commands to regenerate derived data, search and routes. `translations status --config <config>` inventories coverage; `translations check --config <config> --require-complete` fails when required translations remain incomplete.
+
+Report selected sources/targets, reused results, new translations, review-needed items and failures. Distinguish structural validation from language review. Completing one language is not completion of an all-language request. Do not call external translation services or publish content as part of this skill.

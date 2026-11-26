@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Icon } from './icon';
 
-export type SelectOption = { value: string; label: string };
+export type SelectOption = { value: string; label: string; lang?: string };
 
 export function SelectControl({
   ariaLabel,
@@ -35,6 +35,7 @@ export function SelectControl({
   useEffect(() => {
     if (open) {
       optionRefs.current[activeIndex]?.focus();
+      optionRefs.current[activeIndex]?.scrollIntoView?.({ block: 'nearest' });
     }
   }, [activeIndex, open]);
   useEffect(() => {
@@ -169,6 +170,8 @@ export function SelectControl({
               id={optionId(index)}
               key={option.value}
               role="option"
+              lang={option.lang}
+              dir="auto"
               tabIndex={-1}
               aria-selected={option.value === value}
               className={

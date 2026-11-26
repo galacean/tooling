@@ -92,6 +92,7 @@ export function APIReferencePage<
   const location = useLocation();
   const shellContext = useOutletContext<SiteShellOutletContext | null>();
   const setAPIDocumentTitle = shellContext?.setAPIDocumentTitle;
+  const setContentLocales = shellContext?.setContentLocales;
   const [query] = useSearchParams();
   const [apiManifest, setAPIManifest] = useState<APIManifest>();
   const [data, setData] = useState<TData>();
@@ -149,6 +150,12 @@ export function APIReferencePage<
   useEffect(() => {
     setAPIDocumentTitle?.(apiDocumentTitle);
   }, [apiDocumentTitle, setAPIDocumentTitle]);
+
+  useEffect(() => {
+    if (versionInfo !== undefined) {
+      setContentLocales?.(packageHome ? undefined : versionInfo.translatedLocales);
+    }
+  }, [versionInfo, packageHome, setContentLocales]);
 
   useEffect(() => {
     let cancelled = false;

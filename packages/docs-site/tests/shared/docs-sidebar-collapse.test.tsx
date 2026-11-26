@@ -88,6 +88,22 @@ describe('shared DocsSidebarCollapse', () => {
     expect(sessionStorage.getItem('docs-site-sidebar-width')).toBe('259');
   });
 
+  it('expands a right-hand sidebar when the separator moves left', () => {
+    const { container } = renderControl();
+
+    container.dir = 'rtl';
+    const separator = screen.getByRole('separator');
+
+    dispatchPointerEvent(separator, 'pointerdown', { pointerId: 1, button: 0, clientX: 100 });
+    dispatchPointerEvent(separator, 'pointermove', { pointerId: 1, clientX: 50 });
+    dispatchPointerEvent(separator, 'pointerup', { pointerId: 1 });
+    expect(separator.getAttribute('aria-valuenow')).toBe('350');
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' });
+    expect(separator.getAttribute('aria-valuenow')).toBe('366');
+    fireEvent.keyDown(separator, { key: 'ArrowRight' });
+    expect(separator.getAttribute('aria-valuenow')).toBe('350');
+  });
+
   it('supports keyboard resizing and persists the selected width', () => {
     renderControl();
     const separator = screen.getByRole('separator');

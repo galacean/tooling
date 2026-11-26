@@ -4,12 +4,40 @@ import { writeFileAtomically } from '../atomic-write';
 import type { ResolvedDocsBuildConfig } from '../config/types';
 import { assertNoSymlinkPath, isSafePathSegment } from '../path-validation';
 import { parseVersion } from './versions';
+import { contentHash, translateParts } from './translations';
+import type { CommentField } from './translations';
 
 export interface APITranslationArchive {
+  schemaVersion?: 2;
+  sourceFields?: Record<string, string>;
   locale: string;
   version: string;
   sourceHash: string;
   translations: Record<string, string>;
+}
+
+export function translationFieldHash(field: Pick<CommentField, 'sourceLocale' | 'sourceText' | 'tokens'>): string {
+  return contentHash({ sourceLocale: field.sourceLocale, sourceText: field.sourceText, tokens: field.tokens });
+}
+
+export function reusableAPITranslations(archive: APITranslationArchive, fields: CommentField[], locale: string): Record<string, string> {
+  const reusable: Record<string, string> = {};
+
+  for (const field of fields) {
+    const text = archive.translations[field.key];
+
+    if (field.sourceLocale === locale || text === undefined || archive.sourceFields?.[field.key] !== translationFieldHash(field)) {
+      continue;
+    }
+    try {
+      translateParts(field, text);
+      reusable[field.key] = text;
+    } catch {
+      // Changed immutable tokens cannot be reused, even when a field key is stable.
+    }
+  }
+
+  return reusable;
 }
 
 function archivePath(
@@ -37,6 +65,9 @@ function parseArchive(value: unknown, filename: string): APITranslationArchive {
     value === null ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
+    ('schemaVersion' in value && value.schemaVersion !== 2) ||
+    ('sourceFields' in value && (value.sourceFields === null || typeof value.sourceFields !== 'object' ||
+      Array.isArray(value.sourceFields) || Object.values(value.sourceFields).some(item => typeof item !== 'string'))) ||
     !('locale' in value) ||
     typeof value.locale !== 'string' ||
     !('version' in value) ||
@@ -49,7 +80,7 @@ function parseArchive(value: unknown, filename: string): APITranslationArchive {
     Array.isArray(value.translations) ||
     Object.values(value.translations).some(item => typeof item !== 'string') ||
     Object.keys(value).some(
-      key => !['locale', 'version', 'sourceHash', 'translations'].includes(key),
+      key => !['schemaVersion', 'sourceFields', 'locale', 'version', 'sourceHash', 'translations'].includes(key),
     )
   ) {
     throw new Error(`Invalid API translation archive: ${filename}`);

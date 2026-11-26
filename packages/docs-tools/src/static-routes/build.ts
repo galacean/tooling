@@ -1,3 +1,4 @@
+import { getCommonMessages, getLocaleDefinition } from '@galacean/docs-site';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -104,8 +105,14 @@ export async function buildStaticRoutes(
   if (!isManualNavigation(navigationValue)) {
     throw new Error('Invalid manual navigation');
   }
-  const template = parseRouteTemplate(await readFile(path.join(dist, 'index.html'), 'utf8'));
+  const template = parseRouteTemplate(await readFile(path.join(dist, 'index.html'), 'utf8'), config.i18n);
   const routes = collectStaticRoutes(config, config.siteName, navigationValue, apiPackages);
+
+  if (routes.size > 10000) {
+    const counts = Object.fromEntries(config.locales.map(locale => [locale, [...routes.values()].filter(page => page.locale === locale).length]));
+
+    throw new Error(`Static site artifact too large: ${routes.size} routes; locales ${JSON.stringify(counts)}`);
+  }
   const defaultHome = localePath(config.defaultLocale ?? config.sourceLocale);
   const sitemap: string[] = [];
   const routeHref = (route: string) => {
@@ -117,12 +124,13 @@ export async function buildStaticRoutes(
   for (const [pathname, page] of routes) {
     const directory = path.join(dist, page.locale, ...page.segments);
     const canonical = origin === undefined ? undefined : routeHref(pathname);
-    const alternates = config.locales.map(locale => ({ locale, href: routeHref(localePath(locale, page.segments)) }));
+    const alternates = (page.alternateLocales ?? config.locales).filter(locale => routes.has(localePath(locale, page.segments))).map(locale => ({ locale, href: routeHref(localePath(locale, page.segments)) }));
     const html = template.render(page, canonical, alternates);
 
     if (page.includeInSitemap && canonical !== undefined) {
       sitemap.push(canonical);
     }
+    await assertNoSymlinkPath(config.repositoryRoot, directory);
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, 'index.html'), html);
     if (pathname === defaultHome) {
@@ -149,14 +157,20 @@ export async function buildStaticRoutes(
     ? homeHref
     : `${base}${homeHref.replace(/^\//u, '')}`;
 
-  await writeFile(
-    path.join(dist, '404.html'),
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  const errorPage = (locale: string) => {
+    const messages = getCommonMessages(locale, config.i18n);
+
+    return `<!doctype html><html lang="${escapeHTML(locale)}" dir="${getLocaleDefinition(locale, config.i18n?.localeDefinitions).direction}"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-  <title>404 · ${escapeHTML(config.siteName)}</title>
+  <title>404 · ${escapeHTML(config.siteName!)}</title>
   <link rel="icon" href="${escapeHTML(base)}favicon.svg"></head><body style="font-family:system-ui;padding:48px">
-  <h1>404 · Page not found</h1><p><a href="${escapeHTML(home)}">Home</a></p></body></html>\n`,
-  );
+  <h1>404 · ${escapeHTML(messages.notFound)}</h1><p><a href="${escapeHTML(home)}">${escapeHTML(messages.home)}</a></p></body></html>\n`;
+  };
+
+  await writeFile(path.join(dist, '404.html'), errorPage(config.defaultLocale ?? config.sourceLocale));
+  for (const locale of config.locales) {
+    await writeFile(path.join(dist, locale, '404.html'), errorPage(locale));
+  }
   await writeFile(path.join(dist, '.nojekyll'), '');
   await writeFile(
     path.join(dist, 'routes.json'),

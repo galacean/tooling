@@ -94,5 +94,15 @@
   "originalImageSize": "查看图片原始尺寸",
   "originalImageSizeHint": "原始尺寸（1:1）",
   "fitImageToScreen": "图片适应屏幕",
-  "fitImageToScreenHint": "适应屏幕"
+  "fitImageToScreenHint": "适应屏幕",
+  "manualIntro": "使用指南与参考文档。",
+  "pageDescription": "{title}的使用说明与参考文档。",
+  "externalDependency": "外部依赖包： [{name}]({url})。",
+  "fallbackNotice": "暂无此语言的译文，以下显示原文。",
+  "symbolCount_other": "{count} 个符号",
+  "symbolCount_one": "{count} 个符号",
+  "symbolCount_zero": "{count} 个符号",
+  "symbolCount_two": "{count} 个符号",
+  "symbolCount_few": "{count} 个符号",
+  "symbolCount_many": "{count} 个符号"
 }

@@ -1,4 +1,5 @@
 import { isRecord } from '@galacean/docs-site';
+import { contentHash } from './translations';
 
 export function sourceProject<T extends Record<string, unknown>>(
   snapshot: T,
@@ -40,4 +41,9 @@ export function sourceProject<T extends Record<string, unknown>>(
   visit(project);
 
   return project;
+}
+
+/** Manifest revision written by api apply for a translated set of snapshots. */
+export function localizedSnapshotHash(source: Record<string, unknown>, locales: Record<string, unknown>): string {
+  return contentHash({ source: sourceProject(source), metadata: source['apiSnapshot'], locales });
 }

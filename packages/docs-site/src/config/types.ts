@@ -18,8 +18,10 @@ export interface DocsSiteAPIOptions<TLocale extends string = string> {
 }
 
 export type DocsSitePageDeclaration<TLocale extends string = string, TIcon extends string = IconName> =
-  | { slug: null; icon?: TIcon }
-  | { slug: string; title: Readonly<Record<TLocale, string>>; icon?: TIcon };
+  ({ slug: null } | { slug: string; title: Readonly<Record<TLocale, string>> }) & {
+    icon?: TIcon;
+    seo?: { description?: Readonly<Partial<Record<TLocale, string>>> };
+  };
 
 export type DocsSitePage<TLocale extends string> = DocsSitePageDeclaration<TLocale> & {
   render: (locale: TLocale) => ReactNode;

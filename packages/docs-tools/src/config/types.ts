@@ -6,6 +6,7 @@ export type SitePageConfig = DocsSitePageDeclaration<string, string>;
 /** Serializable project declaration; filesystem paths are relative to the repository or package. */
 export interface DocsProjectConfigInput {
   sourceLocale: string;
+  defaultLocale?: string;
   locales: string[];
   siteName?: string;
   /** Homepage destination; paths are relative to the static site base. Defaults to /. */
@@ -72,6 +73,7 @@ export interface ResolvedDocsBuildConfig {
   repositoryRoot: string;
   configPath: string;
   sourceLocale: string;
+  defaultLocale?: string;
   locales: string[];
   apiDirectory: string;
   apiVersions?: APIVersionManifest;

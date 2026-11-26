@@ -3,3 +3,4 @@ export type {
   DocsSitePage, DocsSitePageDeclaration,
 } from './types';
 export { bindDocsSitePages } from './pages';
+export { formatPageDescription, formatPageTitle } from './page-metadata';

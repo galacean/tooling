@@ -5,6 +5,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { formatPageDescription, formatPageTitle } from '../../config/page-metadata';
 import { DocumentLoading, Icon, SelectControl } from '../shared';
 import type { IconName } from '../shared/icon';
 import { DocsPageSwitcher } from './docs-page-switcher';
@@ -50,6 +51,7 @@ export interface SiteShellProps {
   githubHref?: string;
   pageKind: 'api' | 'manual' | 'other' | 'not-found';
   pageTitle?: string;
+  pageDescription?: string;
   canonicalHref: string;
   getAlternateHref: (locale: string) => string;
   getLocaleHref: (locale: string, search: string, hash: string) => string;
@@ -112,6 +114,7 @@ export function SiteShell({
   githubHref,
   pageKind,
   pageTitle,
+  pageDescription,
   canonicalHref,
   getAlternateHref,
   getLocaleHref,
@@ -165,37 +168,45 @@ export function SiteShell({
   }, [apiPage]);
 
   useEffect(() => {
-    document.documentElement.lang = locale;
-    document.title = documentPage
-      ? activeDocumentTitle
-      : `${activeDocumentTitle === '' ? '' : `${activeDocumentTitle} | `}${brandLabel}`;
+    const title = activeDocumentTitle || brandLabel;
     const head = document.head;
-    const canonical =
-      head.querySelector<HTMLLinkElement>('link[rel="canonical"]') ??
-      document.createElement('link');
+    const description = head.querySelector<HTMLMetaElement>('meta[name="description"]') ??
+      head.appendChild(document.createElement('meta'));
+    const canonical = head.querySelector<HTMLLinkElement>('link[rel="canonical"]') ??
+      head.appendChild(document.createElement('link'));
 
+    document.documentElement.lang = locale;
+    document.title = formatPageTitle(title, brandLabel);
+    description.name = 'description';
+    description.content = formatPageDescription(locale, title, pageDescription);
     canonical.rel = 'canonical';
     canonical.href = canonicalHref;
-    head.append(canonical);
-    for (const language of locales) {
-      const alternate =
-        Array.from(
-          head.querySelectorAll<HTMLLinkElement>(
-            'link[rel="alternate"][hreflang]',
-          ),
-        ).find(link => link.hreflang === language.value) ??
-        document.createElement('link');
 
-      alternate.rel = 'alternate';
-      alternate.hreflang = language.value;
-      alternate.href = getAlternateHref(language.value);
-      head.append(alternate);
+    const alternates = new Map(locales.map(({ value }) => [value, getAlternateHref(value)]));
+
+    for (const link of head.querySelectorAll<HTMLLinkElement>('link[rel="alternate"][hreflang]')) {
+      const href = alternates.get(link.hreflang);
+
+      if (href === undefined) {
+        link.remove();
+      } else {
+        link.href = href;
+        alternates.delete(link.hreflang);
+      }
+    }
+    for (const [language, href] of alternates) {
+      const link = document.createElement('link');
+
+      link.rel = 'alternate';
+      link.hreflang = language;
+      link.href = href;
+      head.append(link);
     }
   }, [
     activeDocumentTitle,
     brandLabel,
     canonicalHref,
-    documentPage,
+    pageDescription,
     getAlternateHref,
     locale,
     locales,

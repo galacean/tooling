@@ -560,3 +560,33 @@ void test('rejects invalid Yuque credentials, selectors, route slugs, and duplic
     /Invalid docs site config.*manual\.collections/u,
   );
 });
+
+void test('accepts page descriptions and rejects invalid locale maps or unsupported SEO fields', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-page-seo-'));
+
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const seo = { description: { en: 'About this project' } };
+  const input = {
+    sourceLocale: 'en', locales: ['en', 'zh-CN'], defaultLocale: 'zh-CN',
+    pages: [{ slug: null, seo }, { slug: 'about', title: { en: 'About', 'zh-CN': '关于' }, seo }],
+  };
+  const filename = path.join(root, 'docs.config.json');
+
+  await writeFile(filename, JSON.stringify(input));
+  const config = await loadDocsProjectConfig('docs.config.json', root);
+
+  assert.equal(config.defaultLocale, 'zh-CN');
+  assert.deepEqual(config.pages?.[0]?.seo, seo);
+  for (const invalid of [
+    { description: { fr: 'Unsupported language' } },
+    { description: { en: '' } },
+    { description: { en: 12 } },
+    { description: 'About this project' },
+    { unsupported: { en: 'Unknown field' } },
+  ]) {
+    await writeFile(filename, JSON.stringify({ ...input, pages: [{ slug: null, seo: invalid }] }));
+    await assert.rejects(loadDocsProjectConfig('docs.config.json', root), /pages\[0\]\.seo/u);
+  }
+  await writeFile(filename, JSON.stringify({ ...input, defaultLocale: 'fr' }));
+  await assert.rejects(loadDocsProjectConfig('docs.config.json', root), /defaultLocale/u);
+});

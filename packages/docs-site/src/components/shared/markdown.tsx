@@ -262,13 +262,6 @@ export function MarkdownContent({
           a: ({ href, children }) => {
             const url = resolveLink?.(href ?? '') ?? href ?? '';
 
-            if (url.startsWith('#')) {
-              return (
-                <a href={`${location.pathname}${location.search}${url}`}>
-                  {children}
-                </a>
-              );
-            }
             if (/^(?:https?:|mailto:|tel:|\/\/)/u.test(url)) {
               return (
                 <a href={url} target="_blank" rel="noreferrer">
@@ -278,7 +271,7 @@ export function MarkdownContent({
             }
             const logical = new URL(
               url,
-              `https://local.invalid${location.pathname}`,
+              `https://local.invalid${location.pathname}${location.search}`,
             );
 
             return (

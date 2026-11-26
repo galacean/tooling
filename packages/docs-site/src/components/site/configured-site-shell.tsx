@@ -32,7 +32,7 @@ export function ConfiguredSiteShell<TLocale extends string>({
         sitePage === undefined ? 'not-found' : 'other';
   const absoluteURL = (pathname: string) =>
     new URL(
-      withBase(pathname, baseURL),
+      withBase(`${pathname.replace(/\/+$/u, '')}/`, baseURL),
       config.siteOrigin,
     ).href;
   const getLocaleHref = (language: string, search: string, hash: string) => {
@@ -105,6 +105,8 @@ export function ConfiguredSiteShell<TLocale extends string>({
             ? ''
             : sitePage.title[locale]
       }
+      {...(sitePage?.seo?.description?.[locale] === undefined
+        ? {} : { pageDescription: sitePage.seo.description[locale] })}
       canonicalHref={absoluteURL(location.pathname)}
       getAlternateHref={language => absoluteURL(getLocaleHref(language, '', ''))}
       getLocaleHref={getLocaleHref}

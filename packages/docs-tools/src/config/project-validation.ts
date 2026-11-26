@@ -8,6 +8,31 @@ function isLocaleTag(value: string): boolean {
   return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u.test(value);
 }
 
+function validatePageSEO(seo: unknown, locales: string[], field: string): string[] {
+  if (seo === undefined) {
+    return [];
+  }
+  if (!isRecord(seo)) {
+    return [`${field} must be an object`];
+  }
+  const issues = Object.keys(seo).some(key => key !== 'description') ? [`${field} only supports description`] : [];
+  const descriptions = seo['description'];
+
+  if (descriptions !== undefined) {
+    if (!isRecord(descriptions)) {
+      issues.push(`${field}.description must be a locale map`);
+    } else {
+      for (const [locale, description] of Object.entries(descriptions)) {
+        if (!locales.includes(locale) || typeof description !== 'string' || description.trim() === '') {
+          issues.push(`${field}.description.${locale} must use a configured locale and non-empty string`);
+        }
+      }
+    }
+  }
+
+  return issues;
+}
+
 function validateSitePages(value: unknown, locales: string[]): string[] {
   if (value === undefined) {
     return [];
@@ -37,6 +62,7 @@ function validateSitePages(value: unknown, locales: string[]): string[] {
     if (page['icon'] !== undefined && typeof page['icon'] !== 'string') {
       issues.push(`pages[${index}].icon must be a string`);
     }
+    issues.push(...validatePageSEO(page['seo'], locales, `pages[${index}].seo`));
     if (slug !== null) {
       for (const locale of locales) {
         const label = isRecord(title) ? title[locale] : undefined;
@@ -136,6 +162,10 @@ export function validateDocsProjectConfig(config: unknown, configPath: string): 
       (typeof config['homeHref'] !== 'string' || config['homeHref'].trim() === '')
     ) {
       issues.push('homeHref must be a non-empty string');
+    }
+    if (config['defaultLocale'] !== undefined &&
+      (!Array.isArray(locales) || !locales.includes(config['defaultLocale']))) {
+      issues.push('defaultLocale must be a configured locale');
     }
     const manualCollections = isRecord(manual)
       ? manual['collections']

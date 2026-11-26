@@ -158,6 +158,7 @@ export async function resolveDocsBuildConfig(
     repositoryRoot: root,
     configPath: filename,
     sourceLocale: input.sourceLocale,
+    ...(input.defaultLocale === undefined ? {} : { defaultLocale: input.defaultLocale }),
     locales: [...input.locales],
     apiDirectory,
     ...(apiVersions === undefined ? {} : { apiVersions }),

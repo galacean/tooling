@@ -522,6 +522,7 @@ export function ImageViewer({
                   <img
                     key={index}
                     className="image-viewer-image"
+                    referrerPolicy="no-referrer"
                     src={slideImage.src}
                     alt={slideImage.alt}
                     title={slideImage.title}

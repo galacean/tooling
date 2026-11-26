@@ -3,6 +3,7 @@ import {
   isValidElement,
   memo,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -18,6 +19,7 @@ import xml from 'highlight.js/lib/languages/xml';
 import { Link, useLocation } from 'react-router-dom';
 import { commonMessages } from '../../i18n/messages';
 import { CopyButton } from './copy-button';
+import { withImageReferrerPolicy } from './html-image-referrer-policy';
 import { ImageViewer } from './image-viewer';
 import type { ImageViewerImage, ImageViewerMessages } from './image-viewer';
 
@@ -282,6 +284,7 @@ export function MarkdownContent({
           },
           img: ({ src, alt, title }) => (
             <img
+              referrerPolicy="no-referrer"
               src={resolveImage?.(src ?? '') ?? src}
               alt={alt ?? ''}
               title={title}
@@ -333,6 +336,7 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
   const container = useRef<HTMLDivElement>(null);
   const messages = { ...commonMessages.en, ...messageOverrides };
   const { showImage, viewer } = useImageViewer(messages);
+  const imageProtectedHTML = useMemo(() => withImageReferrerPolicy(html), [html]);
 
   useEffect(() => {
     const root = container.current;
@@ -361,7 +365,7 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
         }}
         className="markdown-content lake-content"
         onClickCapture={showImage}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: imageProtectedHTML }}
       />
       {viewer}
     </>

@@ -6,7 +6,7 @@ import packageJSON from './package.json' with { type: 'json' };
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoot = path.join(packageRoot, 'src');
-const peerDependencies = Object.keys(packageJSON.peerDependencies ?? {});
+const externalDependencies = [...Object.keys(packageJSON.peerDependencies), 'react-router-dom'];
 
 export default defineConfig({
   plugins: [dts({
@@ -26,7 +26,7 @@ export default defineConfig({
       cssFileName: 'index',
     },
     rolldownOptions: {
-      external: id => peerDependencies.some(dependency => id === dependency || id.startsWith(`${dependency}/`)),
+      external: id => externalDependencies.some(dependency => id === dependency || id.startsWith(`${dependency}/`)),
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',

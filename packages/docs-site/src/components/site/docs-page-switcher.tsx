@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Icon } from '../shared';
 import type { IconName } from '../shared/icon';
-import { SiteLink } from './site-link';
+import { DocsLink } from '../../routing/navigation';
 
 export interface DocsPageSwitcherItem {
   key: string;
@@ -102,17 +102,17 @@ export function DocsPageSwitcher({
 
   return (
     <div className="docs-page-switcher" ref={root}>
-      <SiteLink
+      <DocsLink
         className="docs-page-switcher-current"
         to={currentHref}
         title={label}
       >
         {label}
-      </SiteLink>
+      </DocsLink>
       <button
         ref={trigger}
         type="button"
-        className="docs-page-switcher-trigger icon-action"
+        className="docs-page-switcher-trigger docs-icon-action"
         aria-label={ariaLabel}
         title={ariaLabel}
         aria-haspopup="menu"
@@ -130,7 +130,7 @@ export function DocsPageSwitcher({
       </button>
       {open && (
         <div
-          className="docs-page-switcher-menu docs-dropdown-menu docs-scroll-area"
+          className="docs-page-switcher-menu docs-dropdown-menu"
           id={menuId}
           ref={menu}
           role="menu"
@@ -138,7 +138,7 @@ export function DocsPageSwitcher({
           onKeyDown={handleMenuKeyDown}
         >
           {items.map(item => (
-            <SiteLink
+            <DocsLink
               key={item.key}
               to={item.href}
               role="menuitem"
@@ -149,7 +149,7 @@ export function DocsPageSwitcher({
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
-            </SiteLink>
+            </DocsLink>
           ))}
         </div>
       )}

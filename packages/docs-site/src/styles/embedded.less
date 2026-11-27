@@ -1,0 +1,82 @@
+&[data-layout='embedded'] {
+  height: 100%;
+  min-height: 0;
+  container-type: inline-size;
+
+  .site-shell {
+    min-height: 0;
+  }
+  .manual-shell,
+  .api-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .docs-header-shell {
+    position: relative;
+    inset: auto;
+    flex: 0 0 52px;
+  }
+  .manual-layout,
+  .api-layout {
+    flex: 1;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+  .manual-sidebar {
+    position: relative;
+    top: auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    padding-top: 24px;
+  }
+  .manual-sidebar-nav {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .manual-article,
+  .manual-toc-panel {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+  @container (max-width: 1000px) {
+    .manual-layout {
+      grid-template-columns: var(--site-doc-sidebar-width) minmax(0, 1fr);
+    }
+    .manual-layout.is-sidebar-collapsed {
+      grid-template-columns: 0 minmax(0, 1fr);
+    }
+    .manual-toc {
+      display: none;
+    }
+  }
+  @container (max-width: 640px) {
+    .manual-layout,
+    .manual-layout.is-sidebar-collapsed {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .manual-sidebar,
+    .docs-sidebar-collapse-region--manual,
+    .api-sidebar,
+    .docs-sidebar-collapse-region--api {
+      display: none;
+    }
+    .manual-mobile-directory {
+      display: block;
+    }
+    .api-mobile-menu {
+      display: inline-grid;
+    }
+  }
+}

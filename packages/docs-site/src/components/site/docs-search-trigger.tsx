@@ -44,7 +44,7 @@ export function DocsSearchTrigger({
   return (
     <button
       type="button"
-      className={`search-trigger icon-action${className === '' ? '' : ` ${className}`}`}
+      className={`search-trigger docs-icon-action${className === '' ? '' : ` ${className}`}`}
       aria-label={ariaLabel}
       onClick={onOpen}
     >

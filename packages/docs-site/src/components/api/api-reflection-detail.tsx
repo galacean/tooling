@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { DocsLink as Link, useDocsLocation as useLocation } from '../../routing/navigation';
 import type { ReactNode } from 'react';
 import type { JSONOutput } from 'typedoc';
 import {
@@ -102,7 +102,7 @@ export function APIReflectionDetail<TReflection extends object> ({
                 {renderComment(signatureReflection, { empty: true })}
                 {(signature.comment?.blockTags ?? []).map((tag, index) => (
                   <div key={index}>
-                    <span className="api-tag blue">{tag.tag}</span>
+                    <span className="api-tag api-tag--annotation">{tag.tag}</span>
                     {renderComment(signatureReflection, {
                       field: `${tag.tag}:${tag.name ?? ''}:${index}`,
                     })}
@@ -139,7 +139,7 @@ export function APIReflectionDetail<TReflection extends object> ({
   return (
     <APIReflectionLayout>
       <div className="api-title" id={value.name}>
-        <Link to={anchorHref(value.name)} className="anchor-link">
+        <Link to={anchorHref(value.name)} className="api-anchor-link">
           #
         </Link>
         {renderKind(value.kind, false)}
@@ -150,7 +150,7 @@ export function APIReflectionDetail<TReflection extends object> ({
         </h1>
         {renderSource(reflection)}
         {comment?.blockTags?.some(tag => tag.tag === '@deprecated') ===
-          true && <span className="api-tag red">{t.deprecated}</span>}
+          true && <span className="api-tag api-tag--deprecated">{t.deprecated}</span>}
       </div>
       {isDeclaration(value) &&
         (value.extendedTypes !== undefined ||
@@ -202,7 +202,7 @@ export function APIReflectionDetail<TReflection extends object> ({
       {renderComment(reflection, { empty: signatures.length === 0 })}
       {(value.comment?.blockTags ?? []).map((tag, index) => (
         <div key={index}>
-          <span className="api-tag blue">{tag.tag}</span>
+          <span className="api-tag api-tag--annotation">{tag.tag}</span>
           {renderComment(reflection, {
             field: `${tag.tag}:${tag.name ?? ''}:${index}`,
           })}

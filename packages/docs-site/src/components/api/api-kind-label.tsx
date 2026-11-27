@@ -52,7 +52,7 @@ export function APIKindLabel({
 
   return (
     <span
-      className={`kind-label kind-${group}${compact ? ' compact' : ''}`}
+      className={`api-kind-label api-kind-${group}${compact ? ' is-compact' : ''}`}
       title={label}
     >
       {compact ? letters[group] : label}

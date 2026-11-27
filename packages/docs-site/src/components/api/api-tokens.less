@@ -1,0 +1,66 @@
+.api-signature,
+.api-type-reference {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+}
+.api-signature {
+  font-size: 12px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.api-token-name {
+  color: var(--site-accent);
+  font-weight: 400;
+}
+.api-token-primitive {
+  color: var(--site-ink);
+  font-weight: 400;
+}
+.api-token-literal,
+.api-token-keyword {
+  color: var(--site-muted);
+  font-weight: 400;
+}
+.api-token-symbol {
+  color: var(--site-ink);
+  font-weight: 600;
+}
+.api-token-type {
+  color: var(--site-link);
+  font-weight: 600;
+}
+.api-token-generic {
+  color: var(--site-code-generic);
+  font-weight: 600;
+}
+.api-type-reference {
+  display: inline;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.api-signature-panel .api-description-row:first-child .api-signature {
+  font-size: 12px;
+  line-height: 1.85;
+}
+.api-signature-panel .api-description-row:first-child .api-token-primitive,
+.api-signature-panel .api-description-row:first-child .api-token-symbol {
+  color: var(--site-code-foreground);
+}
+.api-signature-panel .api-description-row:first-child .api-token-literal,
+.api-signature-panel .api-description-row:first-child .api-token-keyword {
+  color: var(--site-code-keyword);
+}
+.api-signature-panel .api-description-row:first-child .api-token-type,
+.api-signature-panel .api-description-row:first-child .api-type-reference {
+  color: var(--site-code-type);
+}
+.api-signature-panel .api-description-row:first-child .api-token-name {
+  color: var(--site-code-accent);
+}

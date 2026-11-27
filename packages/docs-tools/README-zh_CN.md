@@ -109,3 +109,19 @@ Manual/README 结果包含 `locale`、`sourceHash`、译文 `content`、`title`�
 pnpm --filter @galacean/docs-tools test
 pnpm --filter @galacean/docs-tools check:ts
 ```
+
+## routePaths
+
+```json
+{
+  "routePaths": {
+    "home": "/help/:locale/",
+    "manual": "/help/:locale/guides/",
+    "api": "/reference/:locale/"
+  }
+}
+```
+
+该配置只用于独立站点的路径、静态页面、sitemap 和语言替代链接。搜索索引保存文档目标，嵌入应用通过 href 生成链接。
+
+静态页面仅在 `pages` 显式声明 `{ "slug": null }` 时生成独立首页；只接入手册或 API 时无需声明首页。

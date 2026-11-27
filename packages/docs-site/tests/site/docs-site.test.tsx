@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Link, useLocation } from 'react-router-dom';
 import { commonMessages, DocsSite } from '@galacean/docs-site';
 import type {
+  DocsRoutePaths,
   DocsSitePage,
   DocsSiteStorageKeyOverrides,
 } from '@galacean/docs-site';
@@ -24,9 +25,9 @@ function renderSite(
   includeAPI = true,
   manualDataURL?: string,
   customPages: readonly DocsSitePage<(typeof locales)[number]>[] = [],
-  homeHref?: string,
   storageKeys?: DocsSiteStorageKeyOverrides,
   includeManual = true,
+  routePaths?: DocsRoutePaths,
 ) {
   const pages: DocsSitePage<(typeof locales)[number]>[] = [
     {
@@ -45,6 +46,7 @@ function renderSite(
     <DocsSite
       config={{
         baseURL,
+        ...(routePaths === undefined ? {} : { routePaths }),
         dataBaseURL,
         locales,
         defaultLocale: 'zh-CN',
@@ -52,7 +54,6 @@ function renderSite(
         brandLabel: 'Shared docs',
         brandMarkURLs: { light: '/brand-light.svg', dark: '/brand-dark.svg' },
         ...(storageKeys === undefined ? {} : { storageKeys }),
-        ...(homeHref === undefined ? {} : { homeHref }),
         localeLabels: { en: 'English', 'zh-CN': '简体中文' },
         messages: locale => ({
           ...commonMessages[locale],
@@ -64,10 +65,6 @@ function renderSite(
                 sourceLinkTemplate:
                   'https://example.test/blob/{commit}/{path}#L{line}',
                 rawAssetURLTemplate: 'https://example.test/raw/{path}{search}',
-                symbolCountLabelTemplates: {
-                  en: '{count} symbols',
-                  'zh-CN': '{count} symbols',
-                },
                 packageReadmes: {},
               },
             }
@@ -113,7 +110,7 @@ describe('DocsSite routing', () => {
     renderSite('/', '/', false);
 
     expect(await screen.findByText('home:en')).toBeDefined();
-    expect(document.documentElement.dataset['theme']).toBe('dark');
+    expect(document.querySelector<HTMLElement>('.docs-root')?.dataset['theme']).toBe('dark');
 
     fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
     fireEvent.click(screen.getByRole('option', { name: 'Light' }));
@@ -143,7 +140,6 @@ describe('DocsSite routing', () => {
       false,
       undefined,
       [],
-      undefined,
       {
         locale: 'umi_locale',
         theme: 'custom_theme',
@@ -152,7 +148,7 @@ describe('DocsSite routing', () => {
     );
 
     expect(await screen.findByText('home:en')).toBeDefined();
-    expect(document.documentElement.dataset['theme']).toBe('dark');
+    expect(document.querySelector<HTMLElement>('.docs-root')?.dataset['theme']).toBe('dark');
 
     fireEvent.click(screen.getByRole('button', { name: 'Language' }));
     fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
@@ -177,7 +173,7 @@ describe('DocsSite routing', () => {
 
     vi.stubGlobal('fetch', fetcher);
     window.history.replaceState({}, '', '/en/manual');
-    renderSite('/', '/', false, undefined, [], undefined, undefined, false);
+    renderSite('/', '/', false, undefined, [], undefined, false);
 
     expect(await screen.findByRole('heading', { name: /Page not found/u })).toBeDefined();
     expect(screen.queryByRole('link', { name: 'Manual' })).toBeNull();
@@ -192,7 +188,7 @@ describe('DocsSite routing', () => {
       schemaVersion: 2, defaultVersion: 'current', packages: [],
     })));
     window.history.replaceState({}, '', '/en/api');
-    renderSite('/', '/', true, undefined, [], undefined, undefined, false);
+    renderSite('/', '/', true, undefined, [], undefined, false);
 
     expect(await screen.findByText('Page not found')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Switch page' }));
@@ -200,80 +196,28 @@ describe('DocsSite routing', () => {
     expect(screen.getByRole('menuitem', { name: 'API' })).toBeDefined();
   });
 
-  it.each([undefined, '/start/', 'https://example.com/'])(
-    'uses homeHref %s for the docs logo and page switcher', async homeHref => {
-      window.history.replaceState({}, '', '/en/manual');
+  it.each(['/', '/docs/'])('links the menu and brand to the deployment root %s', async base => {
+    window.history.replaceState({}, '', base + 'en/');
+    const { container } = renderSite(base, base, false);
 
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (input: RequestInfo | URL) =>
-          String(input).endsWith('navigation.json')
-            ? Response.json([])
-            : new Response('# Manual introduction', { status: 200 }),
-        ),
-      );
-
-      renderSite('/', '/', false, undefined, [], homeHref);
-
-      const docsLogo = await screen.findByRole('link', { name: 'Shared docs' });
-
-      expect(docsLogo.getAttribute('href')).toBe(homeHref ?? '/');
-
-      fireEvent.click(screen.getByRole('button', { name: 'Switch page' }));
-
-      const homeItem = screen.getByRole('menuitem', { name: 'Home' });
-
-      expect(homeItem.getAttribute('href')).toBe(homeHref ?? '/');
-    },
-  );
-
-  it.each([
-    { baseURL: '/', homeHref: undefined, expected: '/' },
-    { baseURL: '/docs/', homeHref: undefined, expected: '/docs' },
-    { baseURL: '/', homeHref: '/start/', expected: '/start/' },
-    { baseURL: '/docs/', homeHref: '/start/', expected: '/docs/start/' },
-    { baseURL: '/docs/', homeHref: 'https://example.com/', expected: 'https://example.com/' },
-  ])('shares homeHref across navigation and branding: $expected', async ({ baseURL, homeHref, expected }) => {
-    window.history.replaceState({}, '', `${baseURL}en/`);
-    const { container } = renderSite(baseURL, baseURL, false, undefined, [], homeHref);
-
-    expect(await screen.findByText('home:en')).toBeDefined();
+    await screen.findByText('home:en');
     const homeLinks = screen.getAllByRole('link', { name: 'Home', hidden: true });
 
     expect(homeLinks).toHaveLength(2);
     for (const link of [...homeLinks, ...container.querySelectorAll('.site-brand')]) {
-      expect(link.getAttribute('href')).toBe(expected);
+      expect(link.getAttribute('href')).toBe(base);
     }
   });
 
-  it.each([
-    { path: 'en/missing', homeHref: undefined, expected: '/docs' },
-    { path: 'missing', homeHref: undefined, expected: '/docs' },
-    { path: 'en/missing', homeHref: '/start/', expected: '/docs/start/' },
-    { path: 'missing', homeHref: '/start/', expected: '/docs/start/' },
-    { path: 'en/missing', homeHref: 'https://example.com/', expected: 'https://example.com/' },
-    { path: 'missing', homeHref: 'https://example.com/', expected: 'https://example.com/' },
-  ])('uses homeHref for 404 at $path: $expected', async ({ path, homeHref, expected }) => {
-    window.history.replaceState({}, '', `/docs/${path}`);
-    renderSite('/docs/', '/docs/', false, undefined, [], homeHref);
+  it.each(['en/missing', 'missing'])('returns from 404 at %s to the deployment root', async path => {
+    window.history.replaceState({}, '', '/docs/' + path);
+    renderSite('/docs/', '/docs/', false);
 
     const backHome = await screen.findByRole('link', { name: /Back to home|返回首页/u });
 
-    expect(backHome.getAttribute('href')).toBe(expected);
-  });
-
-  it('navigates to the configured home route', async () => {
-    window.history.replaceState({}, '', '/docs/en/');
-    renderSite('/docs/', '/docs/', false, undefined, [{
-      slug: 'start',
-      title: { en: 'Start', 'zh-CN': '开始' },
-      render: () => <h1>Configured home</h1>,
-    }], '/en/start/');
-
-    fireEvent.click(screen.getByRole('link', { name: 'Home' }));
-
-    expect(await screen.findByRole('heading', { name: 'Configured home' })).toBeDefined();
-    expect(window.location.pathname).toBe('/docs/en/start/');
+    expect(backHome.getAttribute('href')).toBe('/docs/');
+    fireEvent.click(backHome);
+    expect(await screen.findByText('home:zh-CN')).toBeDefined();
   });
 
   it('renders registered pages in the shared shell with localized titles', async () => {
@@ -421,6 +365,38 @@ describe('DocsSite routing', () => {
     expect(await screen.findByText('Page not found')).toBeDefined();
     expect(fetcher).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ['RootWidget', ''],
+    ['WebWidget', '?entry=web'],
+  ])('opens the deep link for %s when the root entry is listed second', async (name, query) => {
+    const entries = ['web', 'root'].map((key, i) => ({
+      key, id: i + 1, source: 'src/' + key + '.ts', types: key + '.d.ts',
+      symbols: [{ name: key === 'root' ? 'RootWidget' : 'WebWidget', id: i + 3, kind: 256 }],
+    }));
+    const version = {
+      version: '1.0.0', snapshot: 'a'.repeat(64), commit: 'abc', entries,
+      json: { en: 'api/example/en.json' },
+    };
+    const pkg = {
+      name: 'Example', key: 'example', entries, latestVersion: version.version, versions: [version],
+      current: { ...version, version: 'current', packageVersion: version.version },
+    };
+    const project = {
+      id: 0, name: 'Example', kind: 1, variant: 'project', schemaVersion: '2.0', flags: {},
+      symbolIdMap: {}, files: { entries: {}, reflections: {} }, locale: 'en',
+      apiSnapshot: { commit: version.commit, packages: [{ ...pkg, version: version.version }] },
+      children: entries.flatMap(entry => entry.symbols.map(symbol => ({ ...symbol, variant: 'declaration', flags: {} }))),
+    };
+
+    vi.stubGlobal('fetch', async (url: string) => Response.json(url.endsWith('manifest.json')
+      ? { schemaVersion: 2, defaultVersion: 'current', packages: [pkg] }
+      : project));
+    window.history.replaceState({}, '', '/en/api/example/current/' + name + '/' + query);
+    renderSite();
+
+    expect(await screen.findByRole('heading', { name })).toBeDefined();
+  });
 });
 
 it('updates custom page metadata on navigation and normalizes canonical URLs', async () => {
@@ -453,4 +429,19 @@ it('updates custom page metadata on navigation and normalizes canonical URLs', a
     .toBe('Documentation and reference for Next.');
   expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href'))
     .toBe(`${window.location.origin}/docs/en/next/`);
+});
+
+it('uses custom section paths with a router basename and preserves locale navigation', async () => {
+  window.history.replaceState({}, '', '/docs/help/en/');
+  renderSite('/docs/', '/docs/', false, undefined, [], undefined, true,
+    { home: '/help/:locale/', manual: '/help/:locale/guides/', api: '/reference/:locale/' });
+
+  expect(await screen.findByText('home:en')).toBeDefined();
+  const links = screen.getAllByRole('link', { name: 'Manual', hidden: true });
+
+  expect(links[0]?.getAttribute('href')).toBe('/docs/help/en/guides/');
+  fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
+  expect(await screen.findByText('home:zh-CN')).toBeDefined();
+  expect(window.location.pathname).toBe('/docs/help/zh-CN/');
 });

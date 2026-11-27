@@ -1,54 +1,6 @@
-import { isRecord } from '../data';
 import Fuse from 'fuse.js';
 import { normalizeSearchText, searchCharacterCount } from '../i18n/search-text';
-
-export interface SearchResult {
-  category: 'api' | 'manual';
-  name: string;
-  summary: string;
-  keywords: string;
-  pinyin?: string;
-  pinyinInitials?: string;
-  sourceLocale: string;
-  url: string;
-  pkg?: string;
-  version?: string;
-  kind?: number;
-}
-
-export function parseSearch(
-  value: unknown,
-  locales: readonly string[],
-): SearchResult[] {
-  if (
-    !Array.isArray(locales) ||
-    locales.some(locale => typeof locale !== 'string')
-  ) {
-    throw new Error('Invalid configured locales');
-  }
-  const valid =
-    Array.isArray(value) &&
-    value.every(
-      item =>
-        isRecord(item) &&
-        (item.category === 'api' || item.category === 'manual') &&
-        typeof item.name === 'string' &&
-        typeof item.summary === 'string' &&
-        typeof item.keywords === 'string' &&
-        (item['pinyin'] === undefined ||
-          typeof item['pinyin'] === 'string') &&
-        (item['pinyinInitials'] === undefined ||
-          typeof item['pinyinInitials'] === 'string') &&
-        typeof item.url === 'string' &&
-        locales.includes(String(item.sourceLocale)),
-    );
-
-  if (!valid) {
-    throw new Error('Invalid search index');
-  }
-
-  return value as SearchResult[];
-}
+import type { SearchResult } from './source';
 
 type IndexedResult = SearchResult & { original: SearchResult };
 const indexes = new WeakMap<SearchResult[], Fuse<IndexedResult>>();

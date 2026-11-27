@@ -1,13 +1,14 @@
 {
   "name": "@galacean/docs-site",
-  "version": "0.0.12",
+  "version": "0.1.0",
   "description": "Shared multilingual documentation site runtime and data contracts",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "licenses"
   ],
   "sideEffects": [
-    "**/*.css"
+    "./dist/index.css"
   ],
   "exports": {
     ".": {
@@ -25,14 +26,14 @@
   "dependencies": {
     "@remixicon/react": "^4.9.0",
     "fuse.js": "7.5.0",
-    "htmlparser2": "^10.1.0"
+    "htmlparser2": "^10.1.0",
+    "react-router-dom": "^7.5.1"
   },
   "peerDependencies": {
     "highlight.js": "^11.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.5.1",
     "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
@@ -42,10 +43,10 @@
     "@types/react-dom": "^19.2.3",
     "highlight.js": "^11.11.1",
     "jsdom": "catalog:",
+    "less": "4.6.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.5.1",
     "remark-gfm": "^4.0.1",
     "typedoc": "catalog:",
     "typescript": "catalog:",

@@ -9,12 +9,12 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from '../router';
 import { ManualPage } from '../../src/components/manual/manual-page';
 import type {
-  ManualDocument,
+  ManualPageDocument,
   ManualNavigationPage,
-} from '../../src/components/manual/manual-page';
+} from '../../src/manual/document';
 import { buildManualTocTree } from '../../src/components/manual/manual-toc';
 import { commonMessages } from '../../src/i18n/messages';
 
@@ -54,7 +54,7 @@ function renderManualPage(
   pages: ManualNavigationPage[] = navigationPages,
   slugOverride?: string | null,
   onSidebarCollapsed?: (collapsed: boolean) => void,
-  documentOverride: ManualDocument = page,
+  documentOverride: ManualPageDocument = page,
 ) {
   const slug = slugOverride === null ? undefined : (slugOverride ?? 'intro');
 
@@ -66,7 +66,7 @@ function renderManualPage(
         {...(onTitleChange === undefined ? {} : { onTitleChange })}
         {...(onSidebarCollapsed === undefined ? {} : { onSidebarCollapsed })}
         messages={messages}
-        getPageHref={slug => `/en/manual/${slug ?? ''}`}
+        getPageHref={(slug, anchor) => `/en/manual/${slug ?? ''}` + (anchor ? '#' + anchor : '')}
         loadNavigation={async () => pages}
         loadOverview={async () => documentOverride}
         loadPage={async () => documentOverride}
@@ -106,7 +106,7 @@ describe('ManualPage navigation', () => {
           locale={locale}
           slug="intro"
           messages={labels}
-          getPageHref={slug => `/${locale}/manual/${slug ?? ''}`}
+          getPageHref={(slug, anchor) => `/${locale}/manual/${slug ?? ''}` + (anchor ? '#' + anchor : '')}
           loadNavigation={async () => navigationPages}
           loadOverview={loadOverview}
           loadPage={loadOverview}
@@ -268,6 +268,7 @@ describe('ManualPage navigation', () => {
   );
 
   it('uses the source HTML heading id for outline navigation', async () => {
+    render(<section id="yuque-install-123">Host content using the same ID</section>);
     renderManualPage(undefined, navigationPages, undefined, undefined, {
       text: '<article><h1 id="yuque-install-123">Install</h1></article>',
       headings: [{ title: 'Install', level: 1, id: 'yuque-install-123' }],
@@ -312,8 +313,8 @@ describe('ManualPage navigation', () => {
     expect(expandButton.getAttribute('aria-expanded')).toBe('false');
     expect(
       document
-        .querySelector('.docs-layout')
-        ?.classList.contains('sidebar-collapsed'),
+        .querySelector('.manual-layout')
+        ?.classList.contains('is-sidebar-collapsed'),
     ).toBe(true);
     await waitFor(() => {
       expect(onSidebarCollapsed).toHaveBeenLastCalledWith(true);
@@ -323,8 +324,8 @@ describe('ManualPage navigation', () => {
 
     expect(
       document
-        .querySelector('.docs-layout')
-        ?.classList.contains('sidebar-collapsed'),
+        .querySelector('.manual-layout')
+        ?.classList.contains('is-sidebar-collapsed'),
     ).toBe(false);
     await waitFor(() => {
       expect(onSidebarCollapsed).toHaveBeenLastCalledWith(false);
@@ -452,7 +453,7 @@ describe('ManualPage navigation', () => {
           slug={slug}
           onTitleChange={onTitleChange}
           messages={messages}
-          getPageHref={value => `/en/manual/${value ?? ''}`}
+          getPageHref={(value, anchor) => `/en/manual/${value ?? ''}` + (anchor ? '#' + anchor : '')}
           loadNavigation={async () => transitionPages}
           loadOverview={loadOverview}
           loadPage={loadPageForTransition}
@@ -500,6 +501,40 @@ describe('ManualPage navigation', () => {
       ).toBe('Details');
       expect(onTitleChange).toHaveBeenLastCalledWith('Details');
     });
+  });
+
+  it('keeps the selected chapter when an earlier request finishes last', async () => {
+    const loadNavigation = async () => [
+      ...navigationPages,
+      { slug: 'details', title: 'Details', group: 'Getting Started' },
+    ];
+    let finishIntro!: (value: typeof page) => void;
+    const pendingIntro = new Promise<typeof page>(resolve => { finishIntro = resolve; });
+    const loadPage = vi.fn(async (_locale: string, slug: string) =>
+      slug === 'intro' ? pendingIntro : { text: '# Details', headings: [] },
+    );
+    const renderChapter = (slug: string) => (
+      <ManualPage
+        locale="en"
+        slug={slug}
+        messages={messages}
+        getPageHref={value => '/guide/' + (value ?? '')}
+        loadNavigation={loadNavigation}
+        loadOverview={loadOverview}
+        loadPage={loadPage}
+      />
+    );
+    const view = render(renderChapter('intro'));
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledWith('en', 'intro'));
+    view.rerender(renderChapter('details'));
+    await screen.findByRole('heading', { name: 'Details' });
+    await act(async () => {
+      finishIntro(page);
+      await pendingIntro;
+    });
+    expect(screen.getByRole('heading', { name: 'Details' })).toBeDefined();
+    expect(screen.queryByRole('heading', { name: 'Intro' })).toBeNull();
   });
 
   it('scrolls the article over a short outline and the outline when it overflows', async () => {
@@ -664,7 +699,7 @@ describe('ManualPage navigation', () => {
     expect(article).not.toBeNull();
     vi.useFakeTimers();
     article!.dispatchEvent(new Event('scroll'));
-    document.querySelector('.docs-layout')?.dispatchEvent(new Event('scroll'));
+    document.querySelector('.manual-layout')?.dispatchEvent(new Event('scroll'));
 
     expect(firstSectionBounds).not.toHaveBeenCalled();
     await act(async () => {

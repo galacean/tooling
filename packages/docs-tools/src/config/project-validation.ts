@@ -1,3 +1,4 @@
+import { createDocsRoutes } from '@galacean/docs-site';
 import { normalizeLocale } from '@galacean/docs-site';
 import { normalizeDocsLocales, validateI18n } from './i18n-validation';
 import { isSafePathSegment } from '../path-validation';
@@ -151,6 +152,20 @@ export function validateDocsProjectConfig(config: unknown, configPath: string): 
     ) {
       issues.push('translationDirectory must be a string');
     }
+    if (config['routePaths'] !== undefined) {
+      const routePaths = config['routePaths'];
+
+      if (!isRecord(routePaths) || Object.entries(routePaths).some(([key, value]) =>
+        !['home', 'manual', 'api'].includes(key) || typeof value !== 'string')) {
+        issues.push('routePaths must contain home/manual/api path strings');
+      } else {
+        try {
+          createDocsRoutes(routePaths);
+        } catch (error) {
+          issues.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
     const dataBaseURLs = config['dataBaseUrls'];
 
     if (dataBaseURLs !== undefined &&
@@ -163,12 +178,6 @@ export function validateDocsProjectConfig(config: unknown, configPath: string): 
         config['siteName'].trim() === '')
     ) {
       issues.push('siteName must be a non-empty string');
-    }
-    if (
-      config['homeHref'] !== undefined &&
-      (typeof config['homeHref'] !== 'string' || config['homeHref'].trim() === '')
-    ) {
-      issues.push('homeHref must be a non-empty string');
     }
     if (config['defaultLocale'] !== undefined &&
       (!Array.isArray(locales) || !locales.includes(config['defaultLocale']))) {

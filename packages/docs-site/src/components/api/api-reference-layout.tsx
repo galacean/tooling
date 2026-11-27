@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { BackToTopButton, DocsSidebarCollapse, Icon } from '../shared';
 
@@ -36,6 +36,7 @@ export function APIReferenceLayout({
 }: APIReferenceLayoutProps) {
   const drawerRef = useRef<HTMLDialogElement>(null);
   const sidebar = useRef<HTMLDivElement>(null);
+  const sidebarId = useId();
 
   useEffect(() => {
     sidebar.current
@@ -56,14 +57,14 @@ export function APIReferenceLayout({
   }, [drawerOpen]);
 
   return (
-    <main className={`ge-api${collapsed ? ' collapsed' : ''}`}>
-      <aside className="api-sidebar" id="api-sidebar" ref={sidebar}>
+    <main className={`api-layout${collapsed ? ' is-sidebar-collapsed' : ''}`}>
+      <aside className="api-sidebar" id={sidebarId} ref={sidebar}>
         {renderNavigation(() => onDrawerChange(false))}
       </aside>
       <DocsSidebarCollapse
         label={collapsed ? t.expandSidebar : t.collapseSidebar}
         expanded={!collapsed}
-        controlsId="api-sidebar"
+        controlsId={sidebarId}
         className="docs-sidebar-collapse-region--api"
         onToggle={onToggleCollapsed}
       />
@@ -72,21 +73,21 @@ export function APIReferenceLayout({
           {toolbar}
           <button
             type="button"
-            className="api-mobile-menu icon-action"
+            className="api-mobile-menu docs-icon-action"
             aria-label={t.menu}
             onClick={() => onDrawerChange(true)}
           >
             <Icon name="menu" />
           </button>
         </header>
-        <div ref={scrollRef} className="api-scroll docs-scroll-area">
+        <div ref={scrollRef} className="api-scroll">
           {children}
         </div>
       </div>
       <BackToTopButton label={t.top} scrollRef={scrollRef} />
       <dialog
         ref={drawerRef}
-        className="api-drawer"
+        className="docs-drawer api-drawer"
         aria-label={t.api}
         onCancel={event => {
           event.preventDefault();
@@ -102,7 +103,7 @@ export function APIReferenceLayout({
           <strong>{t.api}</strong>
           <button
             type="button"
-            className="icon-action"
+            className="docs-icon-action"
             aria-label={t.close}
             onClick={() => onDrawerChange(false)}
           >

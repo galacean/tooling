@@ -2,7 +2,7 @@
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from '../router';
 import { describe, expect, it } from 'vitest';
 import {
   APIComment,
@@ -57,7 +57,7 @@ describe('shared API reflection content', () => {
     );
 
     expect(markup).toContain(
-      'class="kind-label kind-functions compact" title="Functions">F</span>',
+      'class="api-kind-label api-kind-functions is-compact" title="Functions">F</span>',
     );
     expect(markup).toContain('aria-label="Result Definition"');
     expect(markup).toContain('href="/en/api/example/current/Result/"');
@@ -169,7 +169,7 @@ describe('shared API reflection content', () => {
       if (sourceLocale === 'ja') {
         expect(markup).toContain('Original: Language ja');
       } else {
-        expect(markup).not.toContain('original-locale');
+        expect(markup).not.toContain('api-original-locale');
       }
     },
   );
@@ -194,7 +194,6 @@ describe('shared API reflection content', () => {
   it('renders structured descriptions and only sources with supplied URLs', () => {
     const markup = renderToStaticMarkup(
       <APIDescriptionList
-        className="example"
         items={[
           {
             key: 'source',
@@ -217,7 +216,7 @@ describe('shared API reflection content', () => {
       />,
     );
 
-    expect(markup).toContain('class="api-descriptions example"');
+    expect(markup).toContain('class="api-descriptions"');
     expect(markup).toContain('<dt><strong>Definition</strong></dt>');
     expect(markup).toContain('href="https://example.test/core.ts#L12"');
     expect(markup).toContain('title="Source: src/core.ts:12"');
@@ -240,7 +239,7 @@ describe('shared API reflection content', () => {
     );
 
     expect(markup).toContain(
-      '<div class="api-signature-panel"><dl class="api-descriptions api-signature-details">',
+      '<div class="api-signature-panel"><dl class="api-descriptions">',
     );
     expect(markup).toContain(
       '<dt>Signature</dt><dd><code>convert(input)</code></dd>',
@@ -301,7 +300,7 @@ describe('shared API reflection content', () => {
     expect(markup).toContain('id="api-overview"');
     expect(markup).toContain('<strong>Example</strong>');
     expect(markup).toContain('id="api-group-methods"');
-    expect(markup).toContain('href="/#run"');
+    expect(markup).toContain('href="#run"');
     expect(markup).toContain('id="stop"');
     expect(markup).toContain('<h3>stop?</h3>');
     expect(markup).toContain('<small>Deprecated</small>');

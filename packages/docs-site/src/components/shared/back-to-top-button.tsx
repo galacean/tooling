@@ -13,7 +13,7 @@ export function BackToTopButton<TElement extends HTMLElement>({
   return (
     <button
       type="button"
-      className="docs-back-top icon-action"
+      className="docs-back-top docs-icon-action"
       aria-label={label}
       title={label}
       onClick={() =>

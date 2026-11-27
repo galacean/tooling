@@ -1,0 +1,96 @@
+.api-package-readme {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding: 42px clamp(24px, 4vw, 64px) 88px;
+}
+.api-package-readme .markdown-content h1 {
+  margin: 0 0 10px;
+  font-size: var(--site-doc-title-size);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.api-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 11px;
+  margin: 0 0 4px;
+  scroll-margin-top: 24px;
+}
+.api-title h1 {
+  display: inline;
+  margin: 0;
+  font-size: var(--site-doc-title-size);
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.api-title h1 .api-signature {
+  font-size: 0.7em;
+}
+.api-anchor-link {
+  color: var(--site-muted);
+  font-weight: 500;
+}
+.api-anchor-link:hover {
+  color: var(--site-link);
+}
+.api-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--site-border);
+  border-radius: 2px;
+  color: var(--site-muted);
+  font:
+    10px 'IBM Plex Mono',
+    monospace;
+  line-height: 1.5;
+}
+.api-tag + .api-tag {
+  margin-inline-start: 4px;
+}
+.api-tag--annotation {
+  border-color: color-mix(in srgb, var(--site-green) 45%, var(--site-border));
+  color: var(--site-green);
+}
+.api-tag--deprecated {
+  border-color: color-mix(in srgb, var(--site-accent) 40%, var(--site-border));
+  color: var(--site-accent);
+}
+.api-parameter-name {
+  color: var(--site-accent);
+  font-size: 15px;
+}
+.api-notice {
+  margin: 16px auto 0;
+  max-width: 976px;
+  padding: 12px 16px;
+  border-inline-start: 3px solid #a67b28;
+  border-radius: 6px;
+  background: color-mix(in srgb, #e9c66a 16%, var(--site-surface));
+  color: var(--site-ink);
+}
+.api-member-card > .api-descriptions {
+  margin-top: 12px;
+}
+@media (max-width: 767px) {
+  .api-title {
+    gap: 8px;
+  }
+  .api-title h1 {
+    font-size: 29px;
+  }
+  .api-signature-panel .api-description-row:first-child dd {
+    padding-inline: 12px;
+  }
+  .api-signature-panel .api-description-row:first-child dt {
+    padding-inline: 12px;
+  }
+  .api-signature-panel .api-description-row:not(:first-child) {
+    padding-inline: 12px;
+  }
+  .api-signature {
+    font-size: 11px;
+  }
+}

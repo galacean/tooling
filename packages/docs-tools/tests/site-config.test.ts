@@ -5,26 +5,6 @@ import path from 'node:path';
 import { test } from 'vitest';
 import { loadDocsProjectConfig } from '@galacean/docs-tools';
 
-void test('loads the shared home destination and rejects invalid values', async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'docs-home-config-'));
-
-  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
-  for (const homeHref of ['/', '/start/', 'https://example.com/']) {
-    await writeFile(path.join(root, 'docs.config.json'), JSON.stringify({
-      sourceLocale: 'en', locales: ['en'], homeHref,
-    }));
-    const config = await loadDocsProjectConfig('docs.config.json', root);
-
-    assert.equal(config.homeHref, homeHref);
-  }
-  for (const homeHref of [42, null, '', '   ']) {
-    await writeFile(path.join(root, 'docs.config.json'), JSON.stringify({
-      sourceLocale: 'en', locales: ['en'], homeHref,
-    }));
-    await assert.rejects(loadDocsProjectConfig('docs.config.json', root), /homeHref must be a non-empty string/u);
-  }
-});
-
 void test('preserves optional data environment prefixes', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'docs-data-environments-'));
 

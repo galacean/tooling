@@ -1,29 +1,26 @@
-import { getCommonMessages, getLocaleDefinition } from '@galacean/docs-site';
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  localePath,
-  isRecord,
+  createAPISymbolRouteLookup,
+  createDocsRoutes,
+  getCommonMessages,
+  getLocaleDefinition,
+  siteTargetHref,
+  type DocsTarget,
   parseAPIManifest,
 } from '@galacean/docs-site';
-import { assertNoSymlinkPath, isWithin } from '../path-validation';
+import { assertNoSymlinkPath } from '../path-validation';
 import type { ResolvedDocsBuildConfig } from '../config/types';
 import { isManualNavigation } from '../manual/navigation';
 import { readJSON } from '../api/read-json';
 import { collectStaticRoutes } from './collect-routes';
+import { validateSearchRoutes, validateStaticArtifact } from './validate-artifact';
 import { copyManualAssets } from './copy-manual-assets';
 import { escapeHTML, parseRouteTemplate } from './assemble-page';
 
 interface StaticRouteOptions {
   base?: string;
   origin?: string;
-}
-
-function isSearchLinkArray(value: unknown): value is { url: string }[] {
-  return (
-    Array.isArray(value) &&
-    value.every(item => isRecord(item) && typeof item['url'] === 'string')
-  );
 }
 
 function normalizeBase(value: string | undefined): string {
@@ -44,34 +41,6 @@ function normalizeBase(value: string | undefined): string {
   }
 
   return segments.length === 0 ? '/' : `/${segments.join('/')}/`;
-}
-
-async function directoryBytes(directory: string): Promise<number> {
-  let bytes = 0;
-
-  async function visit(current: string): Promise<void> {
-    for (const entry of await readdir(current, { withFileTypes: true })) {
-      const filename = path.join(current, entry.name);
-
-      if (entry.isSymbolicLink()) {
-        throw new Error(`Symlink in static site artifact: ${filename}`);
-      }
-      if (entry.isDirectory()) {
-        await visit(filename);
-      } else {
-        const metadata = await stat(filename);
-
-        if (metadata.nlink > 1) {
-          throw new Error(`Hard link in static site artifact: ${filename}`);
-        }
-        bytes += metadata.size;
-      }
-    }
-  }
-
-  await visit(directory);
-
-  return bytes;
 }
 
 export async function buildStaticRoutes(
@@ -106,14 +75,15 @@ export async function buildStaticRoutes(
     throw new Error('Invalid manual navigation');
   }
   const template = parseRouteTemplate(await readFile(path.join(dist, 'index.html'), 'utf8'), config.i18n);
-  const routes = collectStaticRoutes(config, config.siteName, navigationValue, apiPackages);
+  const paths = createDocsRoutes(config.routePaths);
+  const routes = collectStaticRoutes(config, paths, config.siteName, navigationValue, apiPackages);
 
   if (routes.size > 10000) {
     const counts = Object.fromEntries(config.locales.map(locale => [locale, [...routes.values()].filter(page => page.locale === locale).length]));
 
     throw new Error(`Static site artifact too large: ${routes.size} routes; locales ${JSON.stringify(counts)}`);
   }
-  const defaultHome = localePath(config.defaultLocale ?? config.sourceLocale);
+  const defaultHome = paths.path(config.defaultLocale ?? config.sourceLocale);
   const sitemap: string[] = [];
   const routeHref = (route: string) => {
     const pathname = `${base}${route.slice(1)}`;
@@ -122,9 +92,11 @@ export async function buildStaticRoutes(
   };
 
   for (const [pathname, page] of routes) {
-    const directory = path.join(dist, page.locale, ...page.segments);
+    const directory = path.join(dist, ...pathname.split('/').filter(Boolean).map(decodeURIComponent));
     const canonical = origin === undefined ? undefined : routeHref(pathname);
-    const alternates = (page.alternateLocales ?? config.locales).filter(locale => routes.has(localePath(locale, page.segments))).map(locale => ({ locale, href: routeHref(localePath(locale, page.segments)) }));
+    const alternates = (page.alternateLocales ?? config.locales)
+      .filter(locale => routes.has(page.alternatePaths[locale]!))
+      .map(locale => ({ locale, href: routeHref(page.alternatePaths[locale]!) }));
     const html = template.render(page, canonical, alternates);
 
     if (page.includeInSitemap && canonical !== undefined) {
@@ -152,11 +124,6 @@ export async function buildStaticRoutes(
   } else {
     await rm(robotsPath, { force: true });
   }
-  const homeHref = config.homeHref ?? '/';
-  const home = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(homeHref)
-    ? homeHref
-    : `${base}${homeHref.replace(/^\//u, '')}`;
-
   const errorPage = (locale: string) => {
     const messages = getCommonMessages(locale, config.i18n);
 
@@ -164,12 +131,16 @@ export async function buildStaticRoutes(
   <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
   <title>404 · ${escapeHTML(config.siteName!)}</title>
   <link rel="icon" href="${escapeHTML(base)}favicon.svg"></head><body style="font-family:system-ui;padding:48px">
-  <h1>404 · ${escapeHTML(messages.notFound)}</h1><p><a href="${escapeHTML(home)}">${escapeHTML(messages.home)}</a></p></body></html>\n`;
+  <h1>404 · ${escapeHTML(messages.notFound)}</h1><p><a href="${escapeHTML(base)}">${escapeHTML(messages.home)}</a></p></body></html>\n`;
   };
 
   await writeFile(path.join(dist, '404.html'), errorPage(config.defaultLocale ?? config.sourceLocale));
   for (const locale of config.locales) {
-    await writeFile(path.join(dist, locale, '404.html'), errorPage(locale));
+    const localeDirectory = path.join(dist, ...paths.path(locale).split('/').filter(Boolean));
+
+    await assertNoSymlinkPath(config.repositoryRoot, localeDirectory);
+    await mkdir(localeDirectory, { recursive: true });
+    await writeFile(path.join(localeDirectory, '404.html'), errorPage(locale));
   }
   await writeFile(path.join(dist, '.nojekyll'), '');
   await writeFile(
@@ -177,44 +148,19 @@ export async function buildStaticRoutes(
     `${JSON.stringify([...routes.keys()])}\n`,
   );
 
+  const symbolRouteSegment = createAPISymbolRouteLookup();
+  const searchHref = (target: DocsTarget) => siteTargetHref(paths, target, apiPackages, symbolRouteSegment);
+
   for (const locale of config.locales) {
     const searchPath = path.join(dataRoot, 'search', `${locale}.json`);
     const search: unknown = await readJSON(searchPath);
 
-    if (!isSearchLinkArray(search)) {
-      throw new Error(`Invalid search index: ${locale}`);
+    validateSearchRoutes(search, locale, routes, searchHref);
+    if (config.manualConfigured !== false) {
+      await copyManualAssets(config, paths, locale, navigationValue, routes, dist);
     }
-    for (const result of search) {
-      const url = new URL(result.url, 'https://local.invalid');
-
-      if (!routes.has(url.pathname)) {
-        throw new Error(`Search route has no static entry: ${result.url}`);
-      }
-    }
-    await copyManualAssets(config, locale, navigationValue, routes, dist);
   }
-  for (const resource of template.resources) {
-    if (/^(?:#|[a-z][a-z\d+.-]*:|\/\/)/iu.test(resource)) {
-      continue;
-    }
-    if (!resource.startsWith(base)) {
-      throw new Error(`Resource is outside site base ${base}: ${resource}`);
-    }
-    const pathname = decodeURIComponent(new URL(resource, 'https://local.invalid').pathname);
-    const filename = path.join(dist, pathname.slice(base.length));
-
-    if (!pathname.startsWith(base) || !isWithin(dist, filename)) {
-      throw new Error(`Resource is outside site base ${base}: ${resource}`);
-    }
-    await stat(filename);
-  }
-  const bytes = await directoryBytes(dist);
-
-  if (routes.size > 10000 || bytes > 500 * 1024 * 1024) {
-    throw new Error(
-      `Static site artifact too large: ${routes.size} routes, ${bytes} bytes`,
-    );
-  }
+  const bytes = await validateStaticArtifact(dist, base, template.resources, routes.size);
 
   return { routes: routes.size, bytes, base };
 }

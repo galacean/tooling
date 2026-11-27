@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { DocsLink as Link } from '../../routing/navigation';
 
 export interface APIReflectionLayoutProps {
   children: ReactNode;
@@ -79,7 +79,7 @@ export function APIReflectionSections({
                     className="api-member-card"
                   >
                     <header>
-                      <Link to={member.href} className="anchor-link">
+                      <Link to={member.href} className="api-anchor-link">
                         #
                       </Link>
                       {member.kindLabel}

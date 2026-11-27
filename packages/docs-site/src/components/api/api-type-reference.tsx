@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { DocsLink as Link } from '../../routing/navigation';
 import type { TypeToken } from '../../data';
 import { APITokens } from './api-tokens';
 
@@ -114,7 +114,7 @@ export function APITypeReference({
   if (externalURL !== undefined) {
     return (
       <a
-        className="signature-type"
+        className="api-token-type"
         href={externalURL}
         target="_blank"
         rel="noreferrer"
@@ -125,7 +125,7 @@ export function APITypeReference({
   }
   if (target === undefined) {
     return (
-      <span className="signature-type" title={unresolvedTitle}>
+      <span className="api-token-type" title={unresolvedTitle}>
         {text}
       </span>
     );
@@ -134,7 +134,7 @@ export function APITypeReference({
   const preview = (
     <span
       ref={contentRef}
-      className={`api-reference-content docs-scroll-area${open ? ' is-open' : ''}`}
+      className={`api-reference-content${open ? ' is-open' : ''}`}
       style={
         position === undefined
           ? { visibility: 'hidden' }
@@ -169,7 +169,7 @@ export function APITypeReference({
             {target.originalLabel}: {target.sourceLocale}
           </small>
         )}
-      <span className="api-reference-members docs-scroll-area">
+      <span className="api-reference-members">
         {target.members.map(member => (
           <Link key={member.name} to={member.href}>
             {member.name}
@@ -182,7 +182,7 @@ export function APITypeReference({
   return (
     <span ref={wrapRef} className="api-reference-wrap">
       <button
-        className={`${generic ? 'signature-generic' : 'signature-type'} type-reference`}
+        className={`${generic ? 'api-token-generic' : 'api-token-type'} api-type-reference`}
         type="button"
         onPointerEnter={showPreview}
         onPointerLeave={scheduleClose}
@@ -197,7 +197,7 @@ export function APITypeReference({
         {text}
       </button>
       {open && typeof document !== 'undefined'
-        ? createPortal(preview, document.body)
+        ? createPortal(preview, wrapRef.current?.closest('.docs-root') ?? document.body)
         : preview}
     </span>
   );

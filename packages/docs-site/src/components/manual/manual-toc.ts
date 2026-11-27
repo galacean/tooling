@@ -1,4 +1,4 @@
-import type { ManualHeading } from '../../manual';
+import type { ManualHeading } from '../../manual/index';
 
 export interface ManualTocNode extends ManualHeading {
   key: string;

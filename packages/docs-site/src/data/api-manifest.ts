@@ -38,23 +38,44 @@ export interface APIManifest {
   packages: APIManifestPackage[];
 }
 
-export function getAPISymbolRouteSegment(
-  symbols: readonly Pick<APISymbol, 'name'>[],
-  symbolName: string,
-): string {
-  const foldedName = symbolName.toLocaleLowerCase('en-US');
-  const collisionCount = symbols.filter(
-    symbol => symbol.name.toLocaleLowerCase('en-US') === foldedName,
-  ).length;
+type SymbolNames = readonly Pick<APISymbol, 'name'>[];
 
-  if (collisionCount < 2) {
-    return symbolName;
-  }
+function disambiguateSymbol(symbolName: string): string {
   const identity = [...symbolName]
     .map(character => character.codePointAt(0)?.toString(16) ?? '')
     .join('-');
 
   return `${symbolName}--${identity}`;
+}
+
+/** Index each entry once while resolving links from a single manifest snapshot. */
+export function createAPISymbolRouteLookup() {
+  const entries = new WeakMap<SymbolNames, Set<string>>();
+
+  return (symbols: SymbolNames, name: string): string => {
+    let collisions = entries.get(symbols);
+
+    if (collisions === undefined) {
+      collisions = new Set<string>();
+      const seen = new Set<string>();
+
+      for (const symbol of symbols) {
+        const folded = symbol.name.toLocaleLowerCase('en-US');
+
+        if (seen.has(folded)) {
+          collisions.add(folded);
+        }
+        seen.add(folded);
+      }
+      entries.set(symbols, collisions);
+    }
+
+    return collisions.has(name.toLocaleLowerCase('en-US')) ? disambiguateSymbol(name) : name;
+  };
+}
+
+export function getAPISymbolRouteSegment(symbols: SymbolNames, symbolName: string): string {
+  return createAPISymbolRouteLookup()(symbols, symbolName);
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

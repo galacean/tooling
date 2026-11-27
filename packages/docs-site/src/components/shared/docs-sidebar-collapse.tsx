@@ -58,7 +58,7 @@ export function DocsSidebarCollapse({
       document.getElementById(controlsId)?.getBoundingClientRect().width ?? 0;
 
     if (hasSavedWidth) {
-      document.documentElement.style.setProperty(
+      (document.getElementById(controlsId)?.closest<HTMLElement>('.docs-root') ?? document.getElementById(controlsId))?.style.setProperty(
         '--site-doc-sidebar-width',
         `${savedWidth}px`,
       );
@@ -69,7 +69,7 @@ export function DocsSidebarCollapse({
 
     return () => {
       if (drag.current !== null) {
-        document.documentElement.removeAttribute('data-sidebar-resizing');
+        document.getElementById(controlsId)?.closest('.docs-root')?.removeAttribute('data-sidebar-resizing');
         document.body.style.userSelect = drag.current.previousUserSelect;
       }
     };
@@ -78,7 +78,7 @@ export function DocsSidebarCollapse({
   const applyWidth = (width: number) => {
     const nextWidth = clampSidebarWidth(width);
 
-    document.documentElement.style.setProperty(
+    (document.getElementById(controlsId)?.closest<HTMLElement>('.docs-root') ?? document.getElementById(controlsId))?.style.setProperty(
       '--site-doc-sidebar-width',
       `${nextWidth}px`,
     );
@@ -114,7 +114,7 @@ export function DocsSidebarCollapse({
       width: clampSidebarWidth(targetWidth),
       previousUserSelect: document.body.style.userSelect,
     };
-    document.documentElement.dataset['sidebarResizing'] = 'true';
+    document.getElementById(controlsId)?.closest('.docs-root')?.setAttribute('data-sidebar-resizing', 'true');
     document.body.style.userSelect = 'none';
     event.currentTarget.setPointerCapture?.(event.pointerId);
     event.preventDefault();
@@ -147,7 +147,7 @@ export function DocsSidebarCollapse({
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture?.(event.pointerId);
     }
-    document.documentElement.removeAttribute('data-sidebar-resizing');
+    document.getElementById(controlsId)?.closest('.docs-root')?.removeAttribute('data-sidebar-resizing');
     document.body.style.userSelect = activeDrag.previousUserSelect;
     persistWidth(activeDrag.width);
   };
@@ -205,7 +205,7 @@ export function DocsSidebarCollapse({
       )}
       <button
         type="button"
-        className="docs-sidebar-collapse icon-action"
+        className="docs-sidebar-collapse docs-icon-action"
         aria-label={label}
         title={label}
         aria-expanded={expanded}

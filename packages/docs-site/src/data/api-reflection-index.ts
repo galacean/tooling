@@ -1,3 +1,4 @@
+import type { APITarget } from '../routing/targets';
 export interface DocumentationPackage {
   key: string;
   name: string;
@@ -20,7 +21,7 @@ export interface ReflectionIndex<TReflection extends object> {
   parents: Map<number, number>;
   locations: Map<number, ReflectionLocation>;
   resolve: (target: unknown) => TReflection | undefined;
-  url: (locale: string, version: string, id: number) => string | undefined;
+  target: (locale: string, version: string, id: number) => Extract<APITarget, {kind: 'symbol'}> | undefined;
 }
 
 interface ReflectionRecord {
@@ -97,14 +98,6 @@ export function isDeclaration<TReflection extends object>(
 export function buildReflectionIndex<TReflection extends object>(
   project: object,
   packages: DocumentationPackage[],
-  getSymbolURL: (
-    locale: string,
-    packageKey: string,
-    version: string,
-    symbol: string,
-    entry: string,
-    hash: string,
-  ) => string,
 ): ReflectionIndex<TReflection> {
   if (!isReflectionRecord(project)) {
     throw new Error('Invalid TypeDoc project reflection');
@@ -252,25 +245,13 @@ export function buildReflectionIndex<TReflection extends object>(
 
     return undefined;
   };
-  const url = (
-    locale: string,
-    version: string,
-    id: number,
-  ): string | undefined => {
+  const target: ReflectionIndex<TReflection>['target'] = (locale, version, id) => {
     const location = locations.get(id);
-    const packageVersion =
-      packages.find(pkg => pkg.key === location?.pkg)?.version ?? version;
 
-    return location === undefined
-      ? undefined
-      : getSymbolURL(
-          locale,
-          location.pkg,
-          packageVersion,
-          location.symbol,
-          location.entry,
-          location.hash,
-        );
+    if (!location) { return undefined; }
+
+    return { kind: 'symbol', locale, packageKey: location.pkg, version: packages.find(pkg => pkg.key === location.pkg)?.version ?? version,
+      entryKey: location.entry, symbol: location.symbol, anchor: location.hash };
   };
 
   return {
@@ -278,7 +259,7 @@ export function buildReflectionIndex<TReflection extends object>(
     parents,
     locations,
     resolve,
-    url,
+    target,
   };
 }
 

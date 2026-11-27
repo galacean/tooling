@@ -1,0 +1,58 @@
+.docs-page-switcher {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  flex: 1 1 0;
+}
+.docs-page-switcher-current {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  .text-ellipsis();
+  padding: 0 2px;
+  color: var(--site-muted);
+  font-size: 12px;
+  line-height: 32px;
+  text-decoration: none;
+}
+.docs-page-switcher-current:hover,
+.docs-page-switcher-current:focus-visible {
+  color: var(--site-ink);
+}
+.docs-page-switcher-trigger {
+  display: inline-grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--site-muted);
+  cursor: pointer;
+}
+.docs-page-switcher-menu {
+  inset-inline-end: 0;
+  inset-inline-start: auto;
+}
+.docs-page-switcher-menu a svg {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+}
+.docs-page-switcher-menu a[aria-current='page'] {
+  font-weight: 600;
+}
+.docs-page-switcher-menu a[aria-current='page']::after {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  margin-inline-start: auto;
+  border-radius: 50%;
+  background: var(--site-accent);
+  content: '';
+}

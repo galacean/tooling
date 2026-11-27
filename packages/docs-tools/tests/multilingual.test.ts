@@ -67,6 +67,44 @@ test('source-only local manuals expand to all languages, apply selected translat
   assert.match(await readFile(path.join(config.manualDirectory, 'ja/guide.md'), 'utf8'), /Changed source/u);
 });
 
+test('copies localized assets referenced only by manual overviews', async t => {
+  const { root, config } = await fixture(t);
+  const overviews = [{ locale: 'en', title: 'Overview' }, { locale: 'ja', title: '概要' }];
+
+  for (const { locale, title } of overviews) {
+    const directory = path.join(root, 'content', locale);
+
+    await mkdir(path.join(directory, 'assets'), { recursive: true });
+    await writeFile(path.join(directory, 'index.md'), `# ${title}\n\n![${title}](./assets/overview.svg)\n`);
+    await writeFile(path.join(directory, 'assets/overview.svg'), `<svg><title>${title}</title></svg>`);
+  }
+  await syncManuals(config);
+  await rm(path.join(root, 'content/en/index.md'));
+  await rm(path.join(root, 'content/ja/index.md'));
+  await syncManuals(config);
+  for (const { locale, title } of overviews) {
+    assert.equal(await readFile(path.join(config.manualDirectory, locale, 'assets/overview.svg'), 'utf8'),
+      `<svg><title>${title}</title></svg>`);
+  }
+});
+
+test.for([
+  { manual: '/:locale/manual/', url: '/en/manual/assets/diagram.svg' },
+  { manual: '/help/:locale/guides/', url: '/help/en/guides/assets/diagram.svg' },
+])('syncs root-relative attachments for $manual', async ({ manual, url }, t) => {
+  const { config, root } = await fixture(t);
+
+  config.locales = ['en'];
+  config.routePaths = { manual };
+  const directory = path.join(root, 'content/en');
+
+  await mkdir(path.join(directory, 'assets'));
+  await writeFile(path.join(directory, 'assets/diagram.svg'), '<svg/>');
+  await writeFile(path.join(directory, 'guide.md'), '# Guide\\n\\n![Diagram](' + url + ')');
+  await syncManuals(config);
+  assert.equal(await readFile(path.join(config.manualDirectory, 'en/assets/diagram.svg'), 'utf8'), '<svg/>');
+});
+
 test('selection parsing rejects conflicts and validates the actual source', async t => {
   const { config } = await fixture(t);
 

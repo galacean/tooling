@@ -7,7 +7,7 @@ React runtime for multilingual API and manual documentation sites, with search, 
 ## Install
 
 ```sh
-pnpm add @galacean/docs-site react react-dom react-markdown react-router-dom remark-gfm highlight.js
+pnpm add @galacean/docs-site react react-dom react-markdown remark-gfm highlight.js
 ```
 
 ## Quick start
@@ -44,15 +44,46 @@ export default function App() {
 }
 ```
 
-`DocsSite` creates its own `BrowserRouter`; mount it outside another router. Load the stylesheet once at the application entry.
+`DocsSite` creates its own `BrowserRouter`; mount it outside another router. Import `@galacean/docs-site/index.css` once at the application entry.
 
 - Use `slug: null` for the homepage and give named pages a `title` for each locale. With `bindDocsSitePages`, use the renderer key `/` for the homepage and each named page's slug for its renderer. The homepage also accepts `home` when no page has that slug.
 - `manual`: `true` uses the default data directory, `false` disables manuals, and `{ dataURL }` sets a separate directory.
 - `api`: supply `DocsSiteAPIOptions<Locale>` to enable API pages.
-- `homeHref`: the single destination for Home, Back to home, and brand links, defaulting to `/`. Route paths use `baseURL`; absolute URLs link to another site. Pass the same value to the CLI configuration for its static 404 page.
 - `dataBaseURL`: the published prefix before `data/`, defaulting to `baseURL`. Select a local or CDN prefix in the application and deploy the generated data there.
 
 See [configuration types](src/config/types.ts) for all options. Generation settings belong to the CLI's `docs.config` file; pass runtime options explicitly to `DocsSite`.
+
+## Embedding in an existing application
+
+The host selects the document, locale and URL. The standard source loads the navigation, overview and chapters.
+
+```tsx
+import { Manual, createManualSource } from '@galacean/docs-site';
+import type { ManualProps } from '@galacean/docs-site';
+import '@galacean/docs-site/index.css';
+
+const source = createManualSource({ baseURL: '/published/', locales: ['en', 'zh-CN'] });
+
+const href: ManualProps['href'] = ({ locale, slug, anchor }) => {
+  const query = new URLSearchParams({ lang: locale });
+  if (slug !== undefined) query.set('doc', slug);
+  return '/help?' + query + (anchor ? '#' + encodeURIComponent(anchor) : '');
+};
+
+export function Guide({ locale, slug }: { locale: string; slug?: string }) {
+  return <Manual source={source} locale={locale} slug={slug} href={href} />;
+}
+```
+
+For client-side navigation, pass navigation={{ location, navigate }}. Links otherwise use native browser navigation. Use messages for partial text overrides. SiteShell supplies its children with a locale, navigation and theme and tracks page titles and sidebar state. Configure languages, search and metadata as needed.
+
+Create a TypeDoc source with createAPISource({ baseURL, locales, repository? }). Pass source, locale, selection and href to API. A selection contains packageKey, version, entryKey and an optional raw symbol name. Omit selection to list packages. The href callback receives an API, package or symbol target with a member anchor when present. Use onPackageChange and onVersionChange to update selection according to the application's policy.
+
+Pass createDocsSearch({ baseURL, locales, manual: href }) to SiteShell's search prop. Supply the api link function to enable API results. The published index stores document targets. The application resolves their URLs. DocsSite provides the optional router and layout for a standalone site.
+
+With `SiteShell`, the logo follows the menu item with `key: 'home'`. If the menu omits that item, the logo links to `/`. Standalone sites and static 404 pages link to the deployment root.
+
+`DocsSite` loads React Router when mounted. Use `DocsLink` for internal links in custom site pages.
 
 ## Multilingual sites
 
@@ -65,7 +96,7 @@ const { locales, messages } = createMessageCatalog(builtInLocales);
 // Or choose a subset: createMessageCatalog(['en', 'ja', 'ar'] as const).
 ```
 
-Common UI messages, manual introduction and count labels have built-in defaults. Empty product dictionaries are unnecessary. Product-specific keys must cover every enabled locale; product messages override common messages. `localeLabels` and API `symbolCountLabelTemplates` are optional overrides. Counts use locale-aware plural and number formatting.
+Common UI messages, manual introduction and count labels have built-in defaults. Empty product dictionaries are unnecessary. Product-specific keys must cover every enabled locale; product messages override common messages. `localeLabels` is an optional override. Counts use locale-aware plural and number formatting.
 
 Use the same `locales` declaration in build and runtime configuration. Import language helpers and types from the main `@galacean/docs-site` entry, which can also be loaded in Node. Browser APIs are accessed when browser features run, rather than at module initialization. Canonical BCP 47 content IDs are required; explicit README filenames can still use underscores.
 
@@ -74,6 +105,10 @@ Optional `i18n.localeDefinitions` supplies language labels, direction and script
 The shell sets `html.lang` and `html.dir` on every navigation. Arabic uses RTL layout, while code and signatures retain LTR isolation. Manual source fallback carries its actual content language and a visible notice; API comments and README bodies also retain their source language. Dates, search normalization and language-menu labels follow the configured locales. Static metadata uses the same language resolver; fallback-only bodies are excluded from translated-language alternates when coverage metadata is available.
 
 Standalone Markdown, HTML and image-viewer components accept message overrides and use English defaults outside a configured site.
+
+## Styling
+
+Import `@galacean/docs-site/index.css` once. Each page scopes its styles to `.docs-root`. Set CSS custom properties on that element to customize the page, for example `--site-link` for links and `--site-accent` for focus and selection. Use `.docs-root[data-theme='dark']` for dark theme overrides.
 
 ## Code highlighting
 

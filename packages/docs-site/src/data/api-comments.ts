@@ -22,6 +22,7 @@ export interface APICommentContext<
 > {
   project: TProject;
   index: ReflectionIndex<TReflection>;
+  reflectionHref: (id: number, anchor?: string) => string | undefined;
   locale: string;
   version: string;
   commit: string;
@@ -65,9 +66,9 @@ export function resolveAPIMarkdownLink<
   url: string,
   reflection: TReflection,
   context: APICommentContext<TProject, TReflection>,
-  getRepositoryFileURL: (revision: string, filePath?: string) => string,
+  getRepositoryFileURL: ((revision: string, filePath?: string) => string) | undefined,
 ): string {
-  if (!url.startsWith('.')) {
+  if (!getRepositoryFileURL || !url.startsWith('.')) {
     return url;
   }
 
@@ -104,7 +105,7 @@ export function resolveAPICommentLink<
 >(
   part: APICommentPartLike,
   context: APICommentContext<TProject, TReflection>,
-  getRepositoryFileURL: (revision: string, filePath?: string) => string,
+  getRepositoryFileURL: ((revision: string, filePath?: string) => string) | undefined,
 ): string | undefined {
   if (part.kind === 'inline-tag') {
     if (typeof part.target === 'string') {
@@ -114,9 +115,7 @@ export function resolveAPICommentLink<
 
     return target === undefined
       ? undefined
-      : context.index.url(
-          context.locale,
-          context.version,
+      : context.reflectionHref(
           isRecord(target) && typeof target['id'] === 'number'
             ? target['id']
             : -1,
@@ -133,18 +132,16 @@ export function resolveAPICommentLink<
     const id = reflections?.[String(part.target)];
     const url =
       typeof id === 'number'
-        ? context.index.url(context.locale, context.version, id)
+        ? context.reflectionHref(id, part.targetAnchor)
         : undefined;
 
     if (url !== undefined) {
-      return part.targetAnchor === undefined
-        ? url
-        : `${url.split('#')[0]}#${encodeURIComponent(part.targetAnchor)}`;
+      return url;
     }
 
     const file = entries?.[String(part.target)];
 
-    return typeof file !== 'string'
+    return !getRepositoryFileURL || typeof file !== 'string'
       ? undefined
       : `${getRepositoryFileURL(
           context.version === 'current' ? context.commit : context.version,

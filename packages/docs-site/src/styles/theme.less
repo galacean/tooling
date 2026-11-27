@@ -1,0 +1,63 @@
+& {
+  color-scheme: light;
+  --site-background: #fcfcfa;
+  --site-surface: #fcfcfa;
+  --site-ink: #202320;
+  --site-muted: #71766f;
+  --site-quote-text: #262626;
+  --site-quote-rule: color-mix(
+    in srgb,
+    var(--site-muted) 27%,
+    var(--site-surface)
+  );
+  --site-border: rgba(0, 0, 0, 0.04);
+  --site-wash: #f1f3ef;
+  --site-code-background: #f1f3ef;
+  --site-code-foreground: #343a34;
+  --site-code-muted: #72796f;
+  --site-code-accent: #a83d30;
+  --site-code-type: #286454;
+  --site-code-keyword: #80633f;
+  --site-code-generic: #3f7056;
+  --site-doc-font-family:
+    'Chinese Quote', -apple-system, system-ui, 'Segoe UI', Roboto,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue',
+    'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans CJK TC', 'Noto Sans CJK JP', Helvetica, Arial, sans-serif;
+  --site-doc-body-size: 14px;
+  --site-doc-body-leading: 1.57;
+  --site-doc-code-size: 13px;
+  --site-doc-title-size: 36px;
+  --site-doc-heading-4-size: 20px;
+  --site-doc-nav-size: 14px;
+  --site-doc-outline-size: 14px;
+  --site-doc-sidebar-width: clamp(259px, 18vw, 480px);
+  --site-doc-outline-width: 305px;
+  --site-doc-reading-width: 1120px;
+  --site-doc-reading-gutter: clamp(24px, 4vw, 64px);
+  --icon-action-transition:
+    background-color 0.15s, color 0.15s, transform 0.08s;
+  --docs-sidebar-collapse-region-width: 6px;
+  --docs-scrollbar-track: #fff;
+  --docs-scrollbar-thumb: #e7e9e8;
+  --docs-scrollbar-thumb-hover: #d8dad9;
+}
+&[data-theme='dark'] {
+  color-scheme: dark;
+  --site-background: #141414;
+  --site-surface: #1f1f1f;
+  --site-ink: #deded8;
+  --site-muted: #848484;
+  --site-quote-text: var(--site-ink);
+  --site-border: rgba(255, 255, 255, 0.08);
+  --site-wash: #333;
+  --site-code-background: #1f1f1f;
+  --site-code-foreground: #deded8;
+  --site-code-muted: #b3b3b3;
+  --site-code-accent: #f39575;
+  --site-code-type: #9bbdc4;
+  --site-code-keyword: #b3b3b3;
+  --site-code-generic: #98b7a8;
+  --docs-scrollbar-track: var(--site-surface, #1f1f1f);
+  --docs-scrollbar-thumb: #333;
+  --docs-scrollbar-thumb-hover: #424242;
+}

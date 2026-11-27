@@ -41,3 +41,7 @@ describe('site options resolution', () => {
     expect(resolveDocsSiteOptions({ ...options, manual: false }, 'https://example.com').manual).toBe(false);
   });
 });
+
+it('rejects conflicting enabled routes when assembling a complete site', () => {
+  expect(() => resolveDocsSiteOptions({ ...options, routePaths: { manual: '/:locale/' } }, 'https://example.com')).toThrow(/distinct/u);
+});

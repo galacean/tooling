@@ -1,11 +1,17 @@
+import { resolveManualLink } from './manual-links';
+import { DocumentBoundary } from '../../providers/root';
 import { useDocsI18n } from '../../providers/i18n';
 import { getLocaleDefinition } from '../../i18n/registry';
 import { getCommonMessages } from '../../i18n/messages';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import type { ManualPageDocument as ManualDocument } from '../../manual/document';
+import { DocsLink as Link, useDocsLocation as useLocation } from '../../routing/navigation';
+import { DocsNavigationProvider } from '../../routing/navigation';
+import type { DocsNavigation } from '../../routing/navigation';
+import { useManualContent } from './use-manual-content';
+import type { ManualSource } from '../../manual/source';
 import type { MarkdownMessages } from '../shared/markdown';
+import { findDocumentAnchor } from '../shared/document-anchor';
 import {
   BackToTopButton,
   DocumentError,
@@ -20,18 +26,13 @@ import {
   buildManualNavigationGroups,
   flattenManualGroups,
   getPagesInGroups,
-  groupManualPages,
 } from './manual-navigation';
 import type {
   ManualNavigationGroup,
   ManualNavigationNode,
-  ManualNavigationPage,
 } from './manual-navigation';
 import { buildManualTocTree, flattenManualTocNodes } from './manual-toc';
 import type { ManualTocNode } from './manual-toc';
-
-export { buildManualNavigationGroups, groupManualPages };
-export type { ManualDocument, ManualNavigationPage };
 
 export interface ManualPageMessages extends Partial<MarkdownMessages> {
   manual: string;
@@ -63,17 +64,15 @@ export interface ManualPageMessages extends Partial<MarkdownMessages> {
   copyFailed: string;
 }
 
-export interface ManualPageProps {
+export interface ManualPageProps extends ManualSource {
+  navigation?: DocsNavigation | undefined;
   locale: string;
-  slug: string | undefined;
-  onContentLocalesChange?: (locales: string[] | undefined) => void;
-  onTitleChange?: (title: string) => void;
-  onSidebarCollapsed?: (collapsed: boolean) => void;
+  slug?: string | undefined;
+  onContentLocalesChange?: ((locales: string[] | undefined) => void) | undefined;
+  onTitleChange?: ((title: string) => void) | undefined;
+  onSidebarCollapsed?: ((collapsed: boolean) => void) | undefined;
   messages: ManualPageMessages;
-  getPageHref: (slug?: string) => string;
-  loadNavigation: (locale: string) => Promise<ManualNavigationPage[]>;
-  loadOverview: (locale: string) => Promise<ManualDocument>;
-  loadPage: (locale: string, slug: string) => Promise<ManualDocument>;
+  getPageHref: (slug?: string, anchor?: string) => string;
 }
 
 type ManualActionIconName = 'locate' | 'collapse' | 'expand' | 'hideOutline';
@@ -91,41 +90,32 @@ function ManualActionIcon({ name }: { name: ManualActionIconName }) {
   );
 }
 
-export function ManualPage({
-  locale,
-  slug,
-  onTitleChange,
-  onContentLocalesChange,
-  onSidebarCollapsed,
-  messages: t,
-  getPageHref,
-  loadNavigation,
-  loadOverview,
-  loadPage,
-}: ManualPageProps) {
+/** Controlled manual view. URL parsing and navigation policy belong to the application. */
+export function ManualPage(props: ManualPageProps) {
+  return (
+    <DocsNavigationProvider navigation={props.navigation}>
+      <DocumentBoundary locale={props.locale}>
+        <ManualPageContent {...props} />
+      </DocumentBoundary>
+    </DocsNavigationProvider>
+  );
+}
+
+function ManualPageContent(props: ManualPageProps) {
+  const {
+    locale, slug, onTitleChange, onContentLocalesChange, onSidebarCollapsed,
+    messages: t, getPageHref, assetHref,
+  } = props;
+  const {
+    pages, selected, navigationFailed, overviewContent, overviewFailed,
+    displayedContent, displayedSlug, pageFailed, isPageTransition,
+  } = useManualContent(locale, slug, props);
   const i18n = useDocsI18n();
   const location = useLocation();
   const sidebarRef = useRef<HTMLElement | null>(null);
+  const sidebarId = useId();
+  const tocId = useId();
   const articleRef = useRef<HTMLElement | null>(null);
-  const [navigation, setNavigation] = useState<{
-    locale: string;
-    pages: ManualNavigationPage[];
-  }>();
-  const [navigationError, setNavigationError] = useState<string>();
-  const [loaded, setLoaded] = useState<{
-    locale: string;
-    slug: string;
-    page: ManualDocument;
-  }>();
-  const [loadError, setLoadError] = useState<{
-    locale: string;
-    slug: string;
-  }>();
-  const [overview, setOverview] = useState<{
-    locale: string;
-    page: ManualDocument;
-  }>();
-  const [overviewError, setOverviewError] = useState<string>();
   const [expandedPages, setExpandedPages] = useState<Record<string, boolean>>(
     {},
   );
@@ -138,42 +128,21 @@ export function ManualPage({
   const [isTocHoverSuppressed, setIsTocHoverSuppressed] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeTocId, setActiveTocId] = useState<string>();
-  const pages = navigation?.locale === locale ? navigation.pages : undefined;
-  const selectedAlternates = pages?.find(page => page.slug === slug)?.alternateLocales;
+  const selectedAlternates = selected?.alternateLocales;
 
   useEffect(() => {
     if (pages !== undefined) {
       onContentLocalesChange?.(selectedAlternates);
     }
   }, [pages, selectedAlternates, onContentLocalesChange]);
-  const index = pages?.findIndex(page => page.slug === slug) ?? -1;
-  const selected = pages?.[index];
   const groups = buildManualNavigationGroups(pages ?? []);
-  const loadedPage = loaded?.locale === locale ? loaded : undefined;
-  const content =
-    loadedPage !== undefined && loadedPage.slug === slug
-      ? loadedPage.page
-      : undefined;
-  const overviewContent =
-    overview?.locale === locale ? overview.page : undefined;
-  const failed = loadError?.locale === locale && loadError.slug === slug;
-  const displayedContent =
-    content ??
-    (slug !== undefined && selected !== undefined && !failed
-      ? loadedPage?.page
-      : undefined);
-  const displayedSlug =
-    content !== undefined
-      ? slug
-      : displayedContent !== undefined
-        ? loadedPage?.slug
-        : slug;
-  const isPageTransition =
-    slug !== undefined &&
-    selected !== undefined &&
-    !failed &&
-    content === undefined &&
-    displayedContent !== undefined;
+  const resourceHref = assetHref && ((path: string) => assetHref(locale, path));
+  const resolveLink = (raw: string) => resolveManualLink(raw, displayedSlug, pages, getPageHref, resourceHref);
+  const resolveImage = (raw: string) => {
+    const link = resolveManualLink(raw, displayedSlug, pages, getPageHref, resourceHref, true);
+
+    return typeof link === 'string' ? link : link.resource;
+  };
   const toc = slug === undefined ? overviewContent : displayedContent;
   const tocTree =
     toc === undefined
@@ -478,7 +447,7 @@ export function ManualPage({
               <Link
                 className="manual-toc-link"
                 aria-current={activeTocId === id ? 'location' : undefined}
-                to={`${location.pathname}#${id}`}
+                to={getPageHref(displayedSlug, id)}
                 onClick={event => {
                   setIsTocOpen(false);
                   event.currentTarget.blur();
@@ -496,72 +465,6 @@ export function ManualPage({
     </ul>
   );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    setNavigationError(undefined);
-    void loadNavigation(locale)
-      .then(value => {
-        if (!cancelled) {
-          setNavigation({ locale, pages: value });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setNavigationError(locale);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [locale, loadNavigation]);
-  useEffect(() => {
-    if (slug !== undefined) {
-      return;
-    }
-    let cancelled = false;
-
-    setOverviewError(undefined);
-    void loadOverview(locale)
-      .then(page => {
-        if (!cancelled) {
-          setOverview({ locale, page });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setOverviewError(locale);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [locale, slug, loadOverview]);
-  useEffect(() => {
-    if (slug === undefined || selected === undefined) {
-      return;
-    }
-    let cancelled = false;
-
-    setLoadError(undefined);
-    void loadPage(locale, slug)
-      .then(page => {
-        if (!cancelled) {
-          setLoaded({ locale, slug, page });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLoadError({ locale, slug });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [locale, slug, selected, loadPage]);
   useEffect(() => {
     if (pages !== undefined && !isPageTransition) {
       onTitleChange?.(
@@ -586,19 +489,25 @@ export function ManualPage({
     }
   }, [locale, slug]);
   useEffect(() => {
-    if (location.hash !== '') {
-      document
-        .getElementById(decodeURIComponent(location.hash.slice(1)))
-        ?.scrollIntoView();
+    if (location.hash === '') {
+      return;
     }
+    let id: string;
+
+    try {
+      id = decodeURIComponent(location.hash.slice(1));
+    } catch {
+      return;
+    }
+    findDocumentAnchor(articleRef.current, id)?.scrollIntoView();
   }, [location.hash, location.pathname, toc]);
   useEffect(() => {
+    const headingIds = new Set((toc?.headings ?? [])
+      .filter(item => item.title.trim() !== '')
+      .map(item => item.id ?? headingId(item.title)));
     const updateActiveHeading = () => {
-      const headings = flattenManualTocNodes(
-        buildManualTocTree(toc?.headings ?? [], slug ?? 'overview'),
-      )
-        .map(item => document.getElementById(item.id ?? headingId(item.title)))
-        .filter((heading): heading is HTMLElement => heading !== null);
+      const headings = Array.from(articleRef.current?.querySelectorAll<HTMLElement>('[id]') ?? [])
+        .filter(element => headingIds.has(element.id));
 
       if (headings.length === 0) {
         setActiveTocId(current =>
@@ -632,7 +541,7 @@ export function ManualPage({
 
     updateActiveHeading();
     const article = articleRef.current;
-    const layout = article?.closest<HTMLElement>('.docs-layout');
+    const layout = article?.closest<HTMLElement>('.manual-layout');
     const scrollTargets = [article, layout].filter(
       (target): target is HTMLElement =>
         target !== null && target !== undefined,
@@ -654,9 +563,9 @@ export function ManualPage({
       });
       window.removeEventListener('resize', scheduleActiveHeadingUpdate);
     };
-  }, [location.hash, location.pathname, slug, toc]);
+  }, [location.hash, location.pathname, toc]);
 
-  if (navigationError === locale) {
+  if (navigationFailed) {
     return (
       <DocumentError
         title={t.loadError}
@@ -668,26 +577,23 @@ export function ManualPage({
   if (pages === undefined) {
     return <DocumentLoading layout="manual" label={t.loading} />;
   }
-  const displayedIndex =
-    displayedSlug === undefined
-      ? index
-      : pages.findIndex(page => page.slug === displayedSlug);
+  const displayedIndex = pages.findIndex(page => page.slug === displayedSlug);
   const previous = pages[displayedIndex - 1];
   const next = pages[displayedIndex + 1];
   const displayedPageTitle =
-    pages.find(page => page.slug === displayedSlug)?.title ??
+    pages[displayedIndex]?.title ??
     selected?.title ??
     t.notFound;
 
   return (
     <main
-      className={`docs-layout${isTocHidden ? ' no-toc' : ''}${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}
+      className={`manual-layout${isTocHidden ? ' is-toc-hidden' : ''}${isSidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}
     >
       {slug !== undefined && (
-        <details className="mobile-directory">
+        <details className="manual-mobile-directory">
           <summary>{t.mobileDirectory}</summary>
           <nav>
-            <div className="mobile-directory-actions">
+            <div className="manual-mobile-directory-actions">
               <button
                 type="button"
                 className="manual-sidebar-action"
@@ -714,7 +620,7 @@ export function ManualPage({
           </nav>
         </details>
       )}
-      <aside className="manual-sidebar" id="manual-sidebar" ref={sidebarRef}>
+      <aside className="manual-sidebar" id={sidebarId} ref={sidebarRef}>
         <div className="manual-sidebar-label">
           <div className="manual-sidebar-label-title">
             <Icon name="directory" className="manual-sidebar-label-icon" />
@@ -752,7 +658,7 @@ export function ManualPage({
           </div>
         </div>
         <nav
-          className="manual-sidebar-nav docs-scroll-area"
+          className="manual-sidebar-nav"
           ref={sidebarRef}
           aria-label={t.mobileDirectory}
         >
@@ -762,12 +668,12 @@ export function ManualPage({
       <DocsSidebarCollapse
         label={sidebarToggleLabel}
         expanded={!isSidebarCollapsed}
-        controlsId="manual-sidebar"
+        controlsId={sidebarId}
         className="docs-sidebar-collapse-region--manual"
         onToggle={() => setIsSidebarCollapsed(value => !value)}
       />
       <article
-        className="manual-article docs-scroll-area"
+        className="manual-article"
         ref={articleRef}
         aria-busy={isPageTransition}
       >
@@ -775,8 +681,8 @@ export function ManualPage({
           {slug === undefined ? (
             <>
               <h1>{t.manual}</h1>
-              <p className="intro">{t.manualIntro}</p>
-              {overviewError === locale ? (
+              <p className="manual-intro">{t.manualIntro}</p>
+              {overviewFailed ? (
                 <DocumentError
                   title={t.loadError}
                   description={t.loadErrorDescription}
@@ -786,11 +692,10 @@ export function ManualPage({
                 <DocumentLoading label={t.loading} />
               ) : (
                 <MarkdownContent
+                  resolveLink={resolveLink}
+                  resolveImage={resolveImage}
                   messages={t}
                   text={overviewContent.text}
-                  copyLabel={t.copy}
-                  copied={t.copied}
-                  copyFailed={t.copyFailed}
                 />
               )}
             </>
@@ -799,7 +704,7 @@ export function ManualPage({
               <h1>{t.notFound}</h1>
               <Link to={getPageHref()}>{t.manual}</Link>
             </>
-          ) : failed ? (
+          ) : pageFailed ? (
             <DocumentError
               title={t.loadError}
               description={t.loadErrorDescription}
@@ -817,15 +722,14 @@ export function ManualPage({
                   {!/<h1(?:\s|>)/iu.test(displayedContent.text) && (
                     <h1>{displayedPageTitle}</h1>
                   )}
-                  <HTMLDocumentContent html={displayedContent.text} messages={t} />
+                  <HTMLDocumentContent resolveLink={resolveLink} resolveImage={resolveImage} html={displayedContent.text} messages={t} />
                 </>
               ) : (
                 <MarkdownContent
+                  resolveLink={resolveLink}
+                  resolveImage={resolveImage}
                   messages={t}
                   text={displayedContent.text}
-                  copyLabel={t.copy}
-                  copied={t.copied}
-                  copyFailed={t.copyFailed}
                 />
               )}
               </div>
@@ -860,7 +764,7 @@ export function ManualPage({
       <BackToTopButton label={t.top} scrollRef={articleRef} />
       {tocTree.length > 0 && (
         <aside
-          className={`manual-toc docs-scroll-area${isTocOpen ? ' is-open' : ''}${
+          className={`manual-toc${isTocOpen ? ' is-open' : ''}${
             isTocHidden ? ' is-hidden' : ''
           }${isTocHoverSuppressed ? ' is-hover-suppressed' : ''}`}
           aria-label={t.contents}
@@ -915,7 +819,7 @@ export function ManualPage({
                   className="manual-toc-trigger"
                   aria-label={getTocToggleLabel(isTocOpen, t.contents)}
                   aria-expanded={isTocOpen}
-                  aria-controls="manual-toc-panel"
+                  aria-controls={tocId}
                   onClick={event => {
                     const nextOpen = !isTocOpen;
 
@@ -936,8 +840,8 @@ export function ManualPage({
                 </button>
               )}
               <div
-                className="manual-toc-panel docs-scroll-area"
-                id="manual-toc-panel"
+                className="manual-toc-panel"
+                id={tocId}
               >
                 {!isTocHidden && renderTocHeading()}
                 {renderTocItems(tocTree)}

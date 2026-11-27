@@ -2,7 +2,7 @@
 
 import { createElement, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from '../router';
 import {
   fireEvent,
   render,
@@ -14,10 +14,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildManualNavigationGroups,
   groupManualPages,
-  ManualPage,
-} from '../../src/components/manual/manual-page';
+} from '../../src/components/manual/manual-navigation';
+import { ManualPage } from '../../src/components/manual/manual-page';
 import type { ManualPageProps } from '../../src/components/manual/manual-page';
 import { Icon } from '../../src/components/shared/icon';
+import { DocsRoot } from '../../src/providers/root';
 import { ImageViewer } from '../../src/components/shared/image-viewer';
 import {
   HTMLDocumentContent,
@@ -34,8 +35,22 @@ describe('shared MarkdownContent', () => {
       onClose={() => undefined}
     />);
 
-    expect(screen.getByRole('dialog', { name: 'Image viewer' })).toBeDefined();
+    expect(screen.getByRole('dialog', { name: 'Image viewer' }).closest('.docs-root')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Close image viewer' })).toBeDefined();
+    unmount();
+  });
+
+  it('mounts the viewer inside the enclosing theme without requiring a focus target', () => {
+    const { container, unmount } = render(<DocsRoot theme="dark">
+      <ImageViewer
+        images={[{ src: '/preview.png', alt: 'Preview', title: '', width: 100, height: 100 }]}
+        initialIndex={0} onClose={() => undefined}
+      />
+    </DocsRoot>);
+    const dialog = screen.getByRole('dialog');
+
+    expect(dialog.parentElement).toBe(container.querySelector('[data-theme="dark"]'));
+    expect(document.activeElement).toBe(dialog);
     unmount();
   });
 
@@ -437,7 +452,7 @@ describe('shared MarkdownContent', () => {
       expect(table?.querySelector(':scope > colgroup')).toBeNull();
       expect(mergedCell?.getAttribute('width')).toBe('299');
       expect(mergedCell?.textContent).toBe('Merged');
-      expect(table?.querySelector('td > .table-cell-content')).toBeNull();
+      expect(table?.querySelector('td > .markdown-table-cell')).toBeNull();
     });
   });
 
@@ -805,9 +820,9 @@ describe('shared ManualPage', () => {
     expect(tocPanelToggle.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(toc.getByRole('button', { name: '隐藏大纲' }));
-    expect(container.querySelector('.docs-layout.no-toc')).not.toBeNull();
+    expect(container.querySelector('.manual-layout.is-toc-hidden')).not.toBeNull();
     fireEvent.click(toc.getByRole('button', { name: '展开大纲' }));
-    expect(container.querySelector('.docs-layout.no-toc')).toBeNull();
+    expect(container.querySelector('.manual-layout.is-toc-hidden')).toBeNull();
 
     const tocToggle = await toc.findByRole('button', { name: '收起 Nested' });
 

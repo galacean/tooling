@@ -4,12 +4,11 @@ import { convert } from 'html-to-text';
 import { pinyin } from 'pinyin-pro';
 import {
   indexReflections,
-  getAPISymbolRouteSegment,
   isRecord,
   parseAPIManifest,
   parseProject,
 } from '@galacean/docs-site';
-import type { APIManifest, SearchResult } from '@galacean/docs-site';
+import type { APIManifest, SearchRecord } from '@galacean/docs-site';
 import { getErrorCode } from '../fs-errors';
 import { assertNoSymlinkPath, isSafePathSegment } from '../path-validation';
 import type { ResolvedDocsBuildConfig } from '../config/types';
@@ -93,9 +92,9 @@ async function buildAPIResults(
   config: ResolvedDocsBuildConfig,
   manifest: APIManifest,
   locale: string,
-): Promise<SearchResult[]> {
+): Promise<SearchRecord[]> {
   const dataRoot = path.dirname(config.apiDirectory);
-  const results: SearchResult[] = [];
+  const results: SearchRecord[] = [];
 
   for (const pkg of manifest.packages) {
     if (!isSafePathSegment(pkg.key)) {
@@ -135,11 +134,6 @@ async function buildAPIResults(
             `Missing API reflection: ${pkg.key}/${symbol.name}/${locale}`,
           );
         }
-        const route = `/${locale}/api/${pkg.key}/current/${encodeURIComponent(
-          getAPISymbolRouteSegment(entry.symbols, symbol.name),
-        )}/`;
-        const query =
-          entry.key === 'root' ? '' : `?entry=${encodeURIComponent(entry.key)}`;
         const add = (
           name: string,
           target: Record<string, unknown>,
@@ -156,7 +150,7 @@ async function buildAPIResults(
             summary: comment.summary,
             sourceLocale: comment.sourceLocale,
             keywords: typeKeywords(target['type']).join(' '),
-            url: `${route}${query}${hash}`,
+            target: { kind: 'symbol', locale, packageKey: pkg.key, version: 'current', entryKey: entry.key, symbol: symbol.name, ...(hash ? { anchor: hash } : {}) },
           });
         };
 
@@ -169,7 +163,7 @@ async function buildAPIResults(
               add(
                 member['name'],
                 member,
-                `#${encodeURIComponent(member['name'])}`,
+                member['name'],
               );
             }
           }
@@ -185,8 +179,8 @@ async function buildReadmeResults(
   config: ResolvedDocsBuildConfig,
   manifest: APIManifest,
   locale: string,
-): Promise<SearchResult[]> {
-  const results: SearchResult[] = [];
+): Promise<SearchRecord[]> {
+  const results: SearchRecord[] = [];
 
   for (const pkg of manifest.packages) {
     if (!isSafePathSegment(pkg.key)) {
@@ -212,7 +206,7 @@ async function buildReadmeResults(
       summary: searchableMarkdown(readme).slice(0, 250),
       keywords: readme,
       sourceLocale,
-      url: `/${locale}/api/${pkg.key}/`,
+      target: { kind: 'package', locale, packageKey: pkg.key },
     });
   }
 
@@ -223,9 +217,9 @@ async function buildManualResults(
   config: ResolvedDocsBuildConfig,
   navigation: ManualNavigationItem[],
   locale: string,
-): Promise<SearchResult[]> {
+): Promise<SearchRecord[]> {
   const manualRoot = config.manualDirectory;
-  const results: SearchResult[] = [];
+  const results: SearchRecord[] = [];
 
   for (const manual of navigation) {
     const format = manual.format?.[locale] ?? 'markdown';
@@ -260,7 +254,7 @@ async function buildManualResults(
       summary: searchableText.slice(0, 250),
       keywords: searchableText,
       sourceLocale: manual.contentLocales?.[locale] ?? locale,
-      url: `/${locale}/manual/${manual.slug}/`,
+      target: { kind: 'manual', locale, slug: manual.slug },
     });
   }
 

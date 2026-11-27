@@ -1,13 +1,10 @@
 #!/usr/bin/env node
-import {
-  applyTranslationPairs,
-  cleanAPISnapshots,
-  extractTranslationTasks,
-  generateAPIDocumentation,
-  getAPIStatus,
-  migrateAPITranslations,
-  synchronizeAPILocales,
-} from '../api';
+import { applyTranslationPairs } from '../api/apply';
+import { cleanAPISnapshots } from '../api/snapshot-cleanup';
+import { extractTranslationTasks } from '../api/extract';
+import { getAPIStatus } from '../api/status';
+import { migrateAPITranslations } from '../api/migrate-translations';
+import { synchronizeAPILocales } from '../api/locales';
 import { loadDocsProjectConfig } from '../config/load-project-config';
 import { buildPackageReadmes } from '../package-readmes/build';
 import { buildSearchIndexes } from '../search/build';
@@ -274,6 +271,7 @@ if (group === '--help' || group === '-h') {
       ? 'Generating API documentation for all packages'
       : `Generating API documentation for ${packageKeys.join(', ')}`,
   );
+  const { generateAPIDocumentation } = await import('../api/generate');
   const result = await generateAPIDocumentation(
     config,
     packageKeys.length === 0 ? undefined : packageKeys,

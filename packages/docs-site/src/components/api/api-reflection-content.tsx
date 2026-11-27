@@ -42,13 +42,10 @@ export function APIComment({
       <MarkdownContent
         messages={t}
         text={text}
-        copyLabel={t.copy}
-        copied={t.copied}
-        copyFailed={t.copyFailed}
         {...(resolveLink === undefined ? {} : { resolveLink })}
       />
       {sourceLocale !== undefined && sourceLocale !== locale && (
-        <small className="original-locale">
+        <small className="api-original-locale">
           {t.original}: {getLocaleLabel(sourceLocale)}
         </small>
       )}
@@ -62,15 +59,9 @@ export interface APIDescriptionItem {
   content: ReactNode;
 }
 
-export function APIDescriptionList({
-  items,
-  className = '',
-}: {
-  items: APIDescriptionItem[];
-  className?: string;
-}) {
+export function APIDescriptionList({ items }: { items: APIDescriptionItem[] }) {
   return (
-    <dl className={`api-descriptions ${className}`}>
+    <dl className="api-descriptions">
       {items.map(item => (
         <div className="api-description-row" key={item.key}>
           <dt>{item.label}</dt>
@@ -84,7 +75,7 @@ export function APIDescriptionList({
 export function APISignaturePanel({ items }: { items: APIDescriptionItem[] }) {
   return (
     <div className="api-signature-panel">
-      <APIDescriptionList className="api-signature-details" items={items} />
+      <APIDescriptionList items={items} />
     </div>
   );
 }
@@ -110,7 +101,7 @@ export function APISourceLinks({
           <a
             key={source.url}
             href={source.url}
-            className="api-source icon-action"
+            className="api-source docs-icon-action"
             target="_blank"
             rel="noreferrer"
             title={`${label}: ${source.fileName}:${source.line}`}

@@ -1,34 +1,7 @@
 import type { ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { DocsLink as Link } from '../../routing/navigation';
 import type { APIManifestPackage, APISymbol } from '../../data';
 import { SelectControl } from '../shared';
-
-export interface APIVersionTarget {
-  version: string;
-  entryKey: string;
-  symbolName: string;
-}
-
-export function resolveAPIVersionTarget(
-  pkg: APIManifestPackage,
-  version: string,
-  entryKey: string,
-  symbolName: string | undefined,
-): APIVersionTarget | undefined {
-  const selected =
-    version === 'current'
-      ? pkg.current
-      : pkg.versions.find(item => item.version === version);
-  const entry =
-    selected?.entries.find(item => item.key === entryKey) ??
-    selected?.entries[0];
-  const symbol =
-    entry?.symbols.find(item => item.name === symbolName) ?? entry?.symbols[0];
-
-  return entry === undefined || symbol === undefined
-    ? undefined
-    : { version, entryKey: entry.key, symbolName: symbol.name };
-}
 
 export interface APISymbolMenuProps {
   symbols: APISymbol[];
@@ -54,11 +27,17 @@ export function APISymbolMenu({
   for (const symbol of symbols) {
     const group = getGroupLabel(symbol.kind);
 
-    grouped.set(group, [...(grouped.get(group) ?? []), symbol]);
+    const members = grouped.get(group);
+
+    if (members === undefined) {
+      grouped.set(group, [symbol]);
+    } else {
+      members.push(symbol);
+    }
   }
 
   return (
-    <nav className="api-menu docs-scroll-area" aria-label={ariaLabel}>
+    <nav className="api-menu" aria-label={ariaLabel}>
       {[...grouped].map(([name, items]) => (
         <section className="api-menu-group" key={name}>
           <h2>{name}</h2>
@@ -91,7 +70,6 @@ export interface APINavigationToolbarProps {
   pkg: APIManifestPackage;
   packages: APIManifestPackage[];
   version: string;
-  entryKey: string;
   symbol: Pick<APISymbol, 'name' | 'kind'> | undefined;
   packageHome: boolean;
   showInherited: boolean;
@@ -102,8 +80,8 @@ export interface APINavigationToolbarProps {
     apiPackage: string;
     showInherited: string;
   };
-  getPackageHref: (key: string) => string;
-  getSymbolHref: (target: APIVersionTarget) => string;
+  onPackageChange?: ((packageKey: string) => void) | undefined;
+  onVersionChange?: ((version: string) => void) | undefined;
   renderKind: (kind: number) => ReactNode;
 }
 
@@ -111,64 +89,51 @@ export function APINavigationToolbar({
   pkg,
   packages,
   version,
-  entryKey,
   symbol,
   packageHome,
   showInherited,
   onShowInheritedChange,
   messages: t,
-  getPackageHref,
-  getSymbolHref,
+  onPackageChange,
+  onVersionChange,
   renderKind,
 }: APINavigationToolbarProps) {
-  const navigate = useNavigate();
+  const versionLabel = (value: string) =>
+    value === 'current' ? `current (${pkg.current.packageVersion})` : value;
 
   return (
     <>
       <div className="api-breadcrumb">
-        <SelectControl
-          className="api-package-select"
-          ariaLabel={t.apiPackage}
-          value={pkg.key}
-          options={packages.map(item => ({
-            value: item.key,
-            label: item.name,
-          }))}
-          onChange={value => {
-            if (packages.some(item => item.key === value)) {
-              void navigate(getPackageHref(value));
-            }
-          }}
-        />
+        {onPackageChange === undefined ? (
+          <span>{pkg.name}</span>
+        ) : (
+          <SelectControl
+            className="api-package-select"
+            ariaLabel={t.apiPackage}
+            value={pkg.key}
+            options={packages.map(item => ({ value: item.key, label: item.name }))}
+            onChange={onPackageChange}
+          />
+        )}
         {!packageHome && (
           <>
             <span className="api-breadcrumb-separator" aria-hidden="true">
               /
             </span>
-            <SelectControl
-              className="api-version-select"
-              ariaLabel={t.version}
-              value={version}
-              options={[pkg.current, ...pkg.versions].map(item => ({
-                value: item.version,
-                label:
-                  item.version === 'current'
-                    ? `current (${pkg.current.packageVersion})`
-                    : item.version,
-              }))}
-              onChange={value => {
-                const target = resolveAPIVersionTarget(
-                  pkg,
-                  value,
-                  entryKey,
-                  symbol?.name,
-                );
-
-                if (target !== undefined) {
-                  void navigate(getSymbolHref(target));
-                }
-              }}
-            />
+            {onVersionChange === undefined ? (
+              <span>{versionLabel(version)}</span>
+            ) : (
+              <SelectControl
+                className="api-version-select"
+                ariaLabel={t.version}
+                value={version}
+                options={[pkg.current, ...pkg.versions].map(item => ({
+                  value: item.version,
+                  label: versionLabel(item.version),
+                }))}
+                onChange={onVersionChange}
+              />
+            )}
           </>
         )}
         {!packageHome && symbol !== undefined && (

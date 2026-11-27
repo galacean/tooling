@@ -27,9 +27,10 @@ describe('shared DocsSidebarCollapse', () => {
     document.body.style.userSelect = '';
     sidebar = document.createElement('aside');
     sidebar.id = 'docs-sidebar';
+    sidebar.className = 'docs-root';
     vi.spyOn(sidebar, 'getBoundingClientRect').mockImplementation(() => {
       const savedWidth = Number.parseFloat(
-        document.documentElement.style.getPropertyValue(sidebarWidthProperty),
+        sidebar.style.getPropertyValue(sidebarWidthProperty),
       );
 
       return { width: savedWidth || 300 } as DOMRect;
@@ -68,7 +69,7 @@ describe('shared DocsSidebarCollapse', () => {
       pointerId: 1,
       clientX: 1000,
     });
-    expect(document.documentElement.style.getPropertyValue(sidebarWidthProperty))
+    expect(sidebar.style.getPropertyValue(sidebarWidthProperty))
       .toBe('480px');
     dispatchPointerEvent(separator, 'pointerup', { pointerId: 1 });
     expect(sessionStorage.getItem('docs-site-sidebar-width')).toBe('480');
@@ -82,7 +83,7 @@ describe('shared DocsSidebarCollapse', () => {
       pointerId: 2,
       clientX: 0,
     });
-    expect(document.documentElement.style.getPropertyValue(sidebarWidthProperty))
+    expect(sidebar.style.getPropertyValue(sidebarWidthProperty))
       .toBe('259px');
     dispatchPointerEvent(separator, 'pointerup', { pointerId: 2 });
     expect(sessionStorage.getItem('docs-site-sidebar-width')).toBe('259');

@@ -1,0 +1,48 @@
+.api-reference-wrap {
+  position: relative;
+}
+.api-reference-content {
+  position: fixed;
+  z-index: 1000;
+  display: none;
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(60dvh, 480px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--site-border);
+  border-radius: 6px;
+  background: var(--site-surface);
+  box-shadow: 0 12px 36px #00000018;
+  white-space: normal;
+}
+.api-reference-content.is-open {
+  display: block;
+}
+.api-reference-header {
+  display: flex;
+  gap: 30px;
+  justify-content: space-between;
+  font-size: 14px;
+}
+.api-reference-header a {
+  color: var(--site-link);
+}
+.api-reference-summary {
+  display: block;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.api-reference-content small {
+  color: var(--site-muted);
+}
+.api-reference-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  max-height: 256px;
+  overflow-y: auto;
+}
+.api-reference-members a {
+  color: var(--site-link);
+  font-size: 13px;
+}

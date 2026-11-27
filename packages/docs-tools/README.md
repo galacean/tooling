@@ -109,3 +109,19 @@ Missing target manuals no longer require placeholder files: generation uses a ve
 pnpm --filter @galacean/docs-tools test
 pnpm --filter @galacean/docs-tools check:ts
 ```
+
+## routePaths
+
+```json
+{
+  "routePaths": {
+    "home": "/help/:locale/",
+    "manual": "/help/:locale/guides/",
+    "api": "/reference/:locale/"
+  }
+}
+```
+
+Use these paths for the standalone site, static pages, sitemap and language alternates. Search indexes store document targets. Embedded applications supply their own link functions.
+
+Static generation creates a separate homepage only when `pages` explicitly declares `{ "slug": null }`. Standalone manual or API integrations do not require one.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { DocsPortal } from '../../providers/root';
 import { commonMessages } from '../../i18n/messages';
 import type { CommonSiteMessages } from '../../i18n/messages';
 import { Icon } from './icon';
@@ -69,7 +69,11 @@ const getStageSize = (
       : viewport.height,
 });
 
-export function ImageViewer({
+export function ImageViewer(props: ImageViewerProps) {
+  return <DocsPortal><ImageViewerDialog {...props} /></DocsPortal>;
+}
+
+function ImageViewerDialog({
   messages: t = commonMessages.en,
   images,
   initialIndex,
@@ -453,7 +457,7 @@ export function ImageViewer({
     dragged.current = false;
   };
 
-  const viewer = (
+  return (
     <div
       ref={viewerRef}
       className="image-viewer"
@@ -654,6 +658,4 @@ export function ImageViewer({
       </div>
     </div>
   );
-
-  return createPortal(viewer, document.body);
 }

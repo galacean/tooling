@@ -51,14 +51,6 @@ export function parseAPISnapshot<
   current: boolean,
   available: Pick<APIManifestPackage, 'key' | 'versions'>[],
   isLocale: (value: unknown) => value is TLocale,
-  getSymbolURL: (
-    locale: string,
-    packageKey: string,
-    version: string,
-    symbol: string,
-    entry: string,
-    hash: string,
-  ) => string,
 ): ParsedAPISnapshot<TProject, TReflection> {
   if (
     !isRecord(raw) ||
@@ -87,11 +79,6 @@ export function parseAPISnapshot<
 
   return {
     project,
-    index: buildReflectionIndex<TReflection>(
-      project,
-      packages,
-      (locale, packageKey, packageVersion, symbol, entry, hash) =>
-        getSymbolURL(locale, packageKey, packageVersion, symbol, entry, hash),
-    ),
+    index: buildReflectionIndex<TReflection>(project, packages),
   };
 }

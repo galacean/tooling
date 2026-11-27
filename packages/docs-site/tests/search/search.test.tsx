@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes } from '../router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { commonMessages, parseSearch, searchResults } from '@galacean/docs-site';
 import type { SearchResult } from '@galacean/docs-site';
@@ -11,7 +11,6 @@ import type {
 } from '../../src/components/search/search-panel';
 import { SiteShell } from '../../src/components/site/site-shell';
 import type { SiteShellProps } from '../../src/components/site/site-shell';
-import { ThemeProvider } from '../../src/providers/theme';
 
 const messages: SearchPanelMessages = {
   search: 'Search',
@@ -93,15 +92,17 @@ describe('shared search query', () => {
   });
 
   it('validates source locales from the consumer config', () => {
-    expect(parseSearch(items, ['en', 'zh-CN'])).toEqual(items);
+    const records = items.map(({url: _url, ...item}) => ({...item, target: {kind: 'package', locale: 'en', packageKey: 'alpha'}}));
+
+    expect(parseSearch(records, ['en', 'zh-CN'])).toEqual(records);
     expect(() =>
-      parseSearch([{ ...items[0], sourceLocale: 'fr' }], ['en', 'zh-CN']),
+      parseSearch([{ ...records[0], sourceLocale: 'fr' }], ['en', 'zh-CN']),
     ).toThrow('Invalid search index');
     expect(() =>
-      parseSearch([{ ...items[0], summary: null }], ['en', 'zh-CN']),
+      parseSearch([{ ...records[0], summary: null }], ['en', 'zh-CN']),
     ).toThrow('Invalid search index');
     expect(() =>
-      parseSearch([{ ...items[0], pinyin: 1 }], ['en', 'zh-CN']),
+      parseSearch([{ ...records[0], pinyin: 1 }], ['en', 'zh-CN']),
     ).toThrow('Invalid search index');
   });
 });
@@ -115,16 +116,16 @@ describe('shared SearchPanel', () => {
       historyKey: 'example:site:search:en',
       messages,
       loadItems: async () => items,
-      navigate: () => undefined,
+
       close: () => undefined,
     };
     const markup = renderToStaticMarkup(createElement(SearchPanel, props));
 
-    expect(markup).toContain('aria-labelledby="site-search-title"');
+    expect(markup).toContain('aria-labelledby="search-panel-title"');
     expect(markup).toContain('src="/brand.svg"');
     expect(markup).toContain('EXAMPLE DOCS / EN');
     expect(markup).toContain('No recent searches');
-    expect(markup).toContain('class="site-search-footer"');
+    expect(markup).toContain('class="search-panel-footer"');
     expect(markup).not.toContain('>Clear</button>');
   });
 });
@@ -138,10 +139,11 @@ describe('shared SiteShell', () => {
       vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
       const props: SiteShellProps = {
         locale: 'fr',
-        locales: [
+        navigation: {location: { pathname: '/fr', search: '', hash: '' }},
+        languages: { options: [
           { value: 'fr', label: 'French' },
           { value: 'ja', label: 'Japanese' },
-        ],
+        ], href: locale => '/' + locale + '/' },
         messages: {
           ...commonMessages.en,
           ...messages,
@@ -152,13 +154,11 @@ describe('shared SiteShell', () => {
           dark: 'Dark',
           language: 'Language',
         },
-        brandLabel: 'Example Docs',
-        brandMarkURLs: {
+        brand: { label: 'Example Docs', mark: {
           light: '/example/mark-light.svg',
           dark: '/example/mark-dark.svg',
-        },
-        homeHref: '/fr',
-        navigation: [
+        }},
+        menu: [
           { key: 'start', label: 'Start here', to: '/fr', end: true },
         ],
         githubHref: 'https://github.com/example/docs',
@@ -168,22 +168,17 @@ describe('shared SiteShell', () => {
           searchHistory: 'example:search',
         },
         pageKind,
-        canonicalHref: 'https://example.test/docs/fr/',
-        getAlternateHref: locale => `https://example.test/docs/${locale}/`,
-        getLocaleHref: locale => `/${locale}/`,
-        loadSearchItems: async () => [],
+        search: async () => [],
         errorFallback: () => 'Content unavailable',
       };
       const markup = renderToStaticMarkup(
-        <ThemeProvider themeStorageKey="example:theme">
           <MemoryRouter initialEntries={['/fr']}>
             <Routes>
-              <Route path="/fr" element={<SiteShell {...props} />}>
+              <Route path="/fr" element={<SiteShell {...props}><Outlet /></SiteShell>}>
                 <Route index element={<main>Article content</main>} />
               </Route>
             </Routes>
-          </MemoryRouter>
-        </ThemeProvider>,
+          </MemoryRouter>,
       );
 
       expect(markup).toContain('src="/example/mark-light.svg"');

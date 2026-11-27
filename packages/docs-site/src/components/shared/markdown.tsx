@@ -1,3 +1,4 @@
+import type { ContentLink } from './content-link';
 import {
   Children,
   isValidElement,
@@ -16,10 +17,16 @@ import json from 'highlight.js/lib/languages/json';
 import bash from 'highlight.js/lib/languages/bash';
 import plaintext from 'highlight.js/lib/languages/plaintext';
 import xml from 'highlight.js/lib/languages/xml';
-import { Link, useLocation } from 'react-router-dom';
+import {
+  canNavigateLink,
+  DocsLink as Link,
+  isExternalHref,
+  useDocsLocation as useLocation,
+  useDocsNavigation,
+} from '../../routing/navigation';
 import { commonMessages } from '../../i18n/messages';
 import { CopyButton } from './copy-button';
-import { withImageReferrerPolicy } from './html-image-referrer-policy';
+import { prepareDocumentHTML } from './html-image-referrer-policy';
 import { ImageViewer } from './image-viewer';
 import type { ImageViewerImage, ImageViewerMessages } from './image-viewer';
 
@@ -159,8 +166,8 @@ function CodeBlock({
   });
 
   return (
-    <div className="code-block" ref={block}>
-      <div className="code-head">
+    <div className="markdown-code-block" ref={block}>
+      <div className="markdown-code-header">
         <span>{codeLabel}</span>
         <CopyButton
           value={() => block.current?.querySelector('code')?.textContent ?? ''}
@@ -178,18 +185,12 @@ export function MarkdownContent({
   text,
   messages: messageOverrides,
   resolveLink,
-  copyLabel,
-  copied,
-  copyFailed,
   afterFirstHeading,
   resolveImage,
 }: {
   text: string;
   messages?: Partial<MarkdownMessages>;
-  resolveLink?: (url: string) => string;
-  copyLabel?: string;
-  copied?: string;
-  copyFailed?: string;
+  resolveLink?: (url: string) => ContentLink;
   afterFirstHeading?: ReactNode;
   resolveImage?: (url: string) => string;
 }) {
@@ -243,20 +244,20 @@ export function MarkdownContent({
           ),
           th: ({ children, style }) => (
             <th style={style}>
-              <div className="table-cell-content">{children}</div>
+              <div className="markdown-table-cell">{children}</div>
             </th>
           ),
           td: ({ children, style }) => (
             <td style={style}>
-              <div className="table-cell-content">{children}</div>
+              <div className="markdown-table-cell">{children}</div>
             </td>
           ),
           pre: ({ children }) => (
             <CodeBlock
               codeLabel={messages.code}
-              copyLabel={copyLabel ?? messages.copy}
-              copied={copied ?? messages.copied}
-              copyFailed={copyFailed ?? messages.copyFailed}
+              copyLabel={messages.copy}
+              copied={messages.copied}
+              copyFailed={messages.copyFailed}
             >
               {children}
             </CodeBlock>
@@ -264,12 +265,16 @@ export function MarkdownContent({
           a: ({ href, children }) => {
             const url = resolveLink?.(href ?? '') ?? href ?? '';
 
+            if (typeof url !== 'string') { return <a href={url.resource}>{children}</a>; }
             if (/^(?:https?:|mailto:|tel:|\/\/)/u.test(url)) {
               return (
                 <a href={url} target="_blank" rel="noreferrer">
                   {children}
                 </a>
               );
+            }
+            if (location.pathname === '') {
+              return <Link to={url}>{children}</Link>;
             }
             const logical = new URL(
               url,
@@ -328,15 +333,23 @@ function replaceYuqueVideoPlaceholders(root: HTMLElement) {
 
 export const HTMLDocumentContent = memo(function HTMLDocumentContent({
   html,
+  resolveLink,
+  resolveImage,
   messages: messageOverrides,
 }: {
   html: string;
+  resolveLink?: (url: string) => ContentLink;
+  resolveImage?: (url: string) => string;
   messages?: Partial<ImageViewerMessages>;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const { location, navigate, getHref } = useDocsNavigation();
   const messages = { ...commonMessages.en, ...messageOverrides };
   const { showImage, viewer } = useImageViewer(messages);
-  const imageProtectedHTML = useMemo(() => withImageReferrerPolicy(html), [html]);
+  const preparedHTML = useMemo(
+    () => prepareDocumentHTML(html, resolveLink, resolveImage, getHref),
+    [html, resolveLink, resolveImage, getHref],
+  );
 
   useEffect(() => {
     const root = container.current;
@@ -352,7 +365,7 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
         }
       });
     root.querySelectorAll<HTMLElement>('pre code').forEach(highlightCodeBlock);
-  }, [html]);
+  }, [preparedHTML]);
 
   return (
     <>
@@ -365,7 +378,26 @@ export const HTMLDocumentContent = memo(function HTMLDocumentContent({
         }}
         className="markdown-content lake-content"
         onClickCapture={showImage}
-        dangerouslySetInnerHTML={{ __html: imageProtectedHTML }}
+        onClick={event => {
+          if (!navigate || !(event.target instanceof Element)) {
+            return;
+          }
+          const anchor = event.target.closest<HTMLAnchorElement>('a[href]');
+
+          if (!anchor || anchor.hasAttribute('data-docs-resource') || !canNavigateLink(event, anchor)) {
+            return;
+          }
+          const to = anchor.dataset['docsTo'] ?? anchor.getAttribute('href')!;
+
+          if (isExternalHref(to)) {
+            return;
+          }
+          const target = new URL(to, `https://local.invalid${location.pathname}${location.search}`);
+
+          event.preventDefault();
+          void navigate(`${target.pathname}${target.search}${target.hash}`);
+        }}
+        dangerouslySetInnerHTML={{ __html: preparedHTML }}
       />
       {viewer}
     </>

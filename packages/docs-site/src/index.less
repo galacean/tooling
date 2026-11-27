@@ -1,0 +1,37 @@
+@import (reference) './styles/mixins.less';
+
+.docs-root {
+  @import './styles/theme.less';
+  @import './styles/base.less';
+
+  @import (less) 'highlight.js/styles/github.css';
+  @import './components/shared/copy-button.less';
+  @import './components/shared/markdown.less';
+  @import './components/shared/select-control.less';
+  @import './components/shared/drawer.less';
+  @import './components/shared/document-error.less';
+  @import './components/shared/document-loading.less';
+  @import './components/shared/image-viewer.less';
+  @import './components/shared/docs-sidebar-collapse.less';
+
+  @import './components/search/search-panel.less';
+  @import './components/site/site-shell.less';
+  @import './components/site/docs-page-switcher.less';
+  @import './components/site/docs-search-trigger.less';
+
+  @import './components/manual/manual-page.less';
+  @import './components/manual/manual-navigation.less';
+  @import './components/manual/manual-toc.less';
+  @import './components/manual/lake-content.less';
+
+  @import './components/api/api-reference-layout.less';
+  @import './components/api/api-navigation.less';
+  @import './components/api/api-reflection-content.less';
+  @import './components/api/api-reflection-layout.less';
+  @import './components/api/api-kind-label.less';
+  @import './components/api/api-tokens.less';
+  @import './components/api/api-reference.less';
+  @import './components/api/api-type-reference.less';
+
+  @import './styles/embedded.less';
+}

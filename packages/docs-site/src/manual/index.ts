@@ -1,2 +1,3 @@
-export * from './content-client';
-export { manualAlternateLocales } from './document';
+export * from './source';
+export * from './document';
+export * from './links';

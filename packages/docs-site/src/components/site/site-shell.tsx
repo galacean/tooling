@@ -1,21 +1,28 @@
+import { DocsI18nProvider, useDocsI18n } from '../../providers/i18n';
+import { ThemeProvider, useTheme } from '../../providers/theme';
+import { PageContext } from '../../providers/page';
+import { getCommonMessages } from '../../i18n/messages';
+import type { CommonSiteMessages } from '../../i18n/messages';
+import { DocumentError } from '../shared/document-error';
+import { resolveDocsSiteStorageKeys } from '../../config/resolve';
 import { Component, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { DocsNavigation } from '../../routing/navigation';
 import {
-  Outlet,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom';
+  DocsLink,
+  DocsNavigationProvider,
+  useDocsLocation as useLocation,
+  useDocsNavigate as useNavigate,
+} from '../../routing/navigation';
 import { getLocaleDefinition } from '../../i18n/registry';
 import type { DocsI18nOptions } from '../../i18n/messages';
 import { formatPageDescription, formatPageTitle } from '../../config/page-metadata';
 import { DocumentLoading, Icon, SelectControl } from '../shared';
 import type { IconName } from '../shared/icon';
 import { DocsPageSwitcher } from './docs-page-switcher';
-import { SiteLink } from './site-link';
 import type { DocsPageSwitcherItem } from './docs-page-switcher';
 import { DocsSearchTrigger } from './docs-search-trigger';
 import { LazySearchPanel as SearchPanel } from '../search/lazy-search-panel';
-import { useTheme } from '../../providers';
 import type { DocsSiteStorageKeys } from '../../preferences';
 import type { SearchResult } from '../../search';
 import type { SearchPanelMessages } from '../search';
@@ -41,35 +48,34 @@ export interface SiteShellNavigationItem {
 }
 
 export interface SiteShellProps {
+  children?: ReactNode;
   locale: string;
   i18n?: DocsI18nOptions;
-  limitContentAlternates?: boolean;
-  locales: { value: string; label: string }[];
-  storageKeys: DocsSiteStorageKeys;
-  messages: SiteShellMessages;
-  brandLabel: string;
-  brandMarkURLs: Readonly<{ light: string; dark: string }>;
-  docsBrandMarkURLs?: Readonly<{ light: string; dark: string }>;
-  homeHref: string;
-  navigation: SiteShellNavigationItem[];
+  messages?: Partial<CommonSiteMessages>;
+  navigation?: DocsNavigation;
+  menu: SiteShellNavigationItem[];
+  brand: {
+    label: string;
+    mark: string | { light: string; dark: string };
+    docsMark?: { light: string; dark: string };
+  };
+  storageKeys?: Partial<DocsSiteStorageKeys>;
   githubHref?: string;
   pageKind: 'api' | 'manual' | 'other' | 'not-found';
   pageTitle?: string;
-  pageDescription?: string;
-  canonicalHref: string;
-  getAlternateHref: (locale: string) => string;
-  getLocaleHref: (locale: string, search: string, hash: string) => string;
-  loadSearchItems: (locale: string) => Promise<SearchResult[]>;
-  errorFallback: (error: unknown) => ReactNode;
+  languages?: {
+    options: { value: string; label: string }[];
+    href: (locale: string, search: string, hash: string) => string;
+  };
+  search?: (locale: string) => Promise<SearchResult[]>;
+  metadata?: {
+    canonical: string;
+    alternate: (locale: string) => string;
+    description?: string;
+    limitContentAlternates?: boolean;
+  };
+  errorFallback?: (error: unknown) => ReactNode;
   searchErrorFallback?: (error: unknown) => ReactNode;
-}
-
-export interface SiteShellOutletContext {
-  setContentLocales: (locales: string[] | undefined) => void;
-  setManualPageTitle: (title: string) => void;
-  setManualSidebarCollapsed: (collapsed: boolean) => void;
-  setAPIDocumentTitle: (title: string) => void;
-  setAPISidebarCollapsed: (collapsed: boolean) => void;
 }
 
 class ShellErrorBoundary extends Component<
@@ -100,49 +106,81 @@ class ShellErrorBoundary extends Component<
   }
 
   override render() {
-    return this.state.failed
-      ? this.props.fallback(this.state.error)
-      : this.props.children;
+    return this.state.failed ? this.props.fallback(this.state.error) : this.props.children;
   }
 }
 
-export function SiteShell({
+export function SiteShell(props: SiteShellProps) {
+  const keys = resolveDocsSiteStorageKeys(props.storageKeys);
+  const inheritedI18n = useDocsI18n();
+  const i18n = props.i18n ?? inheritedI18n;
+
+  return (
+    <DocsI18nProvider options={i18n}>
+      <ThemeProvider layout="site" themeStorageKey={keys.theme} locale={props.locale}>
+        <DocsNavigationProvider navigation={props.navigation}>
+          <SiteShellContent {...props} i18n={i18n} storageKeys={keys} />
+        </DocsNavigationProvider>
+      </ThemeProvider>
+    </DocsI18nProvider>
+  );
+}
+
+function SiteShellContent({
+  children,
   locale,
   i18n,
-  limitContentAlternates = false,
-  locales,
-  messages: t,
-  brandLabel,
-  brandMarkURLs,
-  docsBrandMarkURLs,
-  homeHref,
+  brand,
+  menu: navigation,
+  languages,
   storageKeys,
-  navigation,
   githubHref,
   pageKind,
   pageTitle,
-  pageDescription,
-  canonicalHref,
-  getAlternateHref,
-  getLocaleHref,
-  loadSearchItems,
-  errorFallback,
-  searchErrorFallback = errorFallback,
-}: SiteShellProps) {
+  metadata,
+  search: loadSearchItems,
+  messages,
+  errorFallback: fallback,
+  searchErrorFallback: searchFallback,
+}: SiteShellProps & { storageKeys: DocsSiteStorageKeys }) {
+  const t = { ...getCommonMessages(locale, i18n), ...messages };
+  const brandLabel = brand.label;
+  const brandMarkURLs =
+    typeof brand.mark === 'string' ? { light: brand.mark, dark: brand.mark } : brand.mark;
+  const docsBrandMarkURLs = brand.docsMark;
+  const locales = languages?.options ?? [];
+  const limitContentAlternates = metadata?.limitContentAlternates;
+  const pageDescription = metadata?.description;
+  const errorFallback =
+    fallback ?? (() => <DocumentError title={t.loadError} description={t.loadErrorDescription} />);
+  const searchErrorFallback = searchFallback ?? errorFallback;
   const location = useLocation();
   const navigate = useNavigate();
-  const [contentLocaleState, setContentLocaleState] = useState<{ pathname: string; locales: string[] | undefined }>();
-  const setContentLocales = useCallback((locales: string[] | undefined) => {
-    setContentLocaleState(current => current?.pathname === location.pathname && JSON.stringify(current.locales) === JSON.stringify(locales)
-      ? current : { pathname: location.pathname, locales });
-  }, [location.pathname]);
-  const alternateLocales = contentLocaleState?.pathname === location.pathname ? contentLocaleState.locales : limitContentAlternates ? [] : undefined;
+  const pageKey = location.pathname + location.search;
+  const [contentLocaleState, setContentLocaleState] = useState<{
+    pathname: string;
+    locales: string[] | undefined;
+  }>();
+  const setContentLocales = useCallback(
+    (locales: string[] | undefined) => {
+      setContentLocaleState(current =>
+        current?.pathname === pageKey && JSON.stringify(current.locales) === JSON.stringify(locales)
+          ? current
+          : { pathname: pageKey, locales },
+      );
+    },
+    [pageKey],
+  );
+  const alternateLocales =
+    contentLocaleState?.pathname === pageKey
+      ? contentLocaleState.locales
+      : limitContentAlternates === true
+        ? []
+        : undefined;
   const [search, setSearch] = useState(false);
   const [drawer, setDrawer] = useState(false);
-  const [manualPageTitle, setManualPageTitle] = useState('');
-  const [manualSidebarCollapsed, setManualSidebarCollapsed] = useState(false);
-  const [apiDocumentTitle, setAPIDocumentTitle] = useState('');
-  const [apiSidebarCollapsed, setAPISidebarCollapsed] = useState(false);
+  const [documentTitle, setTitle] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const drawerRef = useRef<HTMLDialogElement>(null);
   const { mode, resolved, change, persist, storageError } = useTheme();
   const brandMarkURL = brandMarkURLs[resolved];
@@ -150,42 +188,25 @@ export function SiteShell({
   const apiPage = pageKind === 'api';
   const manualPage = pageKind === 'manual';
   const documentPage = manualPage || apiPage;
-  const activeDocumentTitle = manualPage
-    ? manualPageTitle !== ''
-      ? manualPageTitle
-      : t.manual
-    : apiPage
-      ? apiDocumentTitle !== ''
-        ? apiDocumentTitle
-        : pageTitle !== undefined && pageTitle !== ''
-          ? pageTitle
-          : t.api
-      : (pageTitle ?? '');
-  const themeIcon =
-    mode === 'dark' ? 'moon' : mode === 'light' ? 'sun' : 'system';
+  const activeDocumentTitle = documentPage
+    ? documentTitle || (pageTitle ?? '') || t[pageKind]
+    : (pageTitle ?? '');
+  const themeIcon = mode === 'dark' ? 'moon' : mode === 'light' ? 'sun' : 'system';
   const apiLink = navigation.find(item => item.key === 'api');
   const manualLink = navigation.find(item => item.key === 'manual');
-  const searchEnabled = apiLink !== undefined || manualLink !== undefined;
+  const searchEnabled = loadSearchItems !== undefined;
 
   useEffect(() => {
-    if (!manualPage) {
-      setManualPageTitle('');
-      setManualSidebarCollapsed(false);
+    if (!metadata) {
+      return;
     }
-  }, [manualPage]);
-  useEffect(() => {
-    if (!apiPage) {
-      setAPISidebarCollapsed(false);
-      setAPIDocumentTitle('');
-    }
-  }, [apiPage]);
-
-  useEffect(() => {
     const title = activeDocumentTitle || brandLabel;
     const head = document.head;
-    const description = head.querySelector<HTMLMetaElement>('meta[name="description"]') ??
+    const description =
+      head.querySelector<HTMLMetaElement>('meta[name="description"]') ??
       head.appendChild(document.createElement('meta'));
-    const canonical = head.querySelector<HTMLLinkElement>('link[rel="canonical"]') ??
+    const canonical =
+      head.querySelector<HTMLLinkElement>('link[rel="canonical"]') ??
       head.appendChild(document.createElement('link'));
 
     document.documentElement.lang = locale;
@@ -194,9 +215,13 @@ export function SiteShell({
     description.name = 'description';
     description.content = formatPageDescription(locale, title, pageDescription, i18n);
     canonical.rel = 'canonical';
-    canonical.href = canonicalHref;
+    canonical.href = metadata.canonical;
 
-    const alternates = new Map(locales.filter(({ value }) => alternateLocales === undefined || alternateLocales.includes(value)).map(({ value }) => [value, getAlternateHref(value)]));
+    const alternates = new Map(
+      locales
+        .filter(({ value }) => alternateLocales === undefined || alternateLocales.includes(value))
+        .map(({ value }) => [value, metadata.alternate(value)]),
+    );
 
     for (const link of head.querySelectorAll<HTMLLinkElement>('link[rel="alternate"][hreflang]')) {
       const href = alternates.get(link.hreflang);
@@ -217,13 +242,12 @@ export function SiteShell({
       head.append(link);
     }
   }, [
+    metadata,
     activeDocumentTitle,
     alternateLocales,
     brandLabel,
-    canonicalHref,
     pageDescription,
     i18n,
-    getAlternateHref,
     locale,
     locales,
   ]);
@@ -263,28 +287,18 @@ export function SiteShell({
     return () => window.removeEventListener('keydown', openSearch);
   }, [searchEnabled]);
   const links = navigation.map(item => (
-    <SiteLink key={item.key} to={item.to} end={item.end ?? false}>
+    <DocsLink key={item.key} to={item.to} end={item.end ?? false}>
       {item.label}
-    </SiteLink>
+    </DocsLink>
   ));
-  const sectionHref = (manualPage ? manualLink : apiLink)?.to ?? homeHref;
-  const pageSwitchItems: DocsPageSwitcherItem[] = [
-    { key: 'home', label: t.home, href: homeHref, icon: 'home' },
-    ...(manualLink !== undefined
-      ? [{ key: 'manual', label: t.manual, href: manualLink.to, icon: 'book' as const }]
-      : []),
-    ...(apiLink !== undefined
-      ? [{ key: 'api', label: t.api, href: apiLink.to, icon: 'source' as const }]
-      : []),
-    ...navigation
-      .filter(item => !['home', 'manual', 'api'].includes(item.key))
-      .map(item => ({
-        key: item.key,
-        label: item.label,
-        href: item.to,
-        icon: item.icon ?? 'book',
-      })),
-  ];
+  const brandHref = navigation.find(item => item.key === 'home')?.to ?? '/';
+  const sectionHref = (manualPage ? manualLink : apiLink)?.to ?? brandHref;
+  const pageSwitchItems: DocsPageSwitcherItem[] = navigation.map(item => ({
+    key: item.key,
+    label: item.label,
+    href: item.to,
+    icon: item.icon ?? (item.key === 'home' ? 'home' : item.key === 'api' ? 'source' : 'book'),
+  }));
   const searchButton = (
     <DocsSearchTrigger
       variant="header"
@@ -297,17 +311,19 @@ export function SiteShell({
   const searchHistoryKey = `${storageKeys.searchHistory}:${locale}`;
   const preferenceControls = (
     <>
-      <SelectControl
-        className="language-select"
-        ariaLabel={t.language}
-        value={locale}
-        options={locales}
-        icon={<Icon name="language" />}
-        onChange={value => {
-          persist(storageKeys.locale, value);
-          void navigate(getLocaleHref(value, location.search, location.hash));
-        }}
-      />
+      {languages && (
+        <SelectControl
+          className="language-select"
+          ariaLabel={t.language}
+          value={locale}
+          options={locales}
+          icon={<Icon name="language" />}
+          onChange={value => {
+            persist(storageKeys.locale, value);
+            void navigate(languages.href(value, location.search, location.hash));
+          }}
+        />
+      )}
       <SelectControl
         className="theme-select"
         ariaLabel={t.theme}
@@ -328,7 +344,7 @@ export function SiteShell({
   const mobileMenuButton = (
     <button
       type="button"
-      className="mobile-nav-trigger icon-action"
+      className="site-mobile-nav-trigger docs-icon-action"
       aria-label={t.menu}
       onClick={() => setDrawer(true)}
     >
@@ -338,20 +354,14 @@ export function SiteShell({
 
   return (
     <div
-      className={`site-shell${apiPage ? ' api-shell' : ''}${apiPage && apiSidebarCollapsed ? ' api-sidebar-collapsed' : ''}${manualPage ? ' manual-shell' : ''}${manualPage && manualSidebarCollapsed ? ' manual-sidebar-collapsed' : ''}`}
+      lang={locale}
+      dir={getLocaleDefinition(locale, i18n?.localeDefinitions).direction}
+      className={`site-shell${apiPage ? ' api-shell' : ''}${manualPage ? ' manual-shell' : ''}${documentPage && sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}
     >
       {documentPage ? (
         <header className="docs-header-shell">
           <div className="docs-site-header">
-            <span className="docs-shell-title">
-              {manualPage
-                ? manualPageTitle !== ''
-                  ? manualPageTitle
-                  : t.manual
-                : pageTitle !== undefined && pageTitle !== ''
-                  ? pageTitle
-                  : t.api}
-            </span>
+            <span className="docs-shell-title">{activeDocumentTitle}</span>
           </div>
           <div className="site-tools docs-header-tools">
             {searchEnabled && searchButton}
@@ -359,42 +369,30 @@ export function SiteShell({
             {mobileMenuButton}
           </div>
         </header>
-      ) : pageKind === 'other' && (
-        <header className="site-header">
-          <SiteLink className="site-brand" to={homeHref}>
-            <img
-              className="brand-mark"
-              src={brandMarkURL}
-              alt=""
-              aria-hidden="true"
-            />
-            {brandLabel}
-            <span className="brand-dot">.</span>
-          </SiteLink>
-          <nav className="site-nav">{links}</nav>
-          <div className="site-tools">
-            {searchEnabled && searchButton}
-            {preferenceControls}
-            {mobileMenuButton}
-          </div>
-        </header>
+      ) : (
+        pageKind === 'other' && (
+          <header className="site-header">
+            <DocsLink className="site-brand" to={brandHref}>
+              <img className="site-brand-mark" src={brandMarkURL} alt="" aria-hidden="true" />
+              {brandLabel}
+              <span className="site-brand-dot">.</span>
+            </DocsLink>
+            <nav className="site-nav">{links}</nav>
+            <div className="site-tools">
+              {searchEnabled && searchButton}
+              {preferenceControls}
+              {mobileMenuButton}
+            </div>
+          </header>
+        )
       )}
       {documentPage && (
         <div className="docs-sidebar-head">
           <div className="docs-sidebar-brand">
             <div className="docs-sidebar-crumb">
-              <SiteLink
-                className="docs-sidebar-logo"
-                to={homeHref}
-                aria-label={brandLabel}
-              >
-                <img
-                  className="brand-mark"
-                  src={docsBrandMarkURL}
-                  alt=""
-                  aria-hidden="true"
-                />
-              </SiteLink>
+              <DocsLink className="docs-sidebar-logo" to={brandHref} aria-label={brandLabel}>
+                <img className="site-brand-mark" src={docsBrandMarkURL} alt="" aria-hidden="true" />
+              </DocsLink>
               <Icon
                 name="chevronRight"
                 className="docs-sidebar-separator"
@@ -421,36 +419,32 @@ export function SiteShell({
         </div>
       )}
       {storageError && (
-        <p role="status" className="storage-notice">
+        <p role="status" className="site-storage-notice">
           {t.storageError}
         </p>
       )}
-      <ShellErrorBoundary resetKey={location.pathname} fallback={errorFallback}>
+      <ShellErrorBoundary resetKey={pageKey} fallback={errorFallback}>
         <Suspense
           fallback={
             pageKind === 'api' || pageKind === 'manual' ? (
               <DocumentLoading layout={pageKind} label={t.loading} />
             ) : (
-              <main className="state-page">{t.loading}</main>
+              <main className="docs-state-page">{t.loading}</main>
             )
           }
         >
-          <Outlet
-            context={{
-              setContentLocales,
-              setManualPageTitle,
-              setManualSidebarCollapsed,
-              setAPIDocumentTitle,
-              setAPISidebarCollapsed,
-            }}
-          />
+          <PageContext
+            value={{ locale, messages: t, setTitle, setSidebarCollapsed, setContentLocales }}
+          >
+            {children}
+          </PageContext>
         </Suspense>
       </ShellErrorBoundary>
       {pageKind === 'other' && (
         <footer className="site-footer">
-          <SiteLink className="site-brand" to={homeHref}>
+          <DocsLink className="site-brand" to={brandHref}>
             {brandLabel}.
-          </SiteLink>
+          </DocsLink>
           {githubHref !== undefined && (
             <a href={githubHref} target="_blank" rel="noreferrer">
               <Icon name="github" /> GitHub
@@ -460,7 +454,7 @@ export function SiteShell({
       )}
       <dialog
         ref={drawerRef}
-        className="site-mobile-drawer"
+        className="docs-drawer site-mobile-drawer"
         aria-label={brandLabel}
         onCancel={event => {
           event.preventDefault();
@@ -476,14 +470,14 @@ export function SiteShell({
           <strong>{brandLabel}</strong>
           <button
             type="button"
-            className="icon-action"
+            className="docs-icon-action"
             aria-label={t.close}
             onClick={() => setDrawer(false)}
           >
             <Icon name="close" />
           </button>
         </header>
-        <nav className="mobile-nav">{links}</nav>
+        <nav className="site-mobile-nav">{links}</nav>
       </dialog>
       {searchEnabled && search && (
         <ShellErrorBoundary resetKey={locale} fallback={searchErrorFallback}>
@@ -497,9 +491,6 @@ export function SiteShell({
               includeAPI={apiLink !== undefined}
               includeManual={manualLink !== undefined}
               loadItems={loadSearchItems}
-              navigate={url => {
-                void navigate(url);
-              }}
               close={() => setSearch(false)}
             />
           </Suspense>

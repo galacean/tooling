@@ -279,7 +279,7 @@ void test('builds search indexes from each package current path and localized co
     pinyin: string;
     pinyinInitials: string;
     sourceLocale: string;
-    url: string;
+    target: {slug?: string; packageKey?: string};
   }[];
   const chinese = JSON.parse(
     await readFile(path.join(values.outputDirectory, 'zh-CN.json'), 'utf8'),
@@ -290,19 +290,19 @@ void test('builds search indexes from each package current path and localized co
     pinyin: string;
     pinyinInitials: string;
     sourceLocale: string;
-    url: string;
+    target: {slug?: string; packageKey?: string};
   }[];
 
   assert.ok(
     english.some(
       item =>
-        item.name === 'Alpha' && item.url.startsWith('/en/api/alpha/current/'),
+        item.name === 'Alpha' && item.target.packageKey === 'alpha',
     ),
   );
   assert.ok(
     english.some(
       item =>
-        item.name === 'Beta' && item.url.startsWith('/en/api/beta/current/'),
+        item.name === 'Beta' && item.target.packageKey === 'beta',
     ),
   );
   assert.ok(
@@ -323,8 +323,8 @@ void test('builds search indexes from each package current path and localized co
   assert.ok(
     chinese.some(item => item.name === '介绍' && item.category === 'manual'),
   );
-  assert.ok(!english.some(item => item.url.includes('/custom-page/')));
-  assert.ok(!chinese.some(item => item.url.includes('/custom-page/')));
+  assert.ok(!english.some(item => item.target.slug === 'custom-page'));
+  assert.ok(!chinese.some(item => item.target.slug === 'custom-page'));
   assert.deepEqual(counts, { en: english.length, 'zh-CN': chinese.length });
 });
 
@@ -363,7 +363,7 @@ void test('builds manual-only indexes without an API manifest and accepts short 
       summary: 'Introduction A short manual page.',
       keywords: 'Introduction A short manual page.',
       sourceLocale: 'en',
-      url: '/en/manual/intro/',
+      target: {kind: 'manual', locale: 'en', slug: 'intro'},
     },
   ]);
   assert.equal(chinese[0]?.category, 'manual');
@@ -418,4 +418,15 @@ void test('runs search build from the mjs CLI', async t => {
   assert.match(result.stdout, /zh-CN: \d+ search results/u);
   await readFile(path.join(values.outputDirectory, 'en.json'));
   await readFile(path.join(values.outputDirectory, 'zh-CN.json'));
+});
+
+void test('changing a host route does not change its published search index', async t => {
+  const values = await fixture(t);
+  const index = path.join(values.outputDirectory, 'en.json');
+
+  await buildSearchIndexes(values.config);
+  const original = await readFile(index, 'utf8');
+
+  await buildSearchIndexes({ ...values.config, routePaths: { manual: '/help/:locale/guides/' } });
+  assert.equal(await readFile(index, 'utf8'), original);
 });

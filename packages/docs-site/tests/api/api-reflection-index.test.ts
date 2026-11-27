@@ -44,8 +44,6 @@ describe('shared API reflection index', () => {
     const index = buildReflectionIndex(
       project,
       packages,
-      (locale, key, version, symbol, entry, hash) =>
-        `/${locale}/api/${key}/${version}/${symbol}/${hash}?entry=${entry}`,
     );
 
     expect(index.resolve(30)).toMatchObject({ id: 20, name: 'Root' });
@@ -57,9 +55,7 @@ describe('shared API reflection index', () => {
       }),
     ).toMatchObject({ id: 20 });
     expect(index.parents.get(21)).toBe(20);
-    expect(index.url('en', 'current', 21)).toBe(
-      '/en/api/pkg/1.2.3/Root/member?entry=root',
-    );
+    expect(index.target('en', 'current', 21)).toEqual({kind: 'symbol', locale: 'en', version: '1.2.3', packageKey: 'pkg', entryKey: 'root', symbol: 'Root', anchor: 'member'});
   });
 
   it('identifies inherited members whose targets are external to the snapshot', () => {
@@ -83,7 +79,7 @@ describe('shared API reflection index', () => {
         },
       ],
     };
-    const index = buildReflectionIndex(project, [], () => '/');
+    const index = buildReflectionIndex(project, []);
     const member = index.byId.get(21);
 
     expect(member).toBeDefined();

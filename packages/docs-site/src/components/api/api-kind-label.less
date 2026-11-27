@@ -1,0 +1,41 @@
+.api-kind-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, currentColor 10%, var(--site-surface));
+  font-weight: 600;
+  border-radius: 2px;
+  padding: 3px 9px;
+  font-size: var(--site-doc-code-size);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.api-kind-label.is-compact {
+  background: transparent;
+  padding: 0;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1;
+}
+.kind-color(@kind, @light, @dark) {
+  .api-kind-@{kind} {
+    color: @light;
+  }
+  &[data-theme='dark'] .api-kind-@{kind} {
+    color: @dark;
+  }
+}
+
+.kind-color(functions, #a33120, #e99b86);
+.kind-color(methods, #526b42, #b3c69d);
+.kind-color(interfaces, #8b593b, #d2b99a);
+.kind-color(types, #4e705b, #a9c7b7);
+.kind-color(variables, #697466, #a7aca3);
+.kind-color(properties, #81713e, #cfbd8c);
+.kind-color(enums, #397579, #89bfc0);
+.kind-color(members, #5a6f70, #9dbbb9);
+.kind-color(classes, #555750, #c6c8c0);

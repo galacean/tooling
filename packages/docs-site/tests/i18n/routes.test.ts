@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-  apiPackagePath,
-  apiSymbolPath,
-  localePath,
+  defaultDocsRoutes,
   normalizeBase,
-  switchLocale,
   withBase,
 } from '@galacean/docs-site';
 
 describe('shared locale routes', () => {
   it('encodes API package, symbol, entry, and member hash segments', () => {
-    expect(apiPackagePath('zh-CN', 'example')).toBe('/zh-CN/api/example/');
+    expect(defaultDocsRoutes.package('zh-CN', 'example')).toBe('/zh-CN/api/example/');
     expect(
-      apiSymbolPath(
+      defaultDocsRoutes.symbol(
         'en',
         'example',
         'current',
@@ -27,14 +24,14 @@ describe('shared locale routes', () => {
 
   it('preserves query/hash while changing locale and normalizes deployment base exactly once', () => {
     expect(
-      switchLocale(
+      defaultDocsRoutes.switchLocale(
         '/zh-CN/api/example/current/Widget/',
         'en',
         '?entry=browser',
         '#member',
       ),
     ).toBe('/en/api/example/current/Widget/?entry=browser#member');
-    expect(localePath('en')).toBe('/en/');
+    expect(defaultDocsRoutes.path('en')).toBe('/en/');
     expect(withBase('/en/manual/start/', '/design-bridge/')).toBe(
       '/design-bridge/en/manual/start/',
     );

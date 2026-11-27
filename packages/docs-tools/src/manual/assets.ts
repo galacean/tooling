@@ -1,3 +1,4 @@
+import { createDocsRoutes, isManualAssetPath } from '@galacean/docs-site';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ResolvedDocsBuildConfig } from '../config/types';
@@ -15,21 +16,24 @@ export function manualLinkTargets(content: string, format: 'markdown' | 'html'):
 }
 
 /** Keep opaque image/attachment paths valid when a source body is reused in another language. */
-export async function copyManualPageAssets(config: ResolvedDocsBuildConfig, collectionKey: string,
-  slug: string, sourceLocale: string, locale: string, format: 'markdown' | 'html', content: string, target: string,
+export async function copyManualPageAssets(config: ResolvedDocsBuildConfig, collectionKey: string | undefined,
+  slug: string | undefined, sourceLocale: string, locale: string, format: 'markdown' | 'html', content: string, target: string,
   previousHashes: ReadonlyMap<string, string>, generatedHashes: Map<string, string>, inputSlug?: string): Promise<void> {
   const links = manualLinkTargets(content, format);
   const collection = config.manuals?.find(collection => collection.key === collectionKey);
   const root = collection?.source.type === 'local' ? collection.source.directory : config.manualDirectory;
 
+  const routes = createDocsRoutes(config.routePaths);
+  const prefix = routes.manual(locale);
+  const pageURL = new URL(routes.manual(locale, slug), 'https://manual.invalid');
+
   for (const link of new Set(links)) {
     if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(link)) {
       continue;
     }
-    const url = new URL(link, `https://local.invalid/${locale}/manual/${slug}/`);
-    const prefix = `/${locale}/manual/`;
+    const url = new URL(link, pageURL);
 
-    if (!url.pathname.startsWith(prefix) || !/\.(?:png|jpe?g|gif|webp|svg|pdf|mp4|webm|zip)$/iu.test(url.pathname)) {
+    if (!url.pathname.startsWith(prefix) || !isManualAssetPath(url.pathname)) {
       continue;
     }
     const segments = url.pathname.slice(prefix.length).split('/').map(decodeURIComponent);

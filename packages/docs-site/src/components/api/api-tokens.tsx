@@ -11,7 +11,7 @@ export function APITokens({ tokens, renderReference }: APITokensProps) {
     <code className="api-signature">
       {tokens.map((part, index) =>
         part.reference === undefined || renderReference === undefined ? (
-          <span key={index} className={`signature-${part.role}`}>
+          <span key={index} className={`api-token-${part.role}`}>
             {part.text}
           </span>
         ) : (

@@ -9,16 +9,17 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  useParams, useOutletContext,
   MemoryRouter,
   Outlet,
   Route,
   Routes,
   useLocation,
   useNavigate,
-} from 'react-router-dom';
+} from '../router';
 import type { APIManifest } from '@galacean/docs-site';
 import { APISymbolMenu } from '../../src/components/api/api-navigation';
-import { APIReferencePage } from '../../src/components/api/api-reference-page';
+import { APIReferencePage as ControlledAPIReferencePage } from '../../src/components/api/api-reference-page';
 import { commonMessages } from '../../src/i18n/messages';
 
 const entry = {
@@ -92,8 +93,7 @@ function renderPage(
       }
       getGroupLabel={() => 'Interfaces'}
       renderKind={() => <span>Interface</span>}
-      symbolCountLabel={count => `${count} symbols`}
-      renderPackageReadme={(key, _keys, locale) => (
+      renderPackageReadme={(key, locale) => (
         <p>
           README:{key}:{locale}
         </p>
@@ -167,7 +167,7 @@ describe('APIReferencePage', () => {
     const { loadAPI, loadManifest, setAPIDocumentTitle } = renderPage();
 
     expect(await screen.findByText('README:example:en')).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Package' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Package' })).toBeNull();
     expect(screen.getByText('@scope/example')).toBeDefined();
     expect(loadAPI).not.toHaveBeenCalled();
     expect(loadManifest).toHaveBeenCalledOnce();
@@ -241,3 +241,13 @@ describe('APISymbolMenu', () => {
     );
   });
 });
+
+function APIReferencePage(props: import('react').ComponentProps<typeof ControlledAPIReferencePage>) {
+  const { pkg, version = 'current', symbol } = useParams();
+  const query = new URLSearchParams(useLocation().search);
+  const shell = useOutletContext<{ setAPIDocumentTitle?: (title: string) => void; setAPISidebarCollapsed?: (collapsed: boolean) => void } | null>();
+
+  return <ControlledAPIReferencePage {...props}
+    selection={pkg === undefined ? undefined : { packageKey: pkg, version, symbol, entryKey: query.get('entry') ?? 'root' }}
+    onTitleChange={shell?.setAPIDocumentTitle} onSidebarCollapsed={shell?.setAPISidebarCollapsed} />;
+}

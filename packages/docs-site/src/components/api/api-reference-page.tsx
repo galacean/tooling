@@ -1,21 +1,21 @@
+import { DocumentBoundary } from '../../providers/root';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  Link,
-  Navigate,
-  useLocation,
-  useOutletContext,
-  useParams,
-  useSearchParams,
-} from 'react-router-dom';
-import { getAPISymbolRouteSegment } from '../../data';
+  DocsLink as Link,
+  DocsNavigationProvider,
+  useDocsLocation as useLocation,
+} from '../../routing/navigation';
+import type { DocsNavigation } from '../../routing/navigation';
+import { findAPIVersion } from '../../data/api-selection';
+import type { APISelection } from '../../data/api-selection';
 import type { APIManifest, APIVersion } from '../../data';
-import type { SiteShellOutletContext } from '../site/site-shell';
 import { APINavigationToolbar, APISymbolMenu } from './api-navigation';
 import type { APINavigationToolbarProps } from './api-navigation';
 import { APIReferenceLayout } from './api-reference-layout';
 import type { APIReferenceLayoutProps } from './api-reference-layout';
 import { DocumentError, DocumentLoading } from '../shared';
+import { findDocumentAnchor } from '../shared/document-anchor';
 
 export type APIReferencePageMessages = APINavigationToolbarProps['messages'] &
   APIReferenceLayoutProps['messages'] & {
@@ -32,14 +32,17 @@ export interface APIReferencePageProps<
     index: { byId: Map<number, TReflection> };
   },
 > {
+  navigation?: DocsNavigation | undefined;
   locale: string;
+  selection?: APISelection | undefined;
+  onPackageChange?: ((packageKey: string) => void) | undefined;
+  onVersionChange?: ((version: string) => void) | undefined;
+  onTitleChange?: ((title: string) => void) | undefined;
+  onContentLocalesChange?: ((locales: string[] | undefined) => void) | undefined;
+  onSidebarCollapsed?: ((collapsed: boolean) => void) | undefined;
   messages: APIReferencePageMessages;
   loadManifest: () => Promise<APIManifest>;
-  loadAPI: (
-    packageKey: string,
-    version: string,
-    locale: string,
-  ) => Promise<TData>;
+  loadAPI: (packageKey: string, version: string, locale: string) => Promise<TData>;
   getAPIHref: (locale: string) => string;
   getPackageHref: (locale: string, packageKey: string) => string;
   getSymbolHref: (
@@ -51,12 +54,7 @@ export interface APIReferencePageProps<
   ) => string;
   getGroupLabel: (kind: number) => string;
   renderKind: (kind: number, compact: boolean) => ReactNode;
-  symbolCountLabel: (count: number, locale: string) => string;
-  renderPackageReadme: (
-    packageKey: string,
-    packageKeys: string[],
-    locale: string,
-  ) => ReactNode;
+  renderPackageReadme: (packageKey: string, locale: string) => ReactNode;
   renderReflection: (
     reflection: TReflection,
     data: TData,
@@ -71,8 +69,29 @@ export function APIReferencePage<
   TData extends {
     index: { byId: Map<number, TReflection> };
   },
+>(props: APIReferencePageProps<TReflection, TData>) {
+  return (
+    <DocsNavigationProvider navigation={props.navigation}>
+      <DocumentBoundary locale={props.locale}>
+        <APIReferencePageContent {...props} />
+      </DocumentBoundary>
+    </DocsNavigationProvider>
+  );
+}
+
+function APIReferencePageContent<
+  TReflection extends object,
+  TData extends {
+    index: { byId: Map<number, TReflection> };
+  },
 >({
   locale,
+  selection,
+  onPackageChange,
+  onVersionChange,
+  onTitleChange: setAPIDocumentTitle,
+  onContentLocalesChange: setContentLocales,
+  onSidebarCollapsed,
   messages: t,
   loadManifest,
   loadAPI,
@@ -84,16 +103,8 @@ export function APIReferencePage<
   renderPackageReadme,
   renderReflection,
 }: APIReferencePageProps<TReflection, TData>) {
-  const {
-    pkg: packageKey,
-    version = 'current',
-    symbol: symbolSegment,
-  } = useParams();
   const location = useLocation();
-  const shellContext = useOutletContext<SiteShellOutletContext | null>();
-  const setAPIDocumentTitle = shellContext?.setAPIDocumentTitle;
-  const setContentLocales = shellContext?.setContentLocales;
-  const [query] = useSearchParams();
+  const { packageKey, version, entryKey, symbol: symbolName } = selection ?? {};
   const [apiManifest, setAPIManifest] = useState<APIManifest>();
   const [data, setData] = useState<TData>();
   const [error, setError] = useState('');
@@ -103,46 +114,25 @@ export function APIReferencePage<
   const [hashError, setHashError] = useState(false);
 
   useEffect(() => {
-    shellContext?.setAPISidebarCollapsed(collapsed);
-  }, [collapsed, shellContext]);
+    onSidebarCollapsed?.(collapsed);
+  }, [collapsed, onSidebarCollapsed]);
   const scrollContainer = useRef<HTMLDivElement>(null);
   const pkg = apiManifest?.packages.find(item => item.key === packageKey);
-  const requestedPackageKey = query.get('package');
-  const entryKey = query.get('entry') ?? 'root';
-  const versionInfo =
-    version === 'current'
-      ? pkg?.current
-      : pkg?.versions.find(item => item.version === version);
-  const packageHome = packageKey !== undefined && symbolSegment === undefined;
-  const displayedVersion = packageHome ? pkg?.current : versionInfo;
-  const entry = packageHome
-    ? displayedVersion?.entries[0]
-    : displayedVersion?.entries.find(item => item.key === entryKey);
-  const activeEntryKey = packageHome ? (entry?.key ?? 'root') : entryKey;
-  const symbolName =
-    symbolSegment === undefined
-      ? undefined
-      : entry?.symbols.find(
-          item =>
-            getAPISymbolRouteSegment(entry.symbols, item.name) ===
-            symbolSegment,
-        )?.name;
+
+  const versionInfo = findAPIVersion(pkg, version);
+  const packageHome = packageKey !== undefined && symbolName === undefined;
+  const entry = versionInfo?.entries.find(item => item.key === entryKey);
+
   const symbol =
-    symbolName === undefined
-      ? undefined
-      : entry?.symbols.find(item => item.name === symbolName);
-  const reflection =
-    symbol === undefined ? undefined : data?.index.byId.get(symbol.id);
+    symbolName === undefined ? undefined : entry?.symbols.find(item => item.name === symbolName);
+  const reflection = symbol === undefined ? undefined : data?.index.byId.get(symbol.id);
   const valid =
     apiManifest === undefined ||
     packageKey === undefined ||
-    (pkg !== undefined &&
-      displayedVersion !== undefined &&
-      entry !== undefined &&
-      (packageHome || (symbol !== undefined && versionInfo !== undefined)));
+    (entry !== undefined && (packageHome || symbol !== undefined));
   const apiDocumentTitle =
     pkg === undefined
-      ? (symbolSegment ?? packageKey ?? t.api)
+      ? (symbolName ?? packageKey ?? t.api)
       : packageHome
         ? pkg.name
         : (symbolName ?? t.notFound);
@@ -185,7 +175,7 @@ export function APIReferencePage<
     }
     setError('');
     setData(undefined);
-    if (!valid || packageKey === undefined || packageHome) {
+    if (!valid || packageKey === undefined || version === undefined || packageHome) {
       return;
     }
     void loadAPI(packageKey, version, locale)
@@ -225,7 +215,7 @@ export function APIReferencePage<
 
         return;
       }
-      const target = document.getElementById(anchor);
+      const target = findDocumentAnchor(scrollContainer.current, anchor);
 
       if (target === null) {
         setHashError(true);
@@ -235,24 +225,10 @@ export function APIReferencePage<
     });
 
     return () => window.clearTimeout(timer);
-  }, [
-    packageHome,
-    data,
-    reflection,
-    location.pathname,
-    location.hash,
-    locale,
-    showInherited,
-  ]);
+  }, [packageHome, data, reflection, location.pathname, location.hash, locale, showInherited]);
 
   if (error !== '') {
-    return (
-      <DocumentError
-        title={t.loadError}
-        description={t.loadErrorDescription}
-        layout="page"
-      />
-    );
+    return <DocumentError title={t.loadError} description={t.loadErrorDescription} layout="page" />;
   }
   if (apiManifest === undefined) {
     return <DocumentLoading layout="api" label={t.loading} />;
@@ -268,40 +244,31 @@ export function APIReferencePage<
     );
   }
   if (packageKey === undefined) {
-    const firstPackage =
-      apiManifest.packages.find(item => item.key === requestedPackageKey) ??
-      apiManifest.packages[0];
-
-    if (firstPackage === undefined) {
-      return (
-        <NotFoundPage
-          title={t.notFound}
-          href={getAPIHref(locale)}
-          linkLabel={t.api}
-        />
-      );
-    }
-
-    return <Navigate replace to={getPackageHref(locale, firstPackage.key)} />;
+    return (
+      <main className="docs-state-page">
+        <h1>{t.api}</h1>
+        <ul>
+          {apiManifest.packages.map(item => (
+            <li key={item.key}>
+              <Link to={getPackageHref(locale, item.key)}>{item.name}</Link>
+            </li>
+          ))}
+        </ul>
+      </main>
+    );
   }
   if (
     pkg === undefined ||
     entry === undefined ||
-    displayedVersion === undefined
+    versionInfo === undefined ||
+    version === undefined ||
+    entryKey === undefined
   ) {
-    return (
-      <NotFoundPage
-        title={t.notFound}
-        href={getAPIHref(locale)}
-        linkLabel={t.api}
-      />
-    );
+    return <NotFoundPage title={t.notFound} href={getAPIHref(locale)} linkLabel={t.api} />;
   }
   if (
     !packageHome &&
-    (data === undefined ||
-      reflection === undefined ||
-      versionInfo === undefined)
+    (data === undefined || reflection === undefined)
   ) {
     return <DocumentLoading layout="api" label={t.loading} />;
   }
@@ -312,15 +279,7 @@ export function APIReferencePage<
       selectedName={symbolName}
       ariaLabel={t.api}
       getGroupLabel={getGroupLabel}
-      getSymbolHref={name =>
-        getSymbolHref(
-          locale,
-          pkg.key,
-          version,
-          getAPISymbolRouteSegment(entry.symbols, name),
-          activeEntryKey,
-        )
-      }
+      getSymbolHref={name => getSymbolHref(locale, pkg.key, version, name, entryKey)}
       renderKind={kind => renderKind(kind, true)}
       onSelect={close}
     />
@@ -341,7 +300,6 @@ export function APIReferencePage<
           pkg={pkg}
           packages={apiManifest.packages}
           version={version}
-          entryKey={entryKey}
           symbol={
             reflection === undefined
               ? undefined
@@ -351,25 +309,8 @@ export function APIReferencePage<
           showInherited={showInherited}
           onShowInheritedChange={setShowInherited}
           messages={t}
-          getPackageHref={key => getPackageHref(locale, key)}
-          getSymbolHref={target => {
-            const targetVersion =
-              target.version === 'current'
-                ? pkg.current
-                : pkg.versions.find(item => item.version === target.version);
-            const targetSymbols =
-              targetVersion?.entries.find(
-                entry => entry.key === target.entryKey,
-              )?.symbols ?? [];
-
-            return getSymbolHref(
-              locale,
-              pkg.key,
-              target.version,
-              getAPISymbolRouteSegment(targetSymbols, target.symbolName),
-              target.entryKey,
-            );
-          }}
+          onPackageChange={onPackageChange}
+          onVersionChange={onVersionChange}
           renderKind={kind => renderKind(kind, true)}
         />
       }
@@ -377,7 +318,6 @@ export function APIReferencePage<
       {packageHome ? (
         renderPackageReadme(
           pkg.key,
-          apiManifest.packages.map(item => item.key),
           locale,
         )
       ) : (
@@ -389,14 +329,7 @@ export function APIReferencePage<
           )}
           {data !== undefined &&
             reflection !== undefined &&
-            versionInfo !== undefined &&
-            renderReflection(
-              reflection,
-              data,
-              version,
-              versionInfo,
-              showInherited,
-            )}
+            renderReflection(reflection, data, version, versionInfo, showInherited)}
         </>
       )}
     </APIReferenceLayout>
@@ -415,7 +348,7 @@ function NotFoundPage({
   linkLabel: string;
 }) {
   return (
-    <main className="state-page">
+    <main className="docs-state-page">
       <h1>{title}</h1>
       {path !== undefined && <p>{path}</p>}
       <Link to={href}>{linkLabel}</Link>

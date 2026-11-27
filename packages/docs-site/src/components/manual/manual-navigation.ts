@@ -1,7 +1,5 @@
 import type { ManualNavigationPage } from '../../manual/document';
 
-export type { ManualNavigationPage } from '../../manual/document';
-
 export interface ManualNavigationNode extends ManualNavigationPage {
   children: ManualNavigationNode[];
 }

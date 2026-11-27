@@ -2,41 +2,28 @@ import { useDocsI18n } from '../../providers/i18n';
 import { getLocaleDefinition } from '../../i18n/registry';
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useDocsLocation as useLocation, useDocsNavigate as useNavigate } from '../../routing/navigation';
 import { DocumentError, DocumentLoading, MarkdownContent } from '../shared';
-import type { MarkdownMessages } from '../shared/markdown';
+import { findDocumentAnchor } from '../shared/document-anchor';
+import type { CommonSiteMessages } from '../../i18n/messages';
 
 export interface APIPackageReadmeProps<TLocale extends string = string> {
-  contentMessages?: Partial<MarkdownMessages>;
+  messages: CommonSiteMessages;
   packageKey: string;
   locale: TLocale;
   loadReadme: (
     packageKey: string,
     locale: TLocale,
   ) => Promise<{ text: string; sourceLocale: string }>;
-  loadErrorTitle: string;
-  loadErrorDescription: string;
-  loadingLabel: string;
-  unknownHashLabel: string;
-  copyLabel: string;
-  copiedLabel: string;
-  copyFailedLabel: string;
   resolveLink: (url: string) => string;
   resolveImage: (url: string) => string;
 }
 
 export function APIPackageReadme<TLocale extends string>({
-  contentMessages,
+  messages,
   packageKey,
   locale,
   loadReadme,
-  loadErrorTitle,
-  loadErrorDescription,
-  loadingLabel,
-  unknownHashLabel,
-  copyLabel,
-  copiedLabel,
-  copyFailedLabel,
   resolveLink,
   resolveImage,
 }: APIPackageReadmeProps<TLocale>) {
@@ -91,7 +78,7 @@ export function APIPackageReadme<TLocale extends string>({
 
       return;
     }
-    const target = document.getElementById(anchor);
+    const target = findDocumentAnchor(container.current, anchor);
 
     if (target === null) {
       setHashError(true);
@@ -120,7 +107,7 @@ export function APIPackageReadme<TLocale extends string>({
     }
     const targetURL = new URL(
       href,
-      `https://local.invalid${location.pathname}`,
+      `https://local.invalid${location.pathname}${location.search}`,
     );
 
     if (
@@ -141,7 +128,7 @@ export function APIPackageReadme<TLocale extends string>({
 
       return;
     }
-    const target = document.getElementById(anchor);
+    const target = findDocumentAnchor(container.current, anchor);
 
     if (target === null) {
       setHashError(true);
@@ -156,8 +143,8 @@ export function APIPackageReadme<TLocale extends string>({
     return (
       <div className="api-package-readme">
         <DocumentError
-          title={loadErrorTitle}
-          description={loadErrorDescription}
+          title={messages.loadError}
+          description={messages.loadErrorDescription}
         />
       </div>
     );
@@ -165,7 +152,7 @@ export function APIPackageReadme<TLocale extends string>({
   if (content === undefined) {
     return (
       <div className="api-package-readme">
-        <DocumentLoading label={loadingLabel} />
+        <DocumentLoading label={messages.loading} />
       </div>
     );
   }
@@ -180,16 +167,13 @@ export function APIPackageReadme<TLocale extends string>({
     >
       {hashError && (
         <div className="api-notice" role="status">
-          {unknownHashLabel}: {location.hash}
+          {messages.unknownHash}: {location.hash}
         </div>
       )}
       <div className="docs-reading-content">
         <MarkdownContent
-          {...(contentMessages === undefined ? {} : { messages: contentMessages })}
+          messages={messages}
           text={content.text}
-          copyLabel={copyLabel}
-          copied={copiedLabel}
-          copyFailed={copyFailedLabel}
           resolveLink={resolveLink}
           resolveImage={resolveImage}
         />

@@ -39,7 +39,7 @@ export interface APITypeDocDetailProps<
   isLocale: (value: unknown) => value is TLocale;
   getLocaleLabel: (locale: string) => string;
   getGroupLabel: (kind: number) => string;
-  getRepositoryFileURL: (revision: string, filePath?: string) => string;
+  getRepositoryFileURL: ((revision: string, filePath?: string) => string) | undefined;
 }
 
 export function APITypeDocDetail<
@@ -139,7 +139,7 @@ export function APITypeDocDetail<
     const url =
       targetValue === undefined
         ? undefined
-        : context.index.url(context.locale, context.version, targetValue.id);
+        : context.reflectionHref(targetValue.id);
 
     if (targetValue === undefined || url === undefined) {
       return (
@@ -196,7 +196,7 @@ export function APITypeDocDetail<
           members: childrenOf(targetValue).map(child => ({
             name: child.name,
             href:
-              context.index.url(context.locale, context.version, child.id) ??
+              context.reflectionHref(child.id) ??
               url,
           })),
         }}

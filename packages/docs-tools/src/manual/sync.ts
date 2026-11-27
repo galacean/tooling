@@ -833,7 +833,7 @@ async function syncLocalCollection(
 async function readManualOverview(
   config: ResolvedDocsBuildConfig,
   locale: string,
-): Promise<Buffer | undefined> {
+): Promise<{ content: Buffer; collectionKey?: string; sourceLocale: string } | undefined> {
   for (const collection of config.manuals ?? []) {
     if (collection.source.type !== 'local') {
       continue;
@@ -846,7 +846,11 @@ async function readManualOverview(
 
     await assertNoSymlinkPath(config.repositoryRoot, sourcePath);
     try {
-      return await readFile(sourcePath);
+      return {
+        content: await readFile(sourcePath),
+        collectionKey: collection.key,
+        sourceLocale: collection.source.locale,
+      };
     } catch (error) {
       if (getErrorCode(error) !== 'ENOENT') {
         throw error;
@@ -857,7 +861,7 @@ async function readManualOverview(
 
   await assertNoSymlinkPath(config.repositoryRoot, existingPath);
   try {
-    return await readFile(existingPath);
+    return { content: await readFile(existingPath), sourceLocale: locale };
   } catch (error) {
     if (getErrorCode(error) !== 'ENOENT') {
       throw error;
@@ -901,7 +905,14 @@ async function writeManualData(
       const localeDirectory = path.join(temporaryDirectory, locale);
 
       await mkdir(localeDirectory, { recursive: true });
-      await writeFile(path.join(localeDirectory, 'index.md'), overview ?? `# ${messages.manual}\n\n${messages.manualIntro}\n`);
+      await writeFile(path.join(localeDirectory, 'index.md'),
+        overview?.content ?? `# ${messages.manual}\n\n${messages.manualIntro}\n`);
+      if (overview !== undefined) {
+        // A retained overview also retains its published assets when no source overview remains.
+        await copyManualPageAssets(config, overview.collectionKey, undefined, overview.sourceLocale,
+          locale, 'markdown', overview.content.toString('utf8'), temporaryDirectory,
+          overview.collectionKey === undefined ? new Map<string, string>() : previousHashes, generatedHashes);
+      }
     }
     for (const page of pages) {
       for (const locale of config.locales) {

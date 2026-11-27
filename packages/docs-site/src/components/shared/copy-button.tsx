@@ -41,7 +41,7 @@ export function CopyButton({
     <span className="copy-control">
       <button
         type="button"
-        className="copy-button icon-action"
+        className="copy-button docs-icon-action"
         aria-label={label}
         title={label}
         onClick={() => {

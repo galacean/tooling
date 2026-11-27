@@ -2,6 +2,7 @@ import { getLocaleDefinition, normalizeLocale } from '../i18n/registry';
 import { normalizeBase } from '../i18n/routes';
 import type { DocsSiteStorageKeyOverrides, DocsSiteStorageKeys } from '../preferences/storage';
 import type { DocsSiteOptions, ResolvedDocsSiteOptions } from './types';
+import { createDocsRoutes } from '../routing/paths';
 import { withTrailingSlash } from './urls';
 
 export function resolveDocsSiteStorageKeys(
@@ -26,13 +27,23 @@ export function resolveDocsSiteOptions<TLocale extends string>(
     throw new Error('Invalid configured locales or default locale');
   }
 
+  const { routePaths, ...site } = options;
+  const routes = createDocsRoutes(routePaths);
+  const sectionRoots = [routes.patterns.home,
+    ...(options.manual === false ? [] : [routes.patterns.manual]),
+    ...(options.api === undefined ? [] : [routes.patterns.api])];
+
+  if (new Set(sectionRoots).size !== sectionRoots.length) {
+    throw new Error('Enabled documentation section routes must be distinct');
+  }
+
   return {
-    ...options,
+    ...site,
+    routes,
     localeLabels: Object.fromEntries(options.locales.map(locale => [locale, options.localeLabels?.[locale] ?? getLocaleDefinition(locale, options.i18n?.localeDefinitions).label])) as Record<TLocale, string>,
     baseURL,
     dataBaseURL,
     docsBrandMarkURLs: options.docsBrandMarkURLs ?? options.brandMarkURLs,
-    homeHref: options.homeHref ?? '/',
     storageKeys: resolveDocsSiteStorageKeys(options.storageKeys),
     manual: options.manual === false ? false : {
       dataURL: withTrailingSlash(

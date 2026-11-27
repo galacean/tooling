@@ -1,3 +1,4 @@
+import { DocsLink } from '../../routing/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../shared';
 import { searchResults } from '../../search';
@@ -32,7 +33,6 @@ export interface SearchPanelProps {
   includeAPI?: boolean;
   includeManual?: boolean;
   loadItems: (locale: string) => Promise<SearchResult[]>;
-  navigate: (url: string) => void;
   close: () => void;
 }
 
@@ -59,7 +59,6 @@ export function SearchPanel({
   includeAPI = true,
   includeManual = true,
   loadItems,
-  navigate,
   close,
 }: SearchPanelProps) {
   const [query, setQuery] = useState('');
@@ -166,8 +165,8 @@ export function SearchPanel({
   return (
     <dialog
       ref={dialog}
-      className="site-search"
-      aria-labelledby="site-search-title"
+      className="search-panel"
+      aria-labelledby="search-panel-title"
       onCancel={event => {
         event.preventDefault();
         close();
@@ -178,19 +177,19 @@ export function SearchPanel({
         }
       }}
     >
-      <header className="site-search-header">
-        <div className="site-search-heading">
+      <header className="search-panel-header">
+        <div className="search-panel-heading">
           <img src={brandMarkURL} alt="" aria-hidden="true" />
           <div>
-            <span className="site-search-eyebrow">
+            <span className="search-panel-eyebrow">
               {brandLabel.toUpperCase()} / {locale.toUpperCase()}
             </span>
-            <h2 id="site-search-title">{t.search}</h2>
+            <h2 id="search-panel-title">{t.search}</h2>
           </div>
         </div>
         <button
           type="button"
-          className="icon-action"
+          className="docs-icon-action"
           aria-label={t.close}
           title={t.close}
           onClick={close}
@@ -198,7 +197,7 @@ export function SearchPanel({
           <Icon name="close" />
         </button>
       </header>
-      <label className="site-search-input">
+      <label className="search-panel-input">
         <Icon name="search" />
         <input
           ref={input}
@@ -210,12 +209,12 @@ export function SearchPanel({
         />
       </label>
       {storageError && (
-        <p className="site-search-warning" role="status">
+        <p className="search-panel-warning" role="status">
           {t.storageError}
         </p>
       )}
       <div
-        className="search-results docs-scroll-area"
+        className="search-results"
         ref={list}
         aria-busy={loading}
       >
@@ -262,7 +261,7 @@ export function SearchPanel({
                   </button>
                   <button
                     type="button"
-                    className="icon-action"
+                    className="docs-icon-action"
                     aria-label={`${t.delete} ${term}`}
                     title={`${t.delete} ${term}`}
                     onClick={() =>
@@ -291,11 +290,12 @@ export function SearchPanel({
                   <span>{matches.length}</span>
                 </h3>
                 {matches.map(item => (
-                  <button
-                    type="button"
+                  <DocsLink
+                    to={item.url}
                     key={item.url}
                     className="search-result"
-                    onClick={() => {
+                    onClick={event => {
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) { return; }
                       saveHistory(
                         [
                           debounced,
@@ -303,7 +303,6 @@ export function SearchPanel({
                         ].slice(0, 12),
                       );
                       close();
-                      navigate(item.url);
                     }}
                   >
                     <span
@@ -333,14 +332,14 @@ export function SearchPanel({
                       )}
                     </span>
                     <Icon name="arrow" className="search-result-arrow" />
-                  </button>
+                  </DocsLink>
                 ))}
               </section>
             );
           })
         )}
       </div>
-      <footer className="site-search-footer">
+      <footer className="search-panel-footer">
         {includeAPI && (
           <span>
             <Icon name="source" />

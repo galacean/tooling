@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from '../router';
 import { describe, expect, it } from 'vitest';
 import { buildReflectionIndex } from '@galacean/docs-site';
 import { APITypeDocDetail } from '../../src/components/api/api-typedoc-detail';
@@ -126,8 +126,6 @@ const packages = [
 const index = buildReflectionIndex<Reflection>(
   project,
   packages,
-  (locale, packageKey, version, symbol, _entry, hash) =>
-    `/${locale}/api/${packageKey}/${version}/${symbol}/${hash}`,
 );
 const reflection = index.byId.get(3);
 
@@ -137,6 +135,11 @@ if (reflection === undefined) {
 const context: APITypeDocContext<typeof project, Reflection, 'en'> = {
   project,
   index,
+  reflectionHref: id => {
+    const target = index.target('en', 'current', id);
+
+    return target && ['/en/api', target.packageKey, target.version, target.symbol, target.anchor].join('/');
+  },
   locale: 'en',
   version: 'current',
   commit: 'fixture',
@@ -213,8 +216,6 @@ describe('APITypeDocDetail', () => {
     const externalIndex = buildReflectionIndex<Reflection>(
       externalProject,
       externalPackages,
-      (_locale, packageKey, version, symbol) =>
-        `/${packageKey}/${version}/${symbol}`,
     );
     const externalReflection = externalIndex.byId.get(10);
 

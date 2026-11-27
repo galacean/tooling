@@ -1,15 +1,15 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from '../router';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   APIEntry,
   APIManifestPackage,
   APIVersion,
 } from '@galacean/docs-site';
+import { resolveAPIVersionTarget } from '@galacean/docs-site';
 import {
   APINavigationToolbar,
   APISymbolMenu,
-  resolveAPIVersionTarget,
 } from '../../src/components/api/api-navigation';
 import { APIReferenceLayout } from '../../src/components/api/api-reference-layout';
 
@@ -18,7 +18,7 @@ describe('shared APIReferenceLayout', () => {
     'composes consumer slots with collapsed=%s',
     collapsed => {
       const renderNavigation = vi.fn((_close: () => void) => (
-        <nav className="api-menu docs-scroll-area">Consumer symbols</nav>
+        <nav className="api-menu">Consumer symbols</nav>
       ));
       const onDrawerChange = vi.fn();
       const markup = renderToStaticMarkup(
@@ -45,15 +45,14 @@ describe('shared APIReferenceLayout', () => {
       );
 
       expect(markup).toContain(
-        `class="ge-api${collapsed ? ' collapsed' : ''}"`,
+        `class="api-layout${collapsed ? ' is-sidebar-collapsed' : ''}"`,
       );
       expect(markup).toContain('Consumer versions');
       expect(markup).not.toContain('api-sidebar-heading');
       expect(markup).toContain('class="api-sidebar"');
-      expect(markup).not.toContain('class="api-sidebar docs-scroll-area"');
-      expect(markup).toContain('class="api-menu docs-scroll-area"');
+      expect(markup).toContain('class="api-menu"');
       expect(markup).toContain('<article>Consumer reflection</article>');
-      expect(markup).toContain('class="api-scroll docs-scroll-area"');
+      expect(markup).toContain('class="api-scroll"');
       expect(markup).toContain('aria-label="Reference"');
       expect(markup).toContain(
         `aria-label="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}"`,
@@ -62,10 +61,10 @@ describe('shared APIReferenceLayout', () => {
       expect(markup).toContain(
         'class="docs-sidebar-collapse-region docs-sidebar-collapse-region--api"',
       );
-      expect(markup).toContain('class="docs-sidebar-collapse icon-action"');
+      expect(markup).toContain('class="docs-sidebar-collapse docs-icon-action"');
       expect(markup).toContain('aria-label="Dismiss"');
       expect(markup).toContain('aria-label="Scroll up"');
-      expect(markup).toContain('class="docs-back-top icon-action"');
+      expect(markup).toContain('class="docs-back-top docs-icon-action"');
       expect(markup).not.toContain('Design Bridge');
       expect(renderNavigation).toHaveBeenCalledTimes(2);
       expect(renderNavigation).toHaveBeenCalledWith(expect.any(Function));
@@ -204,7 +203,6 @@ describe('shared API navigation', () => {
           pkg={pkg}
           packages={[pkg]}
           version="current"
-          entryKey="sub"
           symbol={{ name: 'keep', kind: 256 }}
           packageHome={packageHome}
           showInherited={true}
@@ -215,10 +213,8 @@ describe('shared API navigation', () => {
             apiPackage: 'Library',
             showInherited: 'Inherited members',
           }}
-          getPackageHref={key => `/fr/reference/${key}/`}
-          getSymbolHref={target =>
-            `/fr/reference/${target.version}/${target.symbolName}/`
-          }
+          onPackageChange={() => undefined}
+          onVersionChange={() => undefined}
           renderKind={kind => <span data-kind={kind}>Badge</span>}
         />
       </MemoryRouter>,

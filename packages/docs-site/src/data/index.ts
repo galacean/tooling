@@ -1,4 +1,4 @@
-export * from './api-client';
+export * from './api-source';
 export * from './api-comments';
 export * from './api-manifest';
 export * from './api-readme';

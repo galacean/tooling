@@ -6,7 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'vitest';
 import type { TestContext } from 'vitest';
-import { buildStaticRoutes, loadDocsProjectConfig } from '@galacean/docs-tools';
+import { buildStaticRoutes } from '@galacean/docs-tools';
 
 const execFileAsync = promisify(execFile);
 
@@ -43,6 +43,7 @@ async function fixture(t: TestContext) {
     path.join(repositoryRoot, 'site/site.config.ts'),
     `export default ${JSON.stringify({
       siteName: 'Fixture Docs',
+      pages: [{ slug: null }],
       sourceLocale: 'en',
       locales: ['en', 'zh-CN'],
       api: { dataDirectory: 'site/public/data/api' },
@@ -63,7 +64,7 @@ async function fixture(t: TestContext) {
   for (const locale of ['en', 'zh-CN']) {
     await writeFile(
       path.join(searchDirectory, `${locale}.json`),
-      JSON.stringify([{ url: `/${locale}/manual/intro/` }]),
+      JSON.stringify([{ target: {kind: 'manual', locale, slug: 'intro'} }]),
     );
     await writeFile(
       path.join(manualDirectory, locale, 'intro.md'),
@@ -88,6 +89,7 @@ async function fixture(t: TestContext) {
         'tmp/docs-tools/api-translation',
       ),
       siteName: 'Fixture Docs',
+      pages: [{ slug: null }],
     },
   };
 }
@@ -124,32 +126,6 @@ void test('builds localized deep links and validates a subpath artifact', async 
     await readFile(path.join(values.distDirectory, '.nojekyll'), 'utf8'),
     '',
   );
-});
-
-void test('uses the shared home destination in the static 404 page', async t => {
-  const values = await fixture(t);
-  const configPath = path.join(values.repositoryRoot, 'docs.config.json');
-
-  for (const [homeHref, expected] of [
-    ['/start/', '/docs/start/'],
-    ['https://example.com/?from=docs&lang=en', 'https://example.com/?from=docs&amp;lang=en'],
-    ['//example.com/', '//example.com/'],
-  ]) {
-    await writeFile(configPath, JSON.stringify({
-      siteName: 'Fixture Docs',
-      sourceLocale: 'en',
-      locales: ['en', 'zh-CN'],
-      api: { dataDirectory: 'site/public/data/api' },
-      manual: { dataDirectory: 'site/manual-content' },
-      homeHref,
-    }));
-    const config = await loadDocsProjectConfig('docs.config.json', values.repositoryRoot);
-
-    await buildStaticRoutes(config, { base: '/docs/' });
-    const notFound = await readFile(path.join(values.distDirectory, '404.html'), 'utf8');
-
-    assert.ok(notFound.includes(`<a href="${expected}">Home</a>`));
-  }
 });
 
 void test('builds localized custom site pages with titles and static routes', async t => {
@@ -196,7 +172,7 @@ void test('builds manual routes without API configuration or an API manifest', a
   for (const locale of ['en', 'zh-CN']) {
     await writeFile(
       path.join(searchDirectory, `${locale}.json`),
-      JSON.stringify([{ url: `/${locale}/manual/intro/` }]),
+      JSON.stringify([{ target: {kind: 'manual', locale, slug: 'intro'} }]),
     );
   }
   await rm(path.join(manifestDirectory, 'api'), {
@@ -261,6 +237,21 @@ void test('requires linked manual images to exist inside the locale manual direc
     buildStaticRoutes(values.config, { base: '/docs/' }),
     /Manual asset does not exist/u,
   );
+});
+
+void test('copies and validates assets linked only from manual overviews', async t => {
+  const values = await fixture(t);
+  const directory = path.join(values.manualDirectory, 'en/assets');
+
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, 'overview.svg'), '<svg/>');
+  await writeFile(path.join(values.manualDirectory, 'en/index.md'),
+    '# Manual\n\n![Overview](./assets/overview.svg)\n\n[Intro](./intro.md?tab=examples#setup)\n');
+  await buildStaticRoutes(values.config, { base: '/docs/' });
+  assert.equal(await readFile(path.join(values.distDirectory, 'en/manual/assets/overview.svg'), 'utf8'), '<svg/>');
+
+  await rm(path.join(directory, 'overview.svg'));
+  await assert.rejects(buildStaticRoutes(values.config, { base: '/docs/' }), /Manual asset does not exist/u);
 });
 
 void test('validates HTML manual image assets under the locale manual directory', async t => {
@@ -334,7 +325,7 @@ void test('rejects invalid bases and unmaterialized search routes', async t => {
   );
   await writeFile(
     path.join(values.repositoryRoot, 'site/public/data/search/en.json'),
-    JSON.stringify([{ url: '/en/api/missing/' }]),
+    JSON.stringify([{ target: {kind: 'package', locale: 'en', packageKey: 'missing'} }]),
   );
   await assert.rejects(
     buildStaticRoutes(values.config),
@@ -477,7 +468,10 @@ void test('lists package entries without reading README data and excludes symbol
   const values = await fixture(t);
   const entries = [{
     key: 'root', source: 'src/index.ts', types: 'dist/index.d.ts', id: 1,
-    symbols: [{ name: 'parse', id: 2, kind: 64 }, { name: 'Parse', id: 3, kind: 64 }],
+    symbols: [{ name: 'parse', id: 2, kind: 64 }, { name: 'Parse', id: 3, kind: 64 }, { name: 'Widget', id: 4, kind: 256 }],
+  }, {
+    key: 'web', source: 'src/web.ts', types: 'dist/web.d.ts', id: 5,
+    symbols: [{ name: 'Widget', id: 6, kind: 256 }],
   }];
   const version = {
     version: '1.0.0', snapshot: 'a'.repeat(64), commit: 'revision', entries,
@@ -491,7 +485,17 @@ void test('lists package entries without reading README data and excludes symbol
   await writeFile(path.join(values.repositoryRoot, 'site/public/data/api/manifest.json'), JSON.stringify({
     schemaVersion: 2, defaultVersion: 'current', packages: [pkg],
   }));
+  for (const locale of values.config.locales) {
+    const search = entries.map(entry => ({
+      target: { kind: 'symbol', locale, packageKey: 'engine', version: 'current', symbol: 'Widget', entryKey: entry.key },
+    }));
+
+    await writeFile(path.join(values.config.apiDirectory, '../search', locale + '.json'), JSON.stringify(search));
+  }
   await buildStaticRoutes(values.config, { base: '/docs/', origin: 'https://example.test' });
+  const routes = JSON.parse(await readFile(path.join(values.distDirectory, 'routes.json'), 'utf8')) as string[];
+
+  assert.equal(routes.filter(route => route === '/en/api/engine/current/Widget/').length, 1);
   const html = await readFile(path.join(values.distDirectory, 'en/api/engine/index.html'), 'utf8');
   const sitemap = await readFile(path.join(values.distDirectory, 'sitemap.xml'), 'utf8');
   const symbol = await readFile(path.join(values.distDirectory, 'en/api/engine/current/parse--70-61-72-73-65/index.html'), 'utf8');
@@ -502,4 +506,44 @@ void test('lists package entries without reading README data and excludes symbol
   assert.doesNotMatch(sitemap, /current|1\.0\.0/u);
   assert.match(symbol, /<div id="root"><\/div>/u);
   assert.match(symbol, /<title>parse \| Fixture Docs<\/title>/u);
+});
+
+void test('uses custom section paths for static entries, alternates and copied assets', async t => {
+  const values = await fixture(t);
+  const routePaths = { home: '/help/:locale/', manual: '/help/:locale/guides/', api: '/reference/:locale/' };
+
+  for (const locale of values.config.locales) {
+    await writeFile(path.join(values.config.apiDirectory, '../search', `${locale}.json`),
+      JSON.stringify([{ target: {kind: 'manual', locale, slug: 'intro'} }]));
+    await mkdir(path.join(values.manualDirectory, locale, 'intro'), { recursive: true });
+    await writeFile(path.join(values.manualDirectory, locale, 'intro/chart.svg'), '<svg/>');
+    await writeFile(path.join(values.manualDirectory, locale, 'intro.md'), '# Intro\n\n![Chart](chart.svg)');
+  }
+  await buildStaticRoutes({ ...values.config, routePaths }, { base: '/docs/', origin: 'https://example.test' });
+  const html = await readFile(path.join(values.distDirectory, 'help/en/guides/intro/index.html'), 'utf8');
+
+  assert.match(html, /https:\/\/example\.test\/docs\/help\/en\/guides\/intro\//u);
+  assert.match(html, /https:\/\/example\.test\/docs\/help\/zh-CN\/guides\/intro\//u);
+  assert.equal(await readFile(path.join(values.distDirectory, 'help/en/guides/intro/chart.svg'), 'utf8'), '<svg/>');
+});
+
+void test('builds a standalone manual without requiring a separate homepage', async t => {
+  const values = await fixture(t);
+
+  const searchDirectory = path.join(path.dirname(values.manualDirectory), 'search');
+
+  await mkdir(searchDirectory, { recursive: true });
+  for (const locale of values.config.locales) {
+    await writeFile(path.join(searchDirectory, `${locale}.json`),
+      JSON.stringify([{ target: {kind: 'manual', locale, slug: 'intro'} }]));
+  }
+  const result = await buildStaticRoutes({ ...values.config, pages: [], apiConfigured: false,
+    routePaths: { manual: '/:locale/' },
+  }, { base: '/docs/' });
+
+  assert.equal(result.routes, 4);
+  const routes = JSON.parse(await readFile(path.join(values.distDirectory, 'routes.json'), 'utf8')) as string[];
+
+  assert.ok(routes.includes('/en/intro/'));
+  assert.ok(!routes.includes('/en/manual/'));
 });

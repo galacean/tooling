@@ -137,7 +137,7 @@ export function SelectControl({
         className={
           icon === undefined
             ? 'site-select-trigger'
-            : 'site-select-trigger icon-only icon-action'
+            : 'site-select-trigger icon-only docs-icon-action'
         }
         aria-label={ariaLabel}
         aria-haspopup="listbox"
@@ -158,7 +158,7 @@ export function SelectControl({
       {open && (
         <div
           id={listboxId}
-          className="site-select-menu docs-dropdown-menu docs-scroll-area"
+          className="site-select-menu docs-dropdown-menu"
           role="listbox"
           aria-label={ariaLabel}
         >
@@ -174,11 +174,7 @@ export function SelectControl({
               dir="auto"
               tabIndex={-1}
               aria-selected={option.value === value}
-              className={
-                index === activeIndex
-                  ? 'site-select-option docs-dropdown-item active'
-                  : 'site-select-option docs-dropdown-item'
-              }
+              className={`site-select-option docs-dropdown-item${index === activeIndex ? ' is-active' : ''}`}
               onKeyDown={handleKeyDown}
               onPointerDown={event => event.preventDefault()}
               onPointerMove={() => setActiveIndex(index)}

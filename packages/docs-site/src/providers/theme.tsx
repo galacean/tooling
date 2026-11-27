@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import { DocsRoot } from './root';
 import { createPreferenceStorage } from '../preferences';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
@@ -17,9 +18,13 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export function ThemeProvider({
   themeStorageKey,
   children,
+  layout = 'embedded',
+  locale,
 }: {
   themeStorageKey: string;
   children: ReactNode;
+  layout?: 'embedded' | 'site';
+  locale?: string;
 }) {
   const [preferences] = useState(() => createPreferenceStorage());
   const [preference, setPreference] = useState<{
@@ -42,7 +47,7 @@ export function ThemeProvider({
   });
   const { mode, failed: storageError } = preference;
   const [systemDark, setSystemDark] = useState(
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches,
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
   );
   const resolved = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
 
@@ -54,9 +59,6 @@ export function ThemeProvider({
 
     return () => media.removeEventListener('change', listener);
   }, []);
-  useEffect(() => {
-    document.documentElement.dataset['theme'] = resolved;
-  }, [resolved]);
   const persist = (key: string, value: string) => {
     const succeeded = preferences.write(key, value);
 
@@ -70,11 +72,11 @@ export function ThemeProvider({
   };
 
   return (
-    <ThemeContext.Provider
+    <ThemeContext
       value={{ mode, resolved, change, persist, storageError }}
     >
-      {children}
-    </ThemeContext.Provider>
+      <DocsRoot theme={resolved} layout={layout} {...(locale === undefined ? {} : { lang: locale })}>{children}</DocsRoot>
+    </ThemeContext>
   );
 }
 

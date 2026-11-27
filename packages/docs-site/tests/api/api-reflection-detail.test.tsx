@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from '../router';
 import { describe, expect, it } from 'vitest';
 import { APIReflectionDetail } from '../../src/components/api/api-reflection-detail';
 import type { APIReflectionDetailMessages } from '../../src/components/api/api-reflection-detail';

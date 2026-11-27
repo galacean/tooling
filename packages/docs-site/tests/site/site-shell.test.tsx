@@ -1,3 +1,4 @@
+import { PageContext } from '../../src/providers/page';
 // @vitest-environment jsdom
 import {
   cleanup,
@@ -7,25 +8,24 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useContext, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MemoryRouter,
+  Outlet,
   Route,
   Routes,
   useNavigate,
   useLocation,
-  useOutletContext,
   useParams,
-} from 'react-router-dom';
+} from '../router';
+import { useDocsNavigation } from '../../src/routing/navigation';
 import { SiteShell } from '../../src/components/site/site-shell';
 import type {
   SiteShellMessages,
-  SiteShellOutletContext,
 } from '../../src/components/site/site-shell';
 import { SearchPanel } from '../../src/components/search/search-panel';
 import type { SearchResult } from '../../src/search';
-import { ThemeProvider } from '../../src/providers/theme';
 import { resolveDocsSiteStorageKeys } from '../../src/config/resolve';
 import { commonMessages } from '../../src/i18n/messages';
 
@@ -66,8 +66,7 @@ function CurrentLocation() {
 function RoutedManualPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { setManualPageTitle, setManualSidebarCollapsed } =
-    useOutletContext<SiteShellOutletContext>();
+  const { setTitle: setManualPageTitle, setSidebarCollapsed: setManualSidebarCollapsed } = useContext(PageContext)!;
 
   useEffect(() => {
     setManualPageTitle(slug ?? 'Manual');
@@ -103,6 +102,7 @@ function RoutedSiteShell({
   messageOverrides?: Partial<SiteShellMessages>;
 } = {}) {
   const { locale = 'en' } = useParams();
+  const navigation = useDocsNavigation();
   const locales = [
     { value: 'en', label: 'English' },
     { value: 'zh-CN', label: '简体中文' },
@@ -110,19 +110,16 @@ function RoutedSiteShell({
 
   return (
     <SiteShell
+      navigation={navigation}
       locale={locale}
-      locales={locales}
       messages={{ ...messages, ...messageOverrides }}
-      brandLabel="Example Docs"
-      brandMarkURLs={{
+      brand={{label: 'Example Docs', mark: {
         light: '/artis-logo.svg',
         dark: '/artis-logo-dark.svg',
-      }}
-      docsBrandMarkURLs={{
+      }, docsMark: {
         light: '/brand/artis-mark-light.svg',
         dark: '/brand/artis-mark-dark.svg',
-      }}
-      homeHref={`/${locale}`}
+      }}}
       storageKeys={resolveDocsSiteStorageKeys({
         locale: 'example:docs:locale',
         theme: 'example:docs:theme',
@@ -130,21 +127,23 @@ function RoutedSiteShell({
           ? { searchHistory: 'example:docs:search' }
           : {}),
       })}
-      navigation={[
+      menu={[
+        { key: 'home', label: messageOverrides?.home ?? messages.home, to: `/${locale}`, end: true },
         { key: 'manual', label: 'Manual', to: `/${locale}/manual` },
         ...(includeAPI
           ? [{ key: 'api', label: 'API', to: `/${locale}/api` }]
           : []),
       ]}
       pageKind={pageKind}
-      canonicalHref={`https://example.test/${locale}/manual`}
-      getAlternateHref={language => `https://example.test/${language}/manual`}
-      getLocaleHref={(language, search, hash) =>
-        `/${language}/manual${search}${hash}`
-      }
-      loadSearchItems={async () => []}
+      metadata={{canonical: `https://example.test/${locale}/manual`, alternate: language => `https://example.test/${language}/manual`}}
+      languages={{options: locales, href: (language, search, hash) =>
+        `/${language}/manual${search}${hash}`,
+      }}
+      search={async () => []}
       errorFallback={() => <p>Unable to load</p>}
-    />
+    >
+      <Outlet />
+    </SiteShell>
   );
 }
 
@@ -186,7 +185,6 @@ function renderSite({
   vi.stubGlobal('scrollTo', vi.fn());
 
   render(
-    <ThemeProvider themeStorageKey="example:docs:theme">
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route
@@ -227,8 +225,7 @@ function renderSite({
             <Route index element={<CurrentLocation />} />
           </Route>
         </Routes>
-      </MemoryRouter>
-    </ThemeProvider>,
+      </MemoryRouter>,
   );
 
   return { storage, values };
@@ -350,7 +347,8 @@ describe('SiteShell preferences', () => {
     const menu = screen.getByRole('menu', { name: 'Switch page' });
 
     expect(menu.classList.contains('docs-dropdown-menu')).toBe(true);
-    expect(within(menu).getByRole('menuitem', { name: 'Home' })).not.toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Home' }).getAttribute('href')).toBe('/en');
+    expect(document.querySelector('.docs-sidebar-logo')?.getAttribute('href')).toBe('/en');
     expect(
       within(menu).getByRole('menuitem', { name: 'Manual' }),
     ).not.toBeNull();
@@ -367,7 +365,8 @@ describe('SiteShell preferences', () => {
 
     const menu = screen.getByRole('menu', { name: 'Switch page' });
 
-    expect(within(menu).getByRole('menuitem', { name: 'Home' })).not.toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Home' }).getAttribute('href')).toBe('/en');
+    expect(document.querySelector('.docs-sidebar-logo')?.getAttribute('href')).toBe('/en');
     expect(
       within(menu).getByRole('menuitem', { name: 'Manual' }),
     ).not.toBeNull();
@@ -407,7 +406,7 @@ describe('SiteShell preferences', () => {
             },
           ] satisfies SearchResult[]
         }
-        navigate={() => undefined}
+
         close={() => undefined}
       />,
     );
@@ -415,7 +414,7 @@ describe('SiteShell preferences', () => {
     const searchInput = screen.getByRole('searchbox', { name: label });
 
     expect(searchInput.getAttribute('placeholder')).toBe(label);
-    expect(document.querySelector('.site-search-footer')?.textContent).toBe(footer);
+    expect(document.querySelector('.search-panel-footer')?.textContent).toBe(footer);
     fireEvent.change(searchInput, { target: { value: hiddenTerm } });
 
     expect(await screen.findByText('No results')).toBeDefined();
@@ -453,11 +452,11 @@ describe('SiteShell preferences', () => {
     renderSite({ initialEntry: '/en/manual/first' });
     const shell = document.querySelector('.site-shell');
 
-    expect(shell?.classList.contains('manual-sidebar-collapsed')).toBe(false);
+    expect(shell?.classList.contains('is-sidebar-collapsed')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse directory' }));
 
     await waitFor(() =>
-      expect(shell?.classList.contains('manual-sidebar-collapsed')).toBe(true),
+      expect(shell?.classList.contains('is-sidebar-collapsed')).toBe(true),
     );
   });
 
@@ -488,7 +487,7 @@ describe('SiteShell preferences', () => {
     renderSite();
 
     const logo = document.querySelector<HTMLImageElement>(
-      '.docs-sidebar-logo .brand-mark',
+      '.docs-sidebar-logo .site-brand-mark',
     );
 
     expect(logo?.getAttribute('src')).toBe('/brand/artis-mark-light.svg');
@@ -504,7 +503,7 @@ describe('SiteShell preferences', () => {
     await waitFor(() =>
       expect(
         document
-          .querySelector<HTMLImageElement>('.site-search-heading > img')
+          .querySelector<HTMLImageElement>('.search-panel-heading > img')
           ?.getAttribute('src'),
       ).toBe('/brand/artis-mark-dark.svg'),
     );
@@ -514,7 +513,7 @@ describe('SiteShell preferences', () => {
     renderSite({ initialEntry: '/en' });
 
     const logo = document.querySelector<HTMLImageElement>(
-      '.site-brand .brand-mark',
+      '.site-brand .site-brand-mark',
     );
 
     expect(logo?.getAttribute('src')).toBe('/artis-logo.svg');
@@ -530,7 +529,7 @@ describe('SiteShell preferences', () => {
     renderSite({ failStorageRead: true });
 
     expect(
-      screen.getByText('Storage error', { selector: '.storage-notice' })
+      screen.getByText('Storage error', { selector: '.site-storage-notice' })
         .textContent,
     ).toBe('Storage error');
     expect(document.querySelector('.site-footer')).toBeNull();
@@ -569,7 +568,7 @@ describe('SiteShell preferences', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Dark' }));
 
     await waitFor(() =>
-      expect(document.documentElement.dataset['theme']).toBe('dark'),
+      expect(document.querySelector<HTMLElement>('.docs-root')?.dataset['theme']).toBe('dark'),
     );
     expect(values.get('example:docs:theme')).toBe('dark');
   });
